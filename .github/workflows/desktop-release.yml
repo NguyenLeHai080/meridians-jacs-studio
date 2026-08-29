@@ -18,6 +18,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --dir Tool/desktop-app build
       - run: pnpm --dir Tool/desktop-app exec electron-builder --mac dmg zip
       - uses: actions/upload-artifact@v4
         with:
@@ -36,6 +37,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --dir Tool/desktop-app build
       - run: pnpm --dir Tool/desktop-app exec electron-builder --win nsis
       - uses: actions/upload-artifact@v4
         with:
