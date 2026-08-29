@@ -1,6 +1,6 @@
 # Báo cáo kiểm tra hiện tại
 
-Ngày kiểm tra: 2026-08-29.
+Ngày kiểm tra: 2026-08-30.
 
 ## Đã chạy thành công
 
@@ -16,10 +16,17 @@ Ngày kiểm tra: 2026-08-29.
 - Build production Desktop Tool bằng `pnpm build:desktop`.
 - Smoke test các endpoint đang chạy: `/health/live`, `/health/ready`, đăng nhập
   admin và HTTP response của hai Vite dev server.
+- Docker build và triển khai thành công trên server `221.121.1.3` với hai stack
+  độc lập: staging `localhost:85`, production `localhost:84`.
+- Smoke test qua Cloudflare thành công:
+  `https://test-jacs-studio.nexoratech.com.vn` và
+  `https://jacs-studio.nexoratech.com.vn` trả HTTP 200; `/health/live` và đăng
+  nhập admin hoạt động trên cả hai hostname.
 
 ## Chưa chạy được trên máy hiện tại
 
-- Docker image build: Docker Desktop đang lỗi I/O storage; Compose syntax vẫn pass.
+- GitHub Actions chưa được kích hoạt trên remote vì repository chưa có quyền xác
+  thực push và chưa đặt các Actions secrets.
 - Native Windows/macOS packaging, code signing, FFmpeg/GPU probe và provider
   vendor thật: chưa có toolchain/credential trong workspace.
 
