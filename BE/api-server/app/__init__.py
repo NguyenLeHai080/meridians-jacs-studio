@@ -1,0 +1,1 @@
+"""JACS Studio API application."""

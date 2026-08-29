@@ -1,0 +1,12 @@
+{
+  "name": "jacs-studio",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:admin": "pnpm --dir FE/admin-portal dev",
+    "build:admin": "pnpm --dir FE/admin-portal build",
+    "dev:desktop": "pnpm --dir Tool/desktop-app dev",
+    "build:desktop": "pnpm --dir Tool/desktop-app build",
+    "verify:api": "make test-api && make compile-api && make export-openapi"
+  }
+}

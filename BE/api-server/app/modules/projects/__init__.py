@@ -1,0 +1,1 @@
+"""Project metadata bounded context."""
