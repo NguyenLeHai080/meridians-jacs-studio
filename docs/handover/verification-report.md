@@ -5,7 +5,7 @@ Ngày kiểm tra: 2026-08-30.
 ## Đã chạy thành công
 
 - `16` bài test API (auth, logout, license, provider, jobs, projects,
-  telemetry, release, persistence SQLite và request ID).
+  telemetry, release, persistence adapter và request ID).
 - Python bytecode compile cho `BE/api-server/app` và tests.
 - Ruff lint `BE/api-server/app` và tests.
 - Docker Compose schema validation.
