@@ -76,15 +76,16 @@ server. Cấu hình các GitHub Actions secrets sau:
 Trên server phải tạo sẵn `.env` cho cả `staging` và `prod`. Workflow không truyền
 secret qua Git và không xóa `.env` hoặc Docker volume khi đồng bộ release.
 
-Cloudflare Tunnel cần thêm ingress riêng:
+Cloudflare Tunnel hiện đã phục vụ và smoke test thành công hai ingress:
 
 ```text
 test-jacs-studio.nexoratech.com.vn -> http://127.0.0.1:85
 jacs-studio.nexoratech.com.vn      -> http://127.0.0.1:84
 ```
 
-Thao tác này thực hiện trong Cloudflare Zero Trust/DNS; token tunnel hiện có trên
-server không cung cấp quyền cấu hình route từ repository.
+Kiểm tra từ bên ngoài: `curl https://<hostname>/health/live` phải trả JSON
+`{"data":{"status":"live"}}`. Token tunnel hiện có trên server không được
+ghi vào repository.
 
 ## Sự cố thường gặp
 
