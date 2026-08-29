@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.pnpm-store/
+*.tsbuildinfo
+**/vite.config.js
+**/vite.config.d.ts
+
+# Local configuration and runtime data
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

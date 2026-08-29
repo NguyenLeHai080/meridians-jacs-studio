@@ -1,6 +1,0 @@
-/storage/logs/*
-/storage/cache/*
-!.gitkeep
-.env
-.env.*
-!.env.example

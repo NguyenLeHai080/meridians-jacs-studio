@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: jacs
+      POSTGRES_USER: jacs
+      POSTGRES_PASSWORD: jacs-dev-password
+    ports: ["5432:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jacs -d jacs"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: ["redis_data:/data"]
+  api:
+    build:
+      context: ./BE/api-server
+    environment:
+      JACS_ENV: development
+      JACS_CORS_ORIGINS: http://localhost:5173,http://localhost:4173
+    ports: ["8000:8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+volumes:
+  postgres_data:
+  redis_data:
