@@ -78,8 +78,8 @@ Trên server phải tạo sẵn `.env` cho cả `staging` và `prod`. Workflow k
 secret qua Git và không xóa `.env` hoặc Docker volume khi đồng bộ release.
 
 Trong lần cài đặt này, public deploy key đã được cài vào `root@221.121.1.3`; file
-private key tương ứng chỉ nằm trên máy triển khai tại `/tmp/jacs-deploy-key`.
-Để bật workflow, thêm toàn bộ nội dung file đó vào GitHub Secret
+private key tương ứng chỉ nằm trên máy triển khai tại
+`~/.ssh/jacs-studio-github-actions`. Để bật workflow, thêm toàn bộ nội dung file đó vào GitHub Secret
 `JACS_DEPLOY_SSH_KEY`, cùng với `JACS_DEPLOY_HOST`, `JACS_DEPLOY_USER` và
 `JACS_DEPLOY_PORT`. Không commit hoặc gửi private key vào repository.
 
