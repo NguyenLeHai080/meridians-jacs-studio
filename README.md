@@ -46,9 +46,10 @@ pnpm dev:desktop
 docker compose up -d postgres redis
 ```
 
-API mặc định dùng `InMemoryStore` để chạy vertical slice không cần database;
-đặt `JACS_STORE_BACKEND=sqlite` để persistence local/single-node. PostgreSQL và
-Redis đã có trong Compose; production vẫn cần repository PostgreSQL và worker.
+API chạy trong Compose với PostgreSQL và Redis; dữ liệu được giữ trong volume
+`postgres_data`. Khi chạy Uvicorn trực tiếp, API mặc định dùng `InMemoryStore`
+cho dev nhanh; đặt `JACS_STORE_BACKEND=postgres` và
+`JACS_DATABASE_URL=postgresql://...` để dùng PostgreSQL local.
 
 ## Tài liệu
 
@@ -111,6 +112,5 @@ docker compose up -d postgres redis
 docker compose config --quiet
 ```
 
-API MVP mặc định dùng memory store. Muốn giữ dữ liệu sau khi restart local, đặt
-`JACS_STORE_BACKEND=sqlite` và `JACS_SQLITE_PATH=./data/jacs.sqlite3` trước khi
-chạy API.
+Compose local đã cấu hình PostgreSQL persistence. Nếu chạy API ngoài Compose,
+đặt `JACS_STORE_BACKEND=postgres` cùng `JACS_DATABASE_URL` trước khi khởi động.
