@@ -9,10 +9,10 @@
   Anthropic thật, usage/cost và circuit breaker chưa hoàn tất.
 - Frontend mới có login/dashboard cơ bản; form quản lý provider, telemetry,
   release, job progress và license actions cần hoàn thiện.
-- Desktop đã có Electron shell và pipeline build DMG/ZIP macOS cùng NSIS Windows;
-  bản macOS local hiện unsigned, còn artifact Windows cần chạy workflow trên
-  GitHub Actions. Secure storage, HWID, IPC allowlist, FFmpeg/GPU probe và OTA
-  ký số vẫn là production gate.
+- Desktop đã có Electron shell và pipeline build DMG/ZIP macOS cùng NSIS
+  Windows; artifact macOS ARM64 và Windows x64 v0.2.0 đã build local nhưng đều
+  unsigned. Secure storage, HWID, IPC allowlist, FFmpeg/GPU probe và OTA ký số
+  vẫn là production gate.
 - Docker Compose cung cấp dependency local; chưa phải topology HA production.
 - Các SLO, retention, quota, pricing và chính sách dữ liệu còn cần Product/Tech
   Lead chốt bằng issue trước UAT chính thức.

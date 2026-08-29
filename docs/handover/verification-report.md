@@ -31,8 +31,9 @@ Ngày kiểm tra: 2026-08-30.
 
 - GitHub Actions chưa được kích hoạt trên remote vì repository chưa có quyền xác
   thực push và chưa đặt các Actions secrets.
-- Windows packaging trên runner Windows, code signing, FFmpeg/GPU probe và
-  provider vendor thật: chưa có credential/toolchain tương ứng trong workspace.
+- Code signing, FFmpeg/GPU probe và provider vendor thật: chưa có
+  credential/toolchain tương ứng trong workspace; Windows x64 NSIS đã được
+  cross-build thành công bằng electron-builder/Wine để QA.
 
 Các mục chưa chạy được là production gate, không được đánh dấu pass trong biên
 bản UAT chỉ dựa trên báo cáo này.
