@@ -1,8 +1,8 @@
 services:
   api:
     build:
-      context: ..
-      dockerfile: BE/api-server/Dockerfile
+      context: ../BE/api-server
+      dockerfile: Dockerfile
     env_file:
       - path: ../.env
         required: false
