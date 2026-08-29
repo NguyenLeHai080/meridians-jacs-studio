@@ -58,9 +58,10 @@ bash /opt/jacs-studio/staging/current/deploy/deploy.sh staging /opt/jacs-studio/
 bash /opt/jacs-studio/prod/current/deploy/deploy.sh prod /opt/jacs-studio/prod/current
 ```
 
-Compose dùng SQLite volume riêng để giữ dữ liệu single-node của MVP; không chạy
-replica thứ hai cho đến khi thay adapter bằng PostgreSQL. Web container phục vụ
-Admin Portal và proxy `/api` về API cùng hostname.
+Compose staging/production dùng PostgreSQL 16 volume riêng cho từng môi trường;
+không expose cổng database ra Internet. Web container phục vụ Admin Portal và
+proxy `/api` về API cùng hostname. Secret API key của provider được mã hóa bằng
+Fernet (`JACS_SECRET_KEY`) trước khi lưu vào PostgreSQL.
 
 ## Tự động deploy khi merge
 

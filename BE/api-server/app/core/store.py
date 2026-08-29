@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 import json
 import sqlite3
-from threading import Lock
+from threading import Lock, RLock
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -105,6 +105,96 @@ class SqliteStore:
             connection.execute("DELETE FROM records")
 
 
+class PostgresStore:
+    """Persistent JSONB repository used by staging and production.
+
+    The application modules intentionally depend on this small CRUD contract;
+    PostgreSQL owns durability, concurrent access and restart persistence while
+    each domain keeps its own collection namespace.
+    """
+
+    def __init__(self, dsn: str) -> None:
+        if not dsn:
+            raise RuntimeError("JACS_DATABASE_URL is required for PostgreSQL")
+        try:
+            import psycopg
+        except ImportError as exc:  # pragma: no cover - exercised in image build
+            raise RuntimeError("psycopg is required for PostgreSQL storage") from exc
+        self._psycopg = psycopg
+        self.dsn = dsn
+        self._lock = RLock()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jacs_records (
+                    collection TEXT NOT NULL,
+                    id UUID NOT NULL,
+                    data JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    PRIMARY KEY (collection, id)
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jacs_records_collection ON jacs_records(collection, created_at)"
+            )
+
+    def _connect(self):
+        return self._psycopg.connect(self.dsn)
+
+    def create(self, collection: str, value: dict) -> dict:
+        record = {"id": uuid4(), **value}
+        payload = json.dumps(record, default=_json_default)
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT INTO jacs_records(collection, id, data) VALUES (%s, %s, %s::jsonb)",
+                (collection, str(record["id"]), payload),
+            )
+        return record.copy()
+
+    def list(self, collection: str) -> list[dict]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT data FROM jacs_records WHERE collection = %s ORDER BY created_at ASC",
+                (collection,),
+            ).fetchall()
+        return [_decode_json_payload(row[0]) for row in rows]
+
+    def get(self, collection: str, record_id: UUID) -> dict | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT data FROM jacs_records WHERE collection = %s AND id = %s",
+                (collection, str(record_id)),
+            ).fetchone()
+        return _decode_json_payload(row[0]) if row else None
+
+    def update(self, collection: str, record_id: UUID, values: dict) -> dict | None:
+        with self._lock:
+            current = self.get(collection, record_id)
+            if not current:
+                return None
+            current.update(values)
+            payload = json.dumps(current, default=_json_default)
+            with self._connect() as connection:
+                connection.execute(
+                    "UPDATE jacs_records SET data = %s::jsonb WHERE collection = %s AND id = %s",
+                    (payload, collection, str(record_id)),
+                )
+            return current.copy()
+
+    def delete(self, collection: str, record_id: UUID) -> bool:
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM jacs_records WHERE collection = %s AND id = %s",
+                (collection, str(record_id)),
+            )
+        return cursor.rowcount > 0
+
+    def clear(self) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute("DELETE FROM jacs_records")
+
+
 def _json_default(value):
     if isinstance(value, UUID):
         return {"__type__": "uuid", "value": str(value)}
@@ -123,12 +213,34 @@ def _json_object_hook(value):
     return value
 
 
+def _decode_json_payload(value):
+    if isinstance(value, str):
+        return json.loads(value, object_hook=_json_object_hook)
+    if isinstance(value, dict):
+        return _restore_nested(value)
+    return value
+
+
+def _restore_nested(value):
+    if isinstance(value, dict):
+        if value.get("__type__") == "uuid":
+            return UUID(value["value"])
+        if value.get("__type__") == "datetime":
+            return datetime.fromisoformat(value["value"])
+        return {key: _restore_nested(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_restore_nested(item) for item in value]
+    return value
+
+
 def _build_store():
     from app.core.config import get_settings
 
     settings = get_settings()
     if settings.store_backend.lower() == "sqlite":
         return SqliteStore(settings.sqlite_path)
+    if settings.store_backend.lower() in {"postgres", "postgresql"}:
+        return PostgresStore(settings.database_url or "")
     return InMemoryStore()
 
 

@@ -1,4 +1,18 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${JACS_DB_NAME:?JACS_DB_NAME is required}
+      POSTGRES_USER: ${JACS_DB_USER:?JACS_DB_USER is required}
+      POSTGRES_PASSWORD: ${JACS_DB_PASSWORD:?JACS_DB_PASSWORD is required}
+    volumes:
+      - jacs_staging_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
   api:
     build:
       context: ../BE/api-server
@@ -8,11 +22,12 @@ services:
         required: false
     environment:
       JACS_ENV: production
-      JACS_STORE_BACKEND: sqlite
-      JACS_SQLITE_PATH: /app/data/jacs.sqlite3
-    volumes:
-      - jacs_staging_data:/app/data
+      JACS_STORE_BACKEND: postgres
+      JACS_DATABASE_URL: ${JACS_DATABASE_URL:?JACS_DATABASE_URL is required}
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
       interval: 10s
@@ -31,4 +46,4 @@ services:
       - "127.0.0.1:85:80"
     restart: unless-stopped
 volumes:
-  jacs_staging_data:
+  jacs_staging_postgres_data:

@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     token_ttl_minutes: int = 60
     store_backend: str = "memory"
     sqlite_path: str = "./data/jacs.sqlite3"
+    database_url: Optional[str] = None
+    secret_key: Optional[str] = None
     telemetry_enabled: bool = True
     telemetry_ingest_token: str = ""
     telemetry_max_payload_bytes: int = 256_000
@@ -40,6 +42,10 @@ class Settings(BaseSettings):
                 raise RuntimeError("JACS_ADMIN_PASSWORD_HASH is required in production")
             if self.store_backend == "memory":
                 raise RuntimeError("JACS_STORE_BACKEND=memory is not allowed in production")
+            if self.store_backend.lower() == "postgres" and not self.database_url:
+                raise RuntimeError("JACS_DATABASE_URL is required when using PostgreSQL")
+            if not self.secret_key:
+                raise RuntimeError("JACS_SECRET_KEY is required in production")
             if not self.cors_origin_list or "*" in self.cors_origin_list:
                 raise RuntimeError("Production CORS must be an explicit allowlist")
 
