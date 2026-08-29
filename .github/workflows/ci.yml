@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [dev, staging, prod]
+  workflow_call:
 
 jobs:
   python-api:

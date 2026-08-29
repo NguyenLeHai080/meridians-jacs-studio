@@ -1,0 +1,60 @@
+name: Deploy JACS Studio
+
+on:
+  push:
+    branches: [staging, prod]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment to deploy
+        required: true
+        type: choice
+        options: [staging, prod]
+
+concurrency:
+  group: jacs-deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'prod') && 'production' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') && 'staging' || (github.ref_name == 'prod' && 'production' || 'staging') }}
+    env:
+      TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.target || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SSH key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.JACS_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST }}
+        run: |
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_HOST"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/jacs_deploy
+          chmod 600 ~/.ssh/jacs_deploy
+          ssh-keyscan -p "${{ secrets.JACS_DEPLOY_PORT || 22 }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Sync release to server
+        env:
+          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.JACS_DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.JACS_DEPLOY_PORT || 22 }}
+        run: |
+          release_dir="/opt/jacs-studio/${TARGET_ENV}/current"
+          ssh -i ~/.ssh/jacs_deploy -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p '$release_dir'"
+          rsync -az --delete \
+            --exclude '.git/' --exclude 'node_modules/' --exclude 'dist/' \
+            --exclude '.env' --exclude 'data/' --exclude '*.tsbuildinfo' \
+            -e "ssh -i ~/.ssh/jacs_deploy -p $DEPLOY_PORT" ./ "$DEPLOY_USER@$DEPLOY_HOST:$release_dir/"
+      - name: Build and restart stack
+        env:
+          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.JACS_DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ secrets.JACS_DEPLOY_PORT || 22 }}
+        run: |
+          ssh -i ~/.ssh/jacs_deploy -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "test -s /opt/jacs-studio/${TARGET_ENV}/.env && bash /opt/jacs-studio/${TARGET_ENV}/current/deploy/deploy.sh ${TARGET_ENV} /opt/jacs-studio/${TARGET_ENV}/current"
