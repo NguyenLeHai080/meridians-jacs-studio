@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// Production serves the API behind the same hostname; local Vite keeps the
+// explicit API origin so the dev server can run independently.
+const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 export type ApiError = { error?: { code?: string; message?: string } };
 

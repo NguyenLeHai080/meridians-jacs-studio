@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: BE/api-server/Dockerfile
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      JACS_ENV: production
+      JACS_STORE_BACKEND: sqlite
+      JACS_SQLITE_PATH: /app/data/jacs.sqlite3
+    volumes:
+      - jacs_prod_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/admin.Dockerfile
+      args:
+        VITE_API_URL: ""
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:84:80"
+    restart: unless-stopped
+volumes:
+  jacs_prod_data:

@@ -35,6 +35,57 @@ Admin chạy bằng `pnpm dev:admin`; Desktop prototype chạy bằng
 - Rollback ứng dụng bằng image/tag trước đó; rollback release bằng manifest cũ.
 - Không rollback database bằng cách xóa dữ liệu; dùng migration đảo ngược đã review.
 
+## Triển khai JACS trên server hiện tại
+
+JACS được tách riêng khỏi MintForge tại `/opt/jacs-studio`. Không dùng lại
+compose project hoặc volume của MintForge.
+
+| Môi trường | Thư mục release | Cổng bind localhost | Hostname |
+| --- | --- | ---: | --- |
+| Staging | `/opt/jacs-studio/staging/current` | `85` | `test-jacs-studio.nexoratech.com.vn` |
+| Production | `/opt/jacs-studio/prod/current` | `84` | `jacs-studio.nexoratech.com.vn` |
+
+Mỗi môi trường cần file `/opt/jacs-studio/<env>/.env` (không nằm trong Git).
+Sao chép từ `deploy/env.staging.example` hoặc `deploy/env.prod.example`, tạo
+hash bằng script `BE/api-server/scripts/hash_password.py`, rồi đặt
+`JACS_ADMIN_PASSWORD_HASH`, CORS đúng hostname và telemetry token ngẫu nhiên.
+Script `deploy/deploy.sh` sẽ từ chối chạy nếu thiếu các biến bắt buộc.
+
+Lần triển khai thủ công đầu tiên (sau khi đã copy mã nguồn vào thư mục release):
+
+```bash
+bash /opt/jacs-studio/staging/current/deploy/deploy.sh staging /opt/jacs-studio/staging/current
+bash /opt/jacs-studio/prod/current/deploy/deploy.sh prod /opt/jacs-studio/prod/current
+```
+
+Compose dùng SQLite volume riêng để giữ dữ liệu single-node của MVP; không chạy
+replica thứ hai cho đến khi thay adapter bằng PostgreSQL. Web container phục vụ
+Admin Portal và proxy `/api` về API cùng hostname.
+
+## Tự động deploy khi merge
+
+Workflow `.github/workflows/deploy.yml` chạy sau push vào `staging` hoặc `prod`
+(tức sau khi PR được merge), chạy lại CI rồi rsync release và build Docker trên
+server. Cấu hình các GitHub Actions secrets sau:
+
+- `JACS_DEPLOY_HOST=221.121.1.3`
+- `JACS_DEPLOY_USER=root` (khuyến nghị user deploy không có quyền root khi harden)
+- `JACS_DEPLOY_PORT=22`
+- `JACS_DEPLOY_SSH_KEY` (private key, public key đã thêm vào `authorized_keys`)
+
+Trên server phải tạo sẵn `.env` cho cả `staging` và `prod`. Workflow không truyền
+secret qua Git và không xóa `.env` hoặc Docker volume khi đồng bộ release.
+
+Cloudflare Tunnel cần thêm ingress riêng:
+
+```text
+test-jacs-studio.nexoratech.com.vn -> http://127.0.0.1:85
+jacs-studio.nexoratech.com.vn      -> http://127.0.0.1:84
+```
+
+Thao tác này thực hiện trong Cloudflare Zero Trust/DNS; token tunnel hiện có trên
+server không cung cấp quyền cấu hình route từ repository.
+
 ## Sự cố thường gặp
 
 | Triệu chứng | Kiểm tra |
