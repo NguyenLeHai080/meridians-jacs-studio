@@ -9,6 +9,7 @@ __pycache__/
 node_modules/
 dist/
 .pnpm-store/
+.vite/
 *.tsbuildinfo
 **/vite.config.js
 **/vite.config.d.ts
