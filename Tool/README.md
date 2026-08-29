@@ -17,9 +17,11 @@ pnpm --dir Tool/desktop-app dist:mac   # macOS .dmg + .zip
 pnpm --dir Tool/desktop-app dist:win   # Windows NSIS .exe (chạy trên Windows)
 ```
 
-File cài đặt nằm trong `Tool/desktop-app/release/` (ví dụ bản macOS ARM64 đã
-build: `JACS Studio-0.2.0-arm64.dmg`). Workflow
+File cài đặt nằm trong `Tool/desktop-app/release/`: macOS ARM64
+`JACS Studio-0.2.0-arm64.dmg`/`.zip` và Windows x64
+`JACS Studio Setup 0.2.0.exe` đã được build. Workflow
 `.github/workflows/desktop-release.yml` tự build artifact macOS và Windows khi
 push tag `vX.Y.Z`. Bản macOS local chưa ký Developer ID nên chỉ dùng QA; muốn
 phân phối rộng cần ký và notarize bằng tài khoản Apple Developer. Bản Windows
-chỉ được tạo trên Windows runner/GitHub Actions để có installer NSIS `.exe`.
+local cũng chưa ký Authenticode; nên phát hành artifact từ Windows runner sau
+khi cấu hình chứng thư ký.
