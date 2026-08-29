@@ -9,7 +9,10 @@ case "$TARGET_ENV" in
   *) echo "Usage: $0 <staging|prod> [release-directory]" >&2; exit 64 ;;
 esac
 
-ENV_FILE="$ROOT_DIR/.env"
+ENV_FILE="${JACS_ENV_FILE:-$ROOT_DIR/.env}"
+if [[ ! -s "$ENV_FILE" && -s "$(dirname "$ROOT_DIR")/.env" ]]; then
+  ENV_FILE="$(dirname "$ROOT_DIR")/.env"
+fi
 COMPOSE_FILE="$ROOT_DIR/deploy/compose.$TARGET_ENV.yml"
 PROJECT="jacs-studio-$TARGET_ENV"
 if [[ ! -s "$ENV_FILE" ]]; then
