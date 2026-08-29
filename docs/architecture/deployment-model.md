@@ -38,8 +38,9 @@ Không copy dữ liệu production xuống staging nếu chưa scrub PII và ass
 ## Availability và failure isolation
 
 - API stateless, tối thiểu hai replica ở production; session nằm ở token/Redis.
-- Bản MVP có SQLite adapter cho local/single-node; không dùng adapter này cho HA
-  hoặc nhiều replica vì chưa có transaction/locking phân tán.
+- Staging/production dùng PostgreSQL adapter với volume tách biệt; topology hiện
+  là single-node và cần nâng cấp HA/connection pooler trước khi chạy nhiều
+  replica API.
 - Worker tách queue `analysis`, `tts`, `render`, `telemetry`; một queue lỗi không
   làm nghẽn request API hoặc license validation.
 - Provider timeout/circuit breaker áp dụng theo từng provider; không retry mù các

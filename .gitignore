@@ -8,6 +8,7 @@ __pycache__/
 # Node
 node_modules/
 dist/
+Tool/desktop-app/release/
 .pnpm-store/
 .vite/
 *.tsbuildinfo
