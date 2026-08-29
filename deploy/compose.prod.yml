@@ -4,7 +4,7 @@ services:
       context: ../BE/api-server
       dockerfile: Dockerfile
     env_file:
-      - path: ../.env
+      - path: ../../.env
         required: false
     environment:
       JACS_ENV: production
