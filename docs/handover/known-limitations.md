@@ -3,8 +3,9 @@
 - Staging/production đã chạy `PostgresStore` với PostgreSQL 16 volume riêng;
   local API chạy trực tiếp vẫn mặc định `InMemoryStore` nếu không đặt biến môi
   trường. PostgreSQL hiện là single-node, chưa có HA/replica tự động.
-- Auth hỗ trợ password hash PBKDF2-SHA256 nhưng token vẫn in-memory; production gate
-  yêu cầu identity store, JWT/session chuẩn, refresh rotation, RBAC và MFA.
+- Auth đã dùng bearer token ký HMAC với expiry và danh sách revoke lưu qua store;
+  production gate còn lại là identity store đa người dùng, refresh rotation, RBAC
+  chi tiết, rate-limit login và MFA.
 - Provider connection test đã gọi request kiểm tra tối thiểu tới OpenAI, Gemini,
   Anthropic và OpenAI-compatible; custom provider vẫn cần adapter được phê duyệt.
   Usage/cost, circuit breaker và job adapter thực thi thật vẫn là production gate.
