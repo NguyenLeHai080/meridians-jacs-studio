@@ -95,6 +95,18 @@ test-jacs-studio.nexoratech.com.vn -> http://127.0.0.1:85
 jacs-studio.nexoratech.com.vn      -> http://127.0.0.1:84
 ```
 
+Installer khách hàng được đặt ngoài source tại `/opt/jacs-studio/downloads`
+và được mount read-only vào web container. URL production chuẩn:
+
+```text
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-windows-x64.exe
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-macos-arm64.dmg
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-macos-x64.dmg
+```
+
+Có thể đặt `JACS_DOWNLOADS_DIR` trong `.env` nếu cần chuyển kho artifact sang
+đường dẫn khác. Không xóa thư mục này khi đồng bộ release source.
+
 Kiểm tra từ bên ngoài: `curl https://<hostname>/health/live` phải trả JSON
 `{"data":{"status":"live"}}`. Token tunnel hiện có trên server không được
 ghi vào repository.

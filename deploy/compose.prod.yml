@@ -45,6 +45,8 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:84:80"
+    volumes:
+      - ${JACS_DOWNLOADS_DIR:-/opt/jacs-studio/downloads}:/usr/share/nginx/html/downloads:ro
     restart: unless-stopped
 volumes:
   jacs_prod_postgres_data:
