@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.security import require_auth
 from app.core.store import store
+from app.modules.licensing.router import _active_license
 from app.modules.telemetry.schemas import Severity, TelemetryEvent
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
@@ -25,8 +26,13 @@ async def ingest(request: Request, event: TelemetryEvent, telemetry_token: str |
         raise AppError("TELEMETRY_PAYLOAD_TOO_LARGE", "Telemetry payload vượt quá giới hạn", 413)
     if not settings.telemetry_enabled:
         raise AppError("TELEMETRY_DISABLED", "Telemetry đang tắt", 503)
-    if settings.telemetry_ingest_token and (not telemetry_token or not compare_digest(telemetry_token, settings.telemetry_ingest_token)):
-        raise AppError("TELEMETRY_UNAUTHORIZED", "Telemetry token không hợp lệ", 401)
+    license_key = request.headers.get("X-License-Key")
+    device_id = request.headers.get("X-Device-Id")
+    token_valid = bool(telemetry_token and settings.telemetry_ingest_token and compare_digest(telemetry_token, settings.telemetry_ingest_token))
+    if settings.telemetry_ingest_token and not token_valid:
+        if not license_key or not device_id:
+            raise AppError("TELEMETRY_UNAUTHORIZED", "Telemetry token không hợp lệ", 401)
+        _active_license(license_key, device_id)
     record = store.create("telemetry", event.model_dump())
     return {"data": {"accepted": True, "event_id": str(record["id"])} }
 

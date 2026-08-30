@@ -16,7 +16,9 @@ BE/                         Backend Python
 
 Tool/                       Desktop client/tool
 └── desktop-app/             React renderer + native shell
-    └── src/{core,modules,shared,native}
+    ├── electron/{main,preload,services}
+    └── src/{core,modules,shared}
+        └── modules/editor/   Editor workspace: inspector, preview, timeline
 
 packages/                   Contract và core dùng chung giữa các app
 docs/                       Nghiệp vụ, kiến trúc, API, Git và scale
