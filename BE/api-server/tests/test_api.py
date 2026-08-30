@@ -7,10 +7,11 @@ os.environ.setdefault("JACS_TELEMETRY_INGEST_TOKEN", "telemetry-test-token")
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.core.providers import connection as provider_connection
 from app.core.providers.secrets import secret_store
 from app.core.security import hash_password, verify_password
 from app.core.store import SqliteStore, store
+from app.main import app
 
 client = TestClient(app)
 
@@ -169,6 +170,41 @@ def test_provider_endpoint_rejects_private_network():
     })
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "PROVIDER_PRIVATE_ENDPOINT"
+
+
+def test_provider_connection_normalizes_success(monkeypatch):
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return False
+        def read(self, _limit):
+            return b'{"ok": true}'
+
+    captured = {}
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        captured["authorization"] = request.headers.get("Authorization")
+        return Response()
+
+    monkeypatch.setattr(provider_connection, "urlopen", fake_urlopen)
+    result = provider_connection.test_connection("openai", "https://api.openai.com/v1", "gpt-test", "secret-key", 3)
+    assert result.status == "reachable"
+    assert result.http_status == 200
+    assert captured["url"].endswith("/v1/chat/completions")
+    assert captured["authorization"] == "Bearer secret-key"
+
+
+def test_provider_connection_maps_bad_credentials(monkeypatch):
+    from urllib.error import HTTPError
+    monkeypatch.setattr(provider_connection, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        HTTPError("https://api.example.com", 401, "Unauthorized", {}, None)
+    ))
+    result = provider_connection.test_connection("openai-compatible", "https://api.example.com/v1", "model", "secret-key", 3)
+    assert result.status == "invalid_credentials"
+    assert result.http_status == 401
 
 
 def test_sqlite_store_persists_records(tmp_path):

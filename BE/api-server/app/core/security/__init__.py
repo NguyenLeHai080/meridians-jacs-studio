@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import secrets
-from hmac import compare_digest
 from base64 import b64decode, b64encode
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from hashlib import pbkdf2_hmac
+from hmac import compare_digest
 from threading import Lock
-from typing import Optional
 
 from fastapi import Security
 from fastapi.security import APIKeyHeader
@@ -17,7 +16,6 @@ from app.core.errors import AppError
 _tokens: dict[str, dict] = {}
 _token_lock = Lock()
 authorization_scheme = APIKeyHeader(name="Authorization", auto_error=False)
-UTC = timezone.utc
 
 
 def issue_token(subject: str) -> tuple[str, int]:
@@ -34,7 +32,7 @@ def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
     iterations = 600_000
     digest = pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return "pbkdf2_sha256${}${}${}".format(iterations, b64encode(salt).decode(), b64encode(digest).decode())
+    return f"pbkdf2_sha256${iterations}${b64encode(salt).decode()}${b64encode(digest).decode()}"
 
 
 def verify_password(password: str, encoded: str) -> bool:
@@ -48,7 +46,7 @@ def verify_password(password: str, encoded: str) -> bool:
         return False
 
 
-def current_user(authorization: Optional[str]) -> dict:
+def current_user(authorization: str | None) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise AppError("AUTH_REQUIRED", "Yêu cầu đăng nhập", 401)
     token = authorization.removeprefix("Bearer ").strip()
@@ -62,11 +60,11 @@ def current_user(authorization: Optional[str]) -> dict:
     return {"email": session["sub"], "role": session["role"]}
 
 
-async def require_auth(authorization: Optional[str] = Security(authorization_scheme)) -> dict:
+async def require_auth(authorization: str | None = Security(authorization_scheme)) -> dict:
     return current_user(authorization)
 
 
-def revoke_token(authorization: Optional[str]) -> None:
+def revoke_token(authorization: str | None) -> None:
     if not authorization or not authorization.startswith("Bearer "):
         return
     token = authorization.removeprefix("Bearer ").strip()

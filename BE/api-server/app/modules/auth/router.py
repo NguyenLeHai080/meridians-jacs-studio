@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Header
 
 from app.core.config import get_settings
@@ -28,5 +26,5 @@ async def me(user: dict = Depends(require_auth)) -> UserResponse:
 
 
 @router.post("/logout", status_code=204)
-async def logout(authorization: Optional[str] = Header(default=None), _: dict = Depends(require_auth)) -> None:
+async def logout(authorization: str | None = Header(default=None), _: dict = Depends(require_auth)) -> None:
     revoke_token(authorization)

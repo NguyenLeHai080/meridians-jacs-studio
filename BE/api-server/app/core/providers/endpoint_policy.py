@@ -18,14 +18,12 @@ def validate_provider_endpoint(value: str) -> str:
     local_dev = get_settings().environment.lower() in {"dev", "development", "test"}
     if parsed.scheme != "https" and not (local_dev and host in {"localhost", "127.0.0.1", "::1"}):
         raise AppError("PROVIDER_HTTPS_REQUIRED", "Endpoint provider phải dùng HTTPS", 422)
-    if host in {"localhost", "metadata.google.internal"} or host.endswith(".local"):
-        if not local_dev:
-            raise AppError("PROVIDER_PRIVATE_ENDPOINT", "Không cho phép endpoint mạng nội bộ", 422)
+    if (host in {"localhost", "metadata.google.internal"} or host.endswith(".local")) and not local_dev:
+        raise AppError("PROVIDER_PRIVATE_ENDPOINT", "Không cho phép endpoint mạng nội bộ", 422)
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
         address = None
-    if address and (address.is_private or address.is_loopback or address.is_link_local or address.is_reserved):
-        if not (local_dev and address.is_loopback):
-            raise AppError("PROVIDER_PRIVATE_ENDPOINT", "Không cho phép endpoint mạng nội bộ", 422)
+    if address and (address.is_private or address.is_loopback or address.is_link_local or address.is_reserved) and not (local_dev and address.is_loopback):
+        raise AppError("PROVIDER_PRIVATE_ENDPOINT", "Không cho phép endpoint mạng nội bộ", 422)
     return value

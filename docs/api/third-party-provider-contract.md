@@ -32,6 +32,13 @@ phải validate schema URL, provider type, quyền chủ sở hữu và capabili
 | `GET /api/v1/render-jobs/{id}` | Xem tiến độ và kết quả remote render |
 | `POST /api/v1/render-jobs/{id}/cancel` | Hủy remote render job |
 
+`POST /api/v1/ai-providers/{id}/test` thực hiện request tối thiểu với timeout cấu
+hình trong `JACS_PROVIDER_TIMEOUT_SECONDS` và trả về trạng thái chuẩn hóa:
+`reachable`, `invalid_credentials`, `vendor_error`, `unreachable` hoặc
+`unsupported`, kèm `http_status`, `latency_ms`, `detail` và capability. Adapter
+đã hỗ trợ OpenAI, Gemini, Anthropic và OpenAI-compatible; `custom` phải có
+adapter riêng để tránh gọi URL tùy ý.
+
 `api_key`, prompt, raw media, authorization header và URL ký không được đưa vào
 telemetry. Mọi endpoint tạo tác vụ tính phí cần idempotency key.
 

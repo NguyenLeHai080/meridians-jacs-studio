@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from typing import Optional
 
 
 class AppError(Exception):
-    def __init__(self, code: str, message: str, status_code: int = 400, details: Optional[dict] = None):
+    def __init__(self, code: str, message: str, status_code: int = 400, details: dict | None = None):
         self.code = code
         self.message = message
         self.status_code = status_code

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
-from typing import Optional
 
 from pydantic import BaseModel, Field
+
 from app.core.compat import StrEnum
 
 
@@ -19,7 +19,7 @@ class LicenseBase(BaseModel):
     customer_name: str = Field(min_length=1, max_length=160)
     customer_contact: str = Field(min_length=1, max_length=160)
     hwid: str = Field(min_length=8, max_length=256)
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
     max_jobs_per_day: int = Field(default=100, ge=1, le=100000)
     premium_ai: bool = False
 
@@ -33,7 +33,7 @@ class LicenseResponse(LicenseBase):
     key_hint: str
     status: LicenseStatus
     created_at: datetime
-    last_seen_at: Optional[datetime] = None
+    last_seen_at: datetime | None = None
 
 
 class LicenseCreatedResponse(LicenseResponse):

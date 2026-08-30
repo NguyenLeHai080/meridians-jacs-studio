@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-from typing import Optional
 from hmac import compare_digest
 
 from fastapi import APIRouter, Depends, Header, Request
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.core.store import store
 from app.core.security import require_auth
+from app.core.store import store
 from app.modules.telemetry.schemas import Severity, TelemetryEvent
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
 
 
 @router.post("/logs", status_code=202)
-async def ingest(request: Request, event: TelemetryEvent, telemetry_token: Optional[str] = Header(default=None, alias="X-Telemetry-Token")):
+async def ingest(request: Request, event: TelemetryEvent, telemetry_token: str | None = Header(default=None, alias="X-Telemetry-Token")):
     settings = get_settings()
     content_length = request.headers.get("content-length")
     try:
@@ -33,7 +32,7 @@ async def ingest(request: Request, event: TelemetryEvent, telemetry_token: Optio
 
 
 @router.get("/logs")
-async def list_logs(_: dict = Depends(require_auth), severity: Optional[Severity] = None, limit: int = 100):
+async def list_logs(_: dict = Depends(require_auth), severity: Severity | None = None, limit: int = 100):
     limit = max(1, min(limit, 500))
     records = store.list("telemetry")
     if severity:
