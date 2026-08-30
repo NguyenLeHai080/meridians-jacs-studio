@@ -104,6 +104,11 @@ https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-macos-arm64.dm
 https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-macos-x64.dmg
 ```
 
+Release manifest dùng asset ZIP macOS (cùng build với DMG) để nút **Cập nhật**
+có thể tự thay ứng dụng sau khi checksum hợp lệ. DMG dành cho cài đặt mới hoặc
+trường hợp người dùng cần thao tác kéo app vào Applications; Windows dùng NSIS
+`.exe` với chế độ silent updater.
+
 Có thể đặt `JACS_DOWNLOADS_DIR` trong `.env` nếu cần chuyển kho artifact sang
 đường dẫn khác. Không xóa thư mục này khi đồng bộ release source.
 

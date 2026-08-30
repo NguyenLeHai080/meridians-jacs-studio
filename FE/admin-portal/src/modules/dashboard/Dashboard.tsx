@@ -7,6 +7,20 @@ type License = { id: string; key_hint: string; customer_name: string; customer_c
 type Provider = { id: string; name: string; provider_type: string; model: string; masked_key: string; capabilities: string[] };
 type TelemetryLog = { id: string; severity: string; event_name: string; fingerprint: string; message: string; app_version: string };
 const adminEnvironment = getApiBaseUrl();
+const HWID_PATTERN = /JACS-(?:MAC|WIN|LNX)-[A-F0-9]{32}/;
+
+function normalizeHwid(value: string) {
+  const normalized = value.replace(/[\s\u200b-\u200d\ufeff]+/g, "").toUpperCase();
+  if (/^JACS-(MAC|WIN|LNX)-[A-F0-9]{32}$/.test(normalized)) return normalized;
+  const matches = normalized.match(new RegExp(HWID_PATTERN.source, "g")) || [];
+  return matches.length === 1 ? matches[0] : normalized;
+}
+
+function licenseHwidError(value: string) {
+  if (value === "WEB-DEMO-MACHINE") return "Không thể cấp license cho mã demo. Hãy mở bản Desktop Electron để lấy mã máy thật.";
+  if (!/^JACS-(MAC|WIN|LNX)-[A-F0-9]{32}$/.test(value)) return "Mã máy phải có dạng JACS-MAC/WIN/LNX-32 ký tự hex. Hãy copy nguyên Device ID từ tool.";
+  return "";
+}
 
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const token = getToken() ?? "";
@@ -57,8 +71,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     event.preventDefault();
     setError("");
     try {
-      const normalizedHwid = licenseForm.hwid.replace(/[\s\u200b-\u200d\ufeff]+/g, "").toUpperCase();
-      const payload = { ...licenseForm, hwid: normalizedHwid, expires_at: licenseForm.expires_at ? new Date(licenseForm.expires_at).toISOString() : null, max_jobs_per_day: Number(licenseForm.max_jobs_per_day) };
+      if (!licenseForm.customer_name.trim()) { setError("Vui lòng nhập tên khách hàng"); return; }
+      if (!licenseForm.customer_contact.trim()) { setError("Vui lòng nhập email hoặc số điện thoại khách hàng"); return; }
+      const normalizedHwid = normalizeHwid(licenseForm.hwid);
+      const hwidError = licenseHwidError(normalizedHwid);
+      if (hwidError) { setError(hwidError); return; }
+      const maxJobs = Number(licenseForm.max_jobs_per_day);
+      if (!Number.isInteger(maxJobs) || maxJobs < 1) { setError("Giới hạn job/ngày phải là số nguyên lớn hơn 0"); return; }
+      const expiresAt = licenseForm.expires_at ? new Date(licenseForm.expires_at) : null;
+      if (expiresAt && Number.isNaN(expiresAt.getTime())) { setError("Ngày hết hạn không hợp lệ"); return; }
+      if (expiresAt && expiresAt <= new Date()) { setError("Ngày hết hạn phải ở tương lai"); return; }
+      const payload = { ...licenseForm, hwid: normalizedHwid, expires_at: expiresAt?.toISOString() ?? null, max_jobs_per_day: maxJobs };
       const created = await apiRequest<License & { key: string }>("/api/v1/licenses", { method: "POST", body: JSON.stringify(payload) }, token);
       setGeneratedKey(created.key.trim().toUpperCase());
       setKeyCopied(false);
@@ -67,7 +90,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       await refresh();
     } catch (reason) {
       if (handleRequestError(reason)) return;
-      setError(reason instanceof Error ? reason.message : "Không tạo được license");
+      if (reason instanceof ApiRequestError) {
+        const requestHint = reason.requestId ? ` · request ${reason.requestId}` : "";
+        setError(`${reason.message}${reason.code ? ` (${reason.code})` : ""}${requestHint}`);
+      } else setError(reason instanceof Error ? reason.message : "Không tạo được license");
     }
   }
 
@@ -146,7 +172,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   async function resetHwid(item: License) {
     const hwid = window.prompt("Mã máy mới (JACS-MAC/WIN/LNX-...):", "");
     if (!hwid) return;
-    const normalizedHwid = hwid.replace(/[\s\u200b-\u200d\ufeff]+/g, "").toUpperCase();
+    const normalizedHwid = normalizeHwid(hwid);
     if (!/^JACS-(MAC|WIN|LNX)-[A-F0-9]{32}$/.test(normalizedHwid)) { setError("Mã máy phải có dạng JACS-MAC/WIN/LNX-32 ký tự hex"); return; }
     const reason = window.prompt("Lý do đổi máy:", "Khách đổi thiết bị") ?? "";
     if (reason.trim().length < 3) return;
@@ -174,7 +200,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       <header className="topbar"><div><p className="eyebrow">JACS / ADMIN</p><h1>Control Room</h1></div><div className="topbar-actions"><span className="environment-chip">API: {adminEnvironment}</span><button className="ghost" onClick={logout}>Đăng xuất</button></div></header>
       <section className="metric-grid"><div className="metric card"><span>License hoạt động</span><strong>{licenses.filter((item) => item.status === "active").length}</strong></div><div className="metric card"><span>AI provider</span><strong>{providers.length}</strong></div><div className="metric card"><span>Telemetry gần đây</span><strong>{logs.length}</strong></div></section>
       <section className="form-grid">
-        <form className="card panel" onSubmit={(event) => void createLicense(event)}><div className="panel-heading"><h2>Tạo license</h2></div><label>Tên khách hàng<input required value={licenseForm.customer_name} onChange={(event) => setLicenseForm({ ...licenseForm, customer_name: event.target.value })} /></label><label>Email/Số điện thoại<input required value={licenseForm.customer_contact} onChange={(event) => setLicenseForm({ ...licenseForm, customer_contact: event.target.value })} /></label><label>Mã máy thật (HWID)<input required minLength={8} pattern="JACS-(MAC|WIN|LNX)-[A-Fa-f0-9]{32}" title="Copy nguyên mã JACS-MAC/WIN/LNX-... từ bản Desktop Electron" value={licenseForm.hwid} onChange={(event) => setLicenseForm({ ...licenseForm, hwid: event.target.value.replace(/[\s\u200b-\u200d\ufeff]+/g, "").toUpperCase() })} placeholder="JACS-MAC-0123..." /><small className="muted">Không dùng WEB-DEMO-MACHINE. Khách phải copy từ bản cài Desktop.</small></label><label>Ngày hết hạn (tùy chọn)<input type="datetime-local" value={licenseForm.expires_at} onChange={(event) => setLicenseForm({ ...licenseForm, expires_at: event.target.value })} /></label><label>Job/ngày<input type="number" min="1" value={licenseForm.max_jobs_per_day} onChange={(event) => setLicenseForm({ ...licenseForm, max_jobs_per_day: event.target.value })} /></label><label className="checkbox"><input type="checkbox" checked={licenseForm.premium_ai} onChange={(event) => setLicenseForm({ ...licenseForm, premium_ai: event.target.checked })} /> Cho phép AI premium</label><button type="submit" disabled={loading}>Tạo license</button>{generatedKey && <div className="license-key-result"><div><span className="muted">License key mới · {adminEnvironment}</span><code>{generatedKey}</code></div><button type="button" className="copy-key-button" onClick={() => void copyLicenseKey()}>{keyCopied ? "Đã copy" : "Copy License Key"}</button><small>Key chỉ hiển thị một lần và chỉ dùng được với Desktop cùng môi trường API này.</small></div>}</form>
+        <form className="card panel" noValidate onSubmit={(event) => void createLicense(event)}><div className="panel-heading"><h2>Tạo license</h2></div><label>Tên khách hàng<input required value={licenseForm.customer_name} onChange={(event) => setLicenseForm({ ...licenseForm, customer_name: event.target.value })} /></label><label>Email/Số điện thoại<input required value={licenseForm.customer_contact} onChange={(event) => setLicenseForm({ ...licenseForm, customer_contact: event.target.value })} /></label><label>Mã máy thật (HWID)<input required value={licenseForm.hwid} onChange={(event) => setLicenseForm({ ...licenseForm, hwid: normalizeHwid(event.target.value) })} placeholder="JACS-MAC-0123..." /><small className="muted">Có thể dán cả dòng “Device ID: ...”; hệ thống sẽ tự lấy đúng mã máy. Không dùng WEB-DEMO-MACHINE.</small></label><label>Ngày hết hạn (tùy chọn)<input type="datetime-local" value={licenseForm.expires_at} onChange={(event) => setLicenseForm({ ...licenseForm, expires_at: event.target.value })} /></label><label>Job/ngày<input type="number" min="1" value={licenseForm.max_jobs_per_day} onChange={(event) => setLicenseForm({ ...licenseForm, max_jobs_per_day: event.target.value })} /></label><label className="checkbox"><input type="checkbox" checked={licenseForm.premium_ai} onChange={(event) => setLicenseForm({ ...licenseForm, premium_ai: event.target.checked })} /> Cho phép AI premium</label><button type="submit" disabled={loading}>Tạo license</button>{generatedKey && <div className="license-key-result"><div><span className="muted">License key mới · {adminEnvironment}</span><code>{generatedKey}</code></div><button type="button" className="copy-key-button" onClick={() => void copyLicenseKey()}>{keyCopied ? "Đã copy" : "Copy License Key"}</button><small>Key chỉ hiển thị một lần và chỉ dùng được với Desktop cùng môi trường API này.</small></div>}</form>
         <form className="card panel" onSubmit={(event) => void createProvider(event)}><div className="panel-heading"><h2>Kết nối AI provider</h2></div><label>Tên<input required value={providerForm.name} onChange={(event) => setProviderForm({ ...providerForm, name: event.target.value })} /></label><label>Loại<select value={providerForm.provider_type} onChange={(event) => { const provider_type = event.target.value; const capabilities = provider_type === "openai" ? "analysis, vision, transcription" : provider_type === "custom" ? "analysis" : "analysis, vision"; setProviderForm({ ...providerForm, provider_type, capabilities }); }}><option value="openai">OpenAI</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option><option value="openai-compatible">OpenAI compatible</option><option value="custom">Custom</option></select></label><label>Base URL<input type="url" required value={providerForm.base_url} onChange={(event) => setProviderForm({ ...providerForm, base_url: event.target.value })} /></label><label>Model<input required value={providerForm.model} onChange={(event) => setProviderForm({ ...providerForm, model: event.target.value })} /></label><label>API key<input required minLength={8} type="password" value={providerForm.api_key} onChange={(event) => setProviderForm({ ...providerForm, api_key: event.target.value })} /></label><label>Capabilities<input value={providerForm.capabilities} onChange={(event) => setProviderForm({ ...providerForm, capabilities: event.target.value })} placeholder="analysis, vision, transcription" /></label><button type="submit" disabled={loading}>Lưu provider</button></form>
       </section>
       {message && <p className="success">{message}</p>}{error && <p className="error">{error}</p>}

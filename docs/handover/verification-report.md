@@ -42,6 +42,13 @@ Ngày kiểm tra: 2026-08-30.
 - Desktop media smoke build đã pass với typed IPC cho multi-file picker, URL
   download, persistent jobs, provider analysis, render progress và output path;
   TypeScript/Vite build và Electron syntax check đều pass.
+- Batch URL flow đã bổ sung retry cho TikTok resolver/CDN khi gặp HTTP 503/429
+  hoặc rate-limit, hiển thị lỗi ngay trên Job inspector và giữ nút retry. Frame
+  preview được trích xuất local cho cả local/cloud; chỉ provider có capability
+  `vision` mới nhận frame. Batch preset đã kiểm tra các tuỳ chọn voice nam/nữ,
+  đa ngôn ngữ, tiếng gốc, hook và nhạc nền.
+- Native desktop test suite hiện có `25` test pass; backend API suite có `34`
+  test pass. Production build Desktop và Admin Portal đều pass sau thay đổi mới.
 - Native media pipeline smoke test đã pass: tạo video thật bằng FFmpeg, probe
   duration/kích thước, trích frame, render clip 9:16 và xác minh output duration.
 - Desktop release `0.3.3` đã được build tuần tự để tránh tranh chấp archive:
@@ -54,6 +61,11 @@ Ngày kiểm tra: 2026-08-30.
   EXE `812f8110b5bdf4adcc6a720381b574d80bd21d7ca23ff7ebc7d5210c2bc049c8`.
   Cả macOS và Windows packaged app đều chứa `electron/machine-id.cjs`,
   `main.cjs` và `preload.cjs` trong `app.asar`.
+- Desktop updater đã được kiểm thử với tải asset dạng stream, progress, giới
+  hạn dung lượng, redirect HTTPS/loopback, xác minh SHA-512, dọn file `.part`
+  khi checksum sai và phân loại installer Windows/macOS. Bản cài đặt hợp lệ
+  được NSIS silent (Windows) hoặc thay app từ ZIP sau khi app thoát (macOS);
+  DMG được mở sau khi checksum pass.
 - Smoke test qua Cloudflare: hai hostname public trả HTTP 200 cho frontend và
   `/health/live`; cả staging và production đã chạy mã commit `10a7c47` với
   Desktop version `0.3.3`.

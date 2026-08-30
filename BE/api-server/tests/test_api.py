@@ -112,6 +112,22 @@ def test_license_key_is_returned_once_and_stored_as_hash():
     assert listed[-1]["key_hint"].startswith("JACS-****-")
 
 
+def test_admin_can_create_and_immediately_validate_the_returned_license_key():
+    headers = auth_headers()
+    created = client.post(
+        "/api/v1/licenses",
+        headers=headers,
+        json={"customer_name": "Real device", "customer_contact": "customer@example.com", "hwid": HWID_MAC},
+    )
+    assert created.status_code == 201
+    activated = client.post(
+        "/api/v1/licenses/validate",
+        json={"key": created.json()["key"], "hwid": HWID_MAC},
+    )
+    assert activated.status_code == 200
+    assert activated.json()["data"]["valid"] is True
+
+
 def test_demo_hwid_cannot_be_issued_or_activated():
     headers = auth_headers()
     rejected = client.post(
@@ -155,6 +171,17 @@ def test_license_validation_normalizes_hwid_whitespace():
     }).json()
     copied_hwid = f"  {HWID_MAC[:12]}\n{HWID_MAC[12:]}  "
     response = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": copied_hwid})
+    assert response.status_code == 200
+    assert response.json()["data"]["valid"] is True
+
+
+def test_license_validation_accepts_hwid_copied_with_device_label():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "HWID label", "customer_contact": "label@example.com", "hwid": HWID_MAC,
+    }).json()
+    copied = f"Device ID: {HWID_MAC}"
+    response = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": copied})
     assert response.status_code == 200
     assert response.json()["data"]["valid"] is True
 
@@ -268,10 +295,11 @@ def test_desktop_job_requires_license_and_is_idempotent():
         "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": HWID_WIN, "max_jobs_per_day": 1,
     }).json()
     client_headers = {"X-License-Key": created["key"], "X-Device-Id": HWID_WIN}
-    payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu", "provider_id": "customer-local-provider-1"}
+    payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu", "provider_id": "customer-local-provider-1", "tts_provider_id": "customer-tts-provider-1"}
     first = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
     assert first.status_code == 202
     assert first.json()["provider_id"] == "customer-local-provider-1"
+    assert first.json()["tts_provider_id"] == "customer-tts-provider-1"
     second = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
     assert second.status_code == 202
     assert second.json()["id"] == first.json()["id"]
@@ -379,7 +407,7 @@ def test_release_manifest_is_admin_only():
         "version": "v1.0.0",
         "platform": "windows",
         "download_url": "https://cdn.example.com/jacs-1.0.0.exe",
-        "sha512": "a" * 64,
+        "sha512": "a" * 128,
         "release_notes": "Bản phát hành đầu tiên",
     })
     assert response.status_code == 401
@@ -389,16 +417,27 @@ def test_release_requires_signature_before_publish_and_is_discoverable():
     headers = auth_headers()
     created = client.post("/api/v1/releases", headers=headers, json={
         "version": "v1.2.0", "platform": "windows", "download_url": "https://cdn.example.com/jacs-1.2.0.exe",
-        "sha512": "a" * 64, "release_notes": "Bản thử nghiệm",
+        "sha512": "a" * 128, "release_notes": "Bản thử nghiệm",
     }).json()
     rejected = client.post(f"/api/v1/releases/{created['id']}/publish", headers=headers)
     assert rejected.status_code == 422
     signed = client.post("/api/v1/releases", headers=headers, json={
         "version": "v1.3.0", "platform": "windows", "download_url": "https://cdn.example.com/jacs-1.3.0.exe",
-        "sha512": "b" * 64, "release_notes": "Bản đã ký", "signature": "c" * 64,
+        "sha512": "b" * 128, "release_notes": "Bản đã ký", "signature": "c" * 64,
     }).json()
     published = client.post(f"/api/v1/releases/{signed['id']}/publish", headers=headers)
     assert published.status_code == 200
     check = client.get("/api/v1/releases/check?platform=windows&current_version=v1.0.0")
     assert check.status_code == 200
     assert check.json()["data"]["release"]["version"] == "v1.3.0"
+
+
+def test_release_manifest_requires_sha512_hex_digest():
+    response = client.post("/api/v1/releases", headers=auth_headers(), json={
+        "version": "v9.9.9",
+        "platform": "windows",
+        "download_url": "https://cdn.example.com/jacs-9.9.9.exe",
+        "sha512": "a" * 64,
+        "release_notes": "Digest không đủ độ dài",
+    })
+    assert response.status_code == 422

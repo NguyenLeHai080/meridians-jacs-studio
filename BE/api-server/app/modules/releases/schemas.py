@@ -17,7 +17,7 @@ class ReleaseCreate(BaseModel):
     platform: str = Field(pattern=r"^(windows|macos)$")
     channel: ReleaseChannel = ReleaseChannel.stable
     download_url: HttpUrl
-    sha512: str = Field(min_length=64, max_length=128)
+    sha512: str = Field(pattern=r"^[a-fA-F0-9]{128}$")
     release_notes: str = Field(min_length=1, max_length=10000)
     force_update: bool = False
     signature: str | None = Field(default=None, min_length=32, max_length=4096)

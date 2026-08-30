@@ -28,9 +28,13 @@
   app dùng passthrough có cảnh báo ngầm trong metadata thay vì giả lập tiến trình.
   Installer hiện đã kèm FFmpeg/FFprobe theo từng nền tảng; artifact `0.3.3`
   chạy được pipeline probe/trích frame/render thật. Artifact vẫn unsigned và
-  OTA ký số cần hoàn thiện trước khi phát hành đại trà. Settings đã kiểm tra
-  manifest release qua `/api/v1/releases/check` và chỉ mở URL HTTPS tin cậy;
-  bước tải/xác minh chữ ký/cài đặt tự động vẫn là release gate.
+  cần code signing/notarization trước khi phát hành đại trà. Settings kiểm tra
+  manifest release qua `/api/v1/releases/check`; nút cập nhật tải asset qua
+  HTTPS, giới hạn redirect, xác minh SHA-512 và chỉ sau đó mới chạy NSIS silent
+  trên Windows hoặc thay app ZIP trên macOS. DMG được mở sau khi xác minh để
+  người dùng hoàn tất thao tác kéo app vào Applications. Chữ ký manifest hiện
+  được kiểm soát ở Release Manager/backend; desktop có thể bổ sung public-key
+  verification khi môi trường phân phối chốt khóa Ed25519.
 - Docker Compose cung cấp dependency local; chưa phải topology HA production.
 - Các SLO, retention, quota, pricing và chính sách dữ liệu còn cần Product/Tech
   Lead chốt bằng issue trước UAT chính thức.

@@ -26,12 +26,19 @@ from app.modules.licensing.schemas import (
 router = APIRouter(prefix="/api/v1/licenses", tags=["licensing"])
 DEVICE_ID_PATTERN = re.compile(r"^JACS-(MAC|WIN|LNX)-[A-F0-9]{32}$")
 LICENSE_KEY_PATTERN = re.compile(r"^JACS-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$")
+DEVICE_ID_SEARCH_PATTERN = re.compile(r"JACS-(?:MAC|WIN|LNX)-[A-F0-9]{32}")
 
 
 def _normalize_hwid(hwid: str) -> str:
     # Device IDs are frequently copied from chat messages with line breaks;
     # normalize all whitespace before validating/binding the value.
     normalized = re.sub(r"[\s\u200b-\u200d\ufeff]+", "", str(hwid)).upper()
+    # Admins often paste `Device ID: ...` or a Markdown code block from chat.
+    # Accept exactly one embedded JACS ID while still rejecting arbitrary input.
+    if not DEVICE_ID_PATTERN.fullmatch(normalized):
+        matches = DEVICE_ID_SEARCH_PATTERN.findall(normalized)
+        if len(matches) == 1:
+            normalized = matches[0]
     if normalized == "WEB-DEMO-MACHINE":
         raise AppError("LICENSE_HWID_INVALID", "Không thể cấp hoặc kích hoạt license bằng mã máy demo", 422)
     return normalized

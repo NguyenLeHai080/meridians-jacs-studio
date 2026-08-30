@@ -2,7 +2,8 @@ import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DEFAULT_PREFERENCES, NAV_ITEMS, type ClientMetrics, type Job, type NavKey, type ToolPreferences } from "./core/types";
 import { ApiRequestError, heartbeatLicense, createClientJob, getClientMetrics, listClientJobs, sendClientTelemetry, updateClientJob } from "./core/api";
-import { getRuntime } from "./core/runtime";
+import { getRuntime, isNativeRuntime } from "./core/runtime";
+import { highlightRange, resolveReadyProvider, timestampSeconds } from "./core/job-utils";
 import { Icon } from "./shared/Icon";
 import { ActivationPage } from "./modules/activation/ActivationPage";
 import { VideoAnalysisPage } from "./modules/analysis/VideoAnalysisPage";
@@ -13,13 +14,6 @@ import { SettingsPage } from "./modules/settings/SettingsPage";
 import "./styles.css";
 
 type PageProps = { jobs: Job[]; metrics: ClientMetrics | null; navigate: (key: NavKey) => void; addJob: (job: Job) => void; cancelJob: (jobId: string) => void; retryJob: (jobId: string) => void; onActivated: (value: boolean) => void; preferences: ToolPreferences; onPreferencesChanged: (value: ToolPreferences) => void };
-function timestampSeconds(value: string | undefined, fallback = 0) {
-  const parts = String(value || "").split(":").map(Number);
-  if (!parts.length || parts.some((part) => !Number.isFinite(part))) return fallback;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0];
-}
 const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
   overview: ({ jobs, metrics, navigate }) => <OverviewPage jobs={jobs} metrics={metrics} onNavigate={navigate} />,
   batch: ({ jobs, addJob, cancelJob, retryJob }) => <BatchJobsPage jobs={jobs} onAddJob={addJob} onCancelJob={cancelJob} onRetryJob={retryJob} />,
@@ -59,7 +53,7 @@ function App() {
         if (remote.length) setJobs((current) => {
           const merged: Job[] = remote.map((item) => {
             const existing = current.find((job) => job.id === item.client_job_id);
-            return { ...existing, id: item.client_job_id, name: item.name, source: item.source_name, sourceType: item.source_type || existing?.sourceType || "file", localPath: existing?.localPath, outputFolder: existing?.outputFolder, mode: item.execution_mode as Job["mode"], status: item.status as Job["status"], stage: item.stage as Job["stage"], progress: item.progress, error: item.error, outputPath: item.output_path || existing?.outputPath, passthrough: existing?.passthrough, tokensUsed: item.tokens_used, creditsUsed: item.credits_used, createdAt: existing?.createdAt || "Đã đồng bộ", synced: true };
+            return { ...existing, id: item.client_job_id, name: item.name, source: item.source_name, sourceType: item.source_type || existing?.sourceType || "file", localPath: existing?.localPath, outputFolder: existing?.outputFolder, mode: item.execution_mode as Job["mode"], providerId: item.provider_id || existing?.providerId, ttsProviderId: item.tts_provider_id || existing?.ttsProviderId, status: item.status as Job["status"], stage: item.stage as Job["stage"], progress: item.progress, error: item.error, outputPath: item.output_path || existing?.outputPath, passthrough: existing?.passthrough, tokensUsed: item.tokens_used, creditsUsed: item.credits_used, narratorEnabled: item.narrator_enabled ?? existing?.narratorEnabled, narratorVoice: item.narrator_voice || existing?.narratorVoice, narratorGender: item.narrator_gender || existing?.narratorGender, languages: item.languages || existing?.languages, keepOriginalAudio: item.keep_original_audio ?? existing?.keepOriginalAudio, emphasizeHook: item.emphasize_hook ?? existing?.emphasizeHook, highlightOnly: item.highlight_only ?? existing?.highlightOnly, highlightMaxSeconds: item.highlight_max_seconds ?? existing?.highlightMaxSeconds, backgroundMusic: item.background_music ?? existing?.backgroundMusic, backgroundMusicVolume: item.background_music_volume ?? existing?.backgroundMusicVolume, createdAt: existing?.createdAt || "Đã đồng bộ", synced: true };
           });
           const next = [...merged, ...current.filter((job) => !merged.some((item) => item.id === job.id))];
           persistJobs(next);
@@ -104,7 +98,11 @@ function App() {
     return () => { if (timer) window.clearInterval(timer); };
   }, [activated, jobs.length]);
   useEffect(() => {
-    if (!activated || processingJob.current) return;
+    // The browser renderer is intentionally read-only for media jobs. File
+    // access, TikTok resolution, FFmpeg and secure provider keys all belong to
+    // the Electron main process; leaving queued jobs untouched here avoids the
+    // misleading "1% / failed" state when someone opens the preview in Vite.
+    if (!activated || !isNativeRuntime() || processingJob.current) return;
     const job = jobs.find((item) => (item.status === "queued" || item.stage === "downloading") && (item.localPath || item.sourceType === "url"));
     if (!job) return;
     processingJob.current = job.id;
@@ -128,9 +126,26 @@ function App() {
         // An empty provider id explicitly requests local scene analysis. This
         // prevents local CPU/GPU jobs from falling back to a customer's cloud
         // provider merely because one is configured in Settings.
-        const analysisProviderId = ["cloud", "hybrid"].includes(job.mode) ? job.providerId : "";
+        const needsCloudAnalysis = ["cloud", "hybrid"].includes(job.mode);
+        const profiles = needsCloudAnalysis || job.narratorEnabled ? await runtime.getProviderProfiles() : [];
+        let analysisProviderId = needsCloudAnalysis ? job.providerId : "";
+        if (needsCloudAnalysis) {
+          const configured = resolveReadyProvider(profiles, analysisProviderId, "analysis");
+          if (!configured) {
+            throw new Error("Job Cloud/Hybrid cần provider analysis đang bật và có API key. Mở Cài đặt tool, lưu key rồi bấm Chạy lại.");
+          }
+          analysisProviderId = configured.id;
+          if (analysisProviderId !== job.providerId) replaceJob(job.id, { providerId: analysisProviderId });
+        }
+        const ttsProvider = job.narratorEnabled
+          ? resolveReadyProvider(profiles, job.ttsProviderId || job.providerId, "tts", ["openai", "openai-compatible"])
+          : undefined;
+        if (job.narratorEnabled && !ttsProvider) {
+          throw new Error("Giọng AI cần provider OpenAI/OpenAI-compatible đang bật capability tts và có API key. Mở Cài đặt tool rồi bấm Chạy lại.");
+        }
+        if (ttsProvider && ttsProvider.id !== job.ttsProviderId) replaceJob(job.id, { ttsProviderId: ttsProvider.id });
         unsubscribeAnalysis = runtime.onAnalysisProgress?.((event) => { if (event.operationId && event.operationId !== job.id) return; replaceJob(job.id, { status: "running", stage: "analyzing", progress: Math.max(5, Math.min(35, Math.round(5 + event.progress * 0.3))) }); });
-        const analysis = job.analysis || await runtime.analyzeVideo?.(localPath, analysisProviderId, job.id);
+        const analysis = job.analysis || await runtime.analyzeVideo?.(localPath, analysisProviderId, job.id, job);
         const tokensUsed = job.analysis ? job.tokensUsed || 0 : analysis?.tokensUsed || 0;
         const creditsUsed = job.analysis ? job.creditsUsed || 0 : analysis?.creditsUsed || 0;
         if (job.splitScenes && analysis?.scenes.length) {
@@ -139,7 +154,7 @@ function App() {
             const start = timestampSeconds(scene.start);
             const nextStart = index + 1 < analysis.scenes.length ? timestampSeconds(analysis.scenes[index + 1].start, duration) : duration;
             const end = Math.max(start + 0.25, Math.min(duration || nextStart, timestampSeconds(scene.end, nextStart)));
-            return { id: `${job.id}-scene-${index + 1}`, parentJobId: job.id, name: `${job.name} · ${scene.title}`, source: job.source, sourceType: job.sourceType, localPath, outputFolder: job.outputFolder, mode: job.mode, providerId: job.providerId, clipStartSeconds: start, clipEndSeconds: end, aspectRatio: job.aspectRatio, analysis, status: "queued", stage: "queued", progress: 0, tokensUsed: 0, creditsUsed: 0, createdAt: new Date().toLocaleString("vi-VN") };
+            return { id: `${job.id}-scene-${index + 1}`, parentJobId: job.id, name: `${job.name} · ${scene.title}`, source: job.source, sourceType: job.sourceType, localPath, outputFolder: job.outputFolder, mode: job.mode, providerId: job.providerId, ttsProviderId: job.ttsProviderId, clipStartSeconds: start, clipEndSeconds: end, aspectRatio: job.aspectRatio, narratorEnabled: job.narratorEnabled, narratorVoice: job.narratorVoice, narratorGender: job.narratorGender, languages: job.languages, keepOriginalAudio: job.keepOriginalAudio, emphasizeHook: job.emphasizeHook, highlightOnly: false, highlightMaxSeconds: job.highlightMaxSeconds, backgroundMusic: job.backgroundMusic, backgroundMusicVolume: job.backgroundMusicVolume, backgroundMusicPath: job.backgroundMusicPath, analysis, status: "queued", stage: "queued", progress: 0, tokensUsed: 0, creditsUsed: 0, createdAt: new Date().toLocaleString("vi-VN") };
           });
           setJobs((current) => {
             const completedParent = current.map((item) => item.id === job.id ? { ...item, status: "completed" as const, stage: "completed" as const, progress: 100, durationSeconds: duration, tokensUsed, creditsUsed, analysis } : item);
@@ -161,10 +176,14 @@ function App() {
           return;
         }
         const preferences = await runtime.getPreferences();
-        replaceJob(job.id, { stage: "rendering", progress: 35, durationSeconds: probe?.durationSeconds, tokensUsed, creditsUsed, analysis });
+        const clip = highlightRange(job, analysis, probe?.durationSeconds || job.durationSeconds || 0);
+        replaceJob(job.id, { stage: "rendering", progress: 35, durationSeconds: probe?.durationSeconds, clipStartSeconds: clip.startSeconds, clipEndSeconds: clip.endSeconds, tokensUsed, creditsUsed, analysis });
         unsubscribeRender = runtime.onRenderProgress?.((event) => { if (event.operationId && event.operationId !== job.id) return; replaceJob(job.id, { status: event.stage === "completed" ? "completed" : "running", stage: event.stage as Job["stage"], progress: Math.max(35, Math.min(100, Math.round(35 + event.progress * 0.65))), outputPath: event.outputPath }); });
-        const rendered = await runtime.renderVideo?.(localPath, job.outputFolder || preferences.outputPath, { mode: job.mode, preferredEngine: preferences.preferredEngine, startSeconds: job.clipStartSeconds, endSeconds: job.clipEndSeconds, aspectRatio: job.aspectRatio }, job.id);
-        const completed = { status: "completed" as const, stage: "completed" as const, progress: 100, outputPath: rendered?.outputPath, passthrough: rendered?.passthrough, durationSeconds: rendered?.durationSeconds || probe?.durationSeconds, tokensUsed, creditsUsed, analysis };
+        const narrationText = job.narratorEnabled
+          ? [analysis?.summary, ...(analysis?.scenes || []).map((scene) => `${scene.title}. ${scene.detail}`)].filter(Boolean).join(" ")
+          : undefined;
+        const rendered = await runtime.renderVideo?.(localPath, job.outputFolder || preferences.outputPath, { mode: job.mode, preferredEngine: preferences.preferredEngine, startSeconds: clip.startSeconds, endSeconds: clip.endSeconds, aspectRatio: job.aspectRatio, keepOriginalAudio: job.keepOriginalAudio, backgroundMusic: job.backgroundMusic, backgroundMusicVolume: job.backgroundMusicVolume, backgroundMusicPath: job.backgroundMusicPath, narratorEnabled: job.narratorEnabled, narratorVoice: job.narratorVoice, providerId: ttsProvider?.id, narrationText }, job.id);
+        const completed = { status: "completed" as const, stage: "completed" as const, progress: 100, outputPath: rendered?.outputPath, passthrough: rendered?.passthrough, durationSeconds: rendered?.durationSeconds || probe?.durationSeconds, tokensUsed, creditsUsed, analysis, error: rendered?.warnings?.join(" ") };
         replaceJob(job.id, completed);
         const key = await runtime.readLicense(); const machine = await runtime.getMachineInfo();
         if (key) {
@@ -205,9 +224,7 @@ function App() {
         syncingJobs.current.add(job.id);
         try {
           const needsProvider = ["cloud", "hybrid"].includes(job.mode);
-          const providerId = needsProvider
-            ? (job.providerId || providers.find((provider) => provider.enabled && provider.capabilities.includes("analysis"))?.id)
-            : undefined;
+          const providerId = needsProvider ? resolveReadyProvider(providers, job.providerId, "analysis")?.id : undefined;
           if (needsProvider && !providerId) continue;
           await createClientJob(key, machine.machineId, { ...job, providerId });
           if (job.status !== "queued" || job.progress > 0 || job.stage) {
@@ -237,9 +254,9 @@ function App() {
   const Page = pages[active];
   if (activated === null) return <main className="boot-screen"><span className="brand-mark"><span /></span><p>Đang kiểm tra license...</p></main>;
   const navigate = (key: NavKey) => { if (!activated && !["activation", "settings"].includes(key)) { setActive("activation"); return; } setActive(key); };
-  const addJob = (job: Job) => { setJobs((existing) => { const next = [job, ...existing]; persistJobs(next); return next; }); void (async () => { const key = await getRuntime().readLicense(); if (!key) return; const machine = await getRuntime().getMachineInfo(); try { const providers = await getRuntime().getProviderProfiles(); const required = "analysis"; const needsProvider = ["cloud", "hybrid"].includes(job.mode); const providerId = needsProvider ? (job.providerId || providers.find((provider) => provider.enabled && provider.capabilities.includes(required))?.id) : undefined; if (needsProvider && !providerId) { replaceJob(job.id, { status: "failed", stage: "failed", error: `Job ${job.mode} cần provider AI có capability ${required} trong Cài đặt tool.` }); return; } await createClientJob(key, machine.machineId, { ...job, providerId }); replaceJob(job.id, { synced: true, providerId }); } catch { /* keep queued locally for retry */ } })(); };
+  const addJob = (job: Job) => { setJobs((existing) => { const next = [job, ...existing]; persistJobs(next); return next; }); void (async () => { const key = await getRuntime().readLicense(); if (!key) return; const machine = await getRuntime().getMachineInfo(); try { const providers = await getRuntime().getProviderProfiles(); const needsProvider = ["cloud", "hybrid"].includes(job.mode); const providerId = needsProvider ? resolveReadyProvider(providers, job.providerId, "analysis")?.id : undefined; if (needsProvider && !providerId) { replaceJob(job.id, { status: "failed", stage: "failed", error: `Job ${job.mode} cần provider analysis đang bật và có API key. Mở Cài đặt tool để cấu hình trước.` }); return; } await createClientJob(key, machine.machineId, { ...job, providerId }); replaceJob(job.id, { synced: true, providerId }); } catch { /* keep queued locally for retry */ } })(); };
   const cancelJob = (jobId: string) => { const job = jobs.find((item) => item.id === jobId); if (!job || ["completed", "failed", "cancelled"].includes(job.status)) return; void getRuntime().cancelOperation?.(jobId); replaceJob(jobId, { status: "cancelled", stage: "cancelled", progress: 0, error: "Đã hủy theo yêu cầu." }); };
-  const retryJob = (jobId: string) => { const job = jobs.find((item) => item.id === jobId); if (!job || !["failed", "cancelled"].includes(job.status)) return; replaceJob(jobId, { status: "queued", stage: job.sourceType === "url" && !job.localPath ? "downloading" : "queued", progress: 0, error: undefined, synced: false }); };
+  const retryJob = (jobId: string) => { const job = jobs.find((item) => item.id === jobId); if (!job || !["failed", "cancelled"].includes(job.status)) return; replaceJob(jobId, { status: "queued", stage: job.sourceType === "url" && !job.localPath ? "downloading" : "queued", progress: 0, error: undefined, synced: false, providerId: ["cloud", "hybrid"].includes(job.mode) ? undefined : job.providerId, ttsProviderId: job.narratorEnabled ? undefined : job.ttsProviderId }); };
   const onActivated = (value: boolean) => { setActivated(value); setActive(value ? "overview" : "activation"); if (value) void getRuntime().readJobs?.().then((value) => setJobs(value || [])); };
   const initials = (preferences.operatorName || "JACS").trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "JS";
   return <main className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark"><span /></span><div><strong>JACS</strong><small>STUDIO</small></div></div><div className="workspace-switcher"><span className="workspace-dot" /><div><small>WORKSPACE</small><strong>{preferences.workspaceName}</strong></div><span className="chevron">⌄</span></div><nav><p className="nav-label">WORKSPACE</p>{NAV_ITEMS.slice(0, 4).map((item) => <button key={item.key} className={`nav-item ${active === item.key ? "active" : ""} ${!activated ? "locked" : ""}`} onClick={() => navigate(item.key)}><Icon name={item.icon as never} size={18} /><span><strong>{item.label}</strong><small>{item.hint}</small></span>{item.key === "batch" && <b className="nav-count">{jobs.filter((job) => job.status === "queued" || job.status === "running").length}</b>}</button>)}<p className="nav-label nav-label-lower">ACCOUNT</p>{NAV_ITEMS.slice(4).map((item) => <button key={item.key} className={`nav-item ${active === item.key ? "active" : ""}`} onClick={() => navigate(item.key)}><Icon name={item.icon as never} size={18} /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>)}</nav><div className="sidebar-bottom"><div className="system-status"><span className="pulse" /><div><strong>{activated ? "Hệ thống ổn định" : "Cần kích hoạt"}</strong><small>API · GPU · Storage</small></div></div><div className="profile"><span className="avatar">{initials}</span><div><strong>{preferences.operatorName}</strong><small>{preferences.workspaceName}</small></div><span className="more">•••</span></div></div></aside><section className="main-area"><header className="topbar"><div className="breadcrumbs"><span>JACS Studio</span><Icon name="arrow" size={13} /><strong>{current.label}</strong></div><div className="topbar-actions"><button className="topbar-link"><span className="live-dot" /> API connected</button><button className="topbar-icon" title="Thông báo"><span className="notification-dot" />◌</button><button className="topbar-avatar">{initials}</button></div></header><div className="page-content"><Page jobs={jobs} metrics={metrics} navigate={navigate} addJob={addJob} cancelJob={cancelJob} retryJob={retryJob} onActivated={onActivated} preferences={preferences} onPreferencesChanged={setPreferences} /></div></section></main>;

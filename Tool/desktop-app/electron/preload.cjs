@@ -15,14 +15,16 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   deleteProviderProfile: (id) => ipcRenderer.invoke("runtime:delete-provider", id),
   testProviderConnection: (id) => ipcRenderer.invoke("runtime:test-provider", id),
   checkForUpdate: (channel) => ipcRenderer.invoke("runtime:check-update", channel),
+  downloadUpdate: (release) => ipcRenderer.invoke("runtime:download-update", release),
   openExternal: (url) => ipcRenderer.invoke("runtime:open-external", url),
   cancelOperation: (operationId) => ipcRenderer.invoke("runtime:cancel-operation", operationId),
   pickVideo: () => ipcRenderer.invoke("runtime:pick-video"),
   pickVideos: () => ipcRenderer.invoke("runtime:pick-videos"),
   pickOutputFolder: () => ipcRenderer.invoke("runtime:pick-output-folder"),
+  pickAudio: () => ipcRenderer.invoke("runtime:pick-audio"),
   probeVideo: (value) => ipcRenderer.invoke("runtime:probe-video", value),
   downloadVideo: (value, operationId) => ipcRenderer.invoke("runtime:download-video", value, operationId),
-  analyzeVideo: (value, providerId, operationId) => ipcRenderer.invoke("runtime:analyze-video", value, providerId, operationId),
+  analyzeVideo: (value, providerId, operationId, options) => ipcRenderer.invoke("runtime:analyze-video", value, providerId, operationId, options),
   renderVideo: (value, folder, options, operationId) => ipcRenderer.invoke("runtime:render-video", value, folder, options, operationId),
   readJobs: () => ipcRenderer.invoke("runtime:read-jobs"),
   saveJobs: (value) => ipcRenderer.invoke("runtime:save-jobs", value),
@@ -40,6 +42,11 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
     const handler = (_event, payload) => listener(payload);
     ipcRenderer.on("runtime:render-progress", handler);
     return () => ipcRenderer.removeListener("runtime:render-progress", handler);
+  },
+  onUpdateProgress: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("runtime:update-progress", handler);
+    return () => ipcRenderer.removeListener("runtime:update-progress", handler);
   },
   revealPath: (value) => ipcRenderer.invoke("runtime:reveal-path", value),
   copyText: (value) => ipcRenderer.invoke("runtime:copy-text", value),

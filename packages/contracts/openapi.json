@@ -1740,6 +1740,19 @@
             ],
             "title": "Provider Id"
           },
+          "tts_provider_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Provider Id"
+          },
           "project_id": {
             "type": "string",
             "maxLength": 160,
@@ -1776,6 +1789,77 @@
             "minimum": 0.0,
             "title": "Credits Used",
             "default": 0
+          },
+          "narrator_enabled": {
+            "type": "boolean",
+            "title": "Narrator Enabled",
+            "default": false
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice"
+          },
+          "narrator_gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(male|female)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Gender"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Languages"
+          },
+          "keep_original_audio": {
+            "type": "boolean",
+            "title": "Keep Original Audio",
+            "default": true
+          },
+          "emphasize_hook": {
+            "type": "boolean",
+            "title": "Emphasize Hook",
+            "default": false
+          },
+          "highlight_only": {
+            "type": "boolean",
+            "title": "Highlight Only",
+            "default": false
+          },
+          "highlight_max_seconds": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 3.0,
+            "title": "Highlight Max Seconds",
+            "default": 30
+          },
+          "background_music": {
+            "type": "boolean",
+            "title": "Background Music",
+            "default": false
+          },
+          "background_music_volume": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Background Music Volume",
+            "default": 20
           }
         },
         "type": "object",
@@ -1829,6 +1913,19 @@
             ],
             "title": "Provider Id"
           },
+          "tts_provider_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Provider Id"
+          },
           "project_id": {
             "type": "string",
             "maxLength": 160,
@@ -1865,6 +1962,77 @@
             "minimum": 0.0,
             "title": "Credits Used",
             "default": 0
+          },
+          "narrator_enabled": {
+            "type": "boolean",
+            "title": "Narrator Enabled",
+            "default": false
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice"
+          },
+          "narrator_gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(male|female)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Gender"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Languages"
+          },
+          "keep_original_audio": {
+            "type": "boolean",
+            "title": "Keep Original Audio",
+            "default": true
+          },
+          "emphasize_hook": {
+            "type": "boolean",
+            "title": "Emphasize Hook",
+            "default": false
+          },
+          "highlight_only": {
+            "type": "boolean",
+            "title": "Highlight Only",
+            "default": false
+          },
+          "highlight_max_seconds": {
+            "type": "integer",
+            "maximum": 600.0,
+            "minimum": 3.0,
+            "title": "Highlight Max Seconds",
+            "default": 30
+          },
+          "background_music": {
+            "type": "boolean",
+            "title": "Background Music",
+            "default": false
+          },
+          "background_music_volume": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Background Music Volume",
+            "default": 20
           },
           "id": {
             "type": "string",
@@ -2806,8 +2974,7 @@
           },
           "sha512": {
             "type": "string",
-            "maxLength": 128,
-            "minLength": 64,
+            "pattern": "^[a-fA-F0-9]{128}$",
             "title": "Sha512"
           },
           "release_notes": {
@@ -2889,8 +3056,7 @@
           },
           "sha512": {
             "type": "string",
-            "maxLength": 128,
-            "minLength": 64,
+            "pattern": "^[a-fA-F0-9]{128}$",
             "title": "Sha512"
           },
           "release_notes": {

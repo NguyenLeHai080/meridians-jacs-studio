@@ -54,6 +54,12 @@ Service) và chỉ được giải mã trong Electron main process khi test conn
 xem UI; bản Electron không sử dụng mã demo và không cho phép kích hoạt license
 từ renderer đó.
 
+URL TikTok được xử lý theo thứ tự: đọc URL video trong trang, gọi resolver
+HTTPS (mặc định TikWM), rồi tải CDN đã ký vào cache. Resolver/CDN có retry khi
+gặp `503`, `429` hoặc thông báo rate-limit; nếu TikTok vẫn chặn nguồn, lỗi job
+hiển thị nguyên nhân trong **Job inspector** và nút **Chạy lại** giữ nguyên
+cấu hình. Có thể đặt resolver riêng bằng `JACS_TIKTOK_RESOLVER_URL`.
+
 Desktop hiện chạy trong Electron để có thể tạo installer native. `pnpm
 dev:desktop` chỉ là renderer trong trình duyệt, không có file picker, mã máy
 thật, secure storage hoặc render native.
@@ -90,6 +96,12 @@ job, job lỗi, token và credit từ API theo license, đồng thời cộng c�
 chưa đồng bộ khi mạng tạm thời gián đoạn. Queue hỗ trợ **Hủy** job đang chờ/đang
 chạy (dừng fetch/FFmpeg qua IPC) và **Chạy lại** job lỗi hoặc đã hủy.
 
+Batch preset hỗ trợ tách một video theo nhiều ngôn ngữ đầu ra (mỗi ngôn ngữ là
+một job), giọng kể AI nam/nữ và voice preset, giữ/cắt tiếng gốc, nhấn hook, trộn
+nhạc nền theo âm lượng, cùng tùy chọn tách scene thành các job con. Frame preview
+luôn được trích xuất cục bộ để hiển thị trong inspector; chỉ provider có
+capability `vision` mới nhận frame qua API.
+
 Luồng khách hàng: mở **License & thiết bị** để copy Device ID thật gửi Admin;
 nhập License Key được cấp rồi mở **Cài đặt tool** để tự thêm URL/model/API key
 của provider. Key được lưu bằng Keychain/Credential Manager và không đi qua
@@ -97,7 +109,12 @@ React renderer. Vào **Tạo job hàng loạt**, chọn nhiều file hoặc dán
 chọn `Cloud AI + render local`, tỷ lệ 9:16/1:1/16:9 và tùy chọn tách scene;
 queue sẽ phân tích, hiển thị tiến trình, render clip và mở output sau khi xong.
 Trong **Cài đặt tool**, tùy chọn tự kiểm tra cập nhật gọi release manifest của
-server; chỉ URL HTTPS tin cậy mới được mở để tải bản cài đặt.
+server. Khi có bản mới, nút **Cập nhật** tải asset qua HTTPS vào thư mục tạm,
+kiểm tra SHA-512 trước khi cài. Windows chạy NSIS installer ở chế độ silent và
+tự khởi động lại; macOS ZIP được giải nén, thay thế app sau khi app thoát rồi
+tự mở lại. Asset DMG đã xác minh sẽ được mở để người dùng kéo vào Applications.
+Nếu checksum sai, redirect không an toàn hoặc định dạng không đúng, bản cập
+nhật bị từ chối và file tạm bị xóa.
 
 Để phân tích frame và encode H.264/GPU thật, installer cần kèm `ffmpeg` và
 `ffprobe` trong `resources/bin/<platform>-<arch>/` (ví dụ

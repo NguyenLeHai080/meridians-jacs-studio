@@ -3,9 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
 const childProcess = require("node:child_process");
+const crypto = require("node:crypto");
 const { once } = require("node:events");
 const { createMachineInfo } = require("./machine-id.cjs");
 const { createProviderStore } = require("./provider-store.cjs");
+const { extractResolverVideoUrls, extractTikTokVideoUrls, isTikTokHost, normalizeVideoUrl } = require("./video-url.cjs");
+const { buildAudioFilter } = require("./audio-mix.cjs");
+const { downloadRelease, installRelease, trustedUrl: isTrustedUpdateUrl, validateRelease } = require("./updater.cjs");
 
 if (!app || typeof app.whenReady !== "function") {
   throw new Error("JACS Studio phải được khởi động bằng Electron desktop runtime; không chạy main.cjs bằng Node.");
@@ -17,6 +21,10 @@ app.disableHardwareAcceleration();
 
 let cachedMachineInfo;
 const activeOperations = new Map();
+
+function waitMs(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 function beginOperation(operationId) {
   if (!operationId) return null;
@@ -60,12 +68,7 @@ function providerStore() { return createProviderStore({ filePath: providersPath(
 function apiBaseUrl() { return String(process.env.JACS_API_URL || "https://jacs-studio.nexoratech.com.vn").replace(/\/$/, ""); }
 
 function isTrustedReleaseUrl(value) {
-  try {
-    const url = new URL(String(value));
-    // Production release files must be HTTPS. HTTP stays available only for
-    // a loopback endpoint used during a local updater test.
-    return url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname));
-  } catch { return false; }
+  return isTrustedUpdateUrl(value);
 }
 
 async function checkForUpdate(channel = "stable") {
@@ -83,10 +86,24 @@ async function checkForUpdate(channel = "stable") {
   const result = payload?.data || payload;
   const release = result?.release;
   if (!result?.update_available || !release) return { update_available: false, release: null };
-  if (release.platform !== platform || !/^v\d+\.\d+\.\d+$/.test(String(release.version)) || !isTrustedReleaseUrl(release.download_url)) {
-    throw new Error("Máy chủ trả về thông tin cập nhật không hợp lệ");
-  }
+  validateRelease(release, platform, currentVersion);
   return { update_available: true, release };
+}
+
+async function downloadAndInstallUpdate(event, release) {
+  const platform = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : null;
+  if (!platform) throw new Error("Cập nhật tự động chỉ hỗ trợ macOS và Windows");
+  const currentVersion = `v${app.getVersion().replace(/^v/, "")}`;
+  validateRelease(release, platform, currentVersion);
+  const update = await downloadRelease({
+    release,
+    platform,
+    currentVersion,
+    tempDirectory: app.getPath("temp"),
+    onProgress: (progress) => event.sender.send("runtime:update-progress", progress),
+  });
+  event.sender.send("runtime:update-progress", { stage: "installing", progress: 100, bytesDownloaded: update.bytes, totalBytes: update.bytes });
+  return installRelease({ filePath: update.filePath, kind: update.kind, platform, appModule: { isPackaged: app.isPackaged, quit: () => app.quit(), shell: { openPath: (value) => shell.openPath(value) } }, execPath: process.execPath, tempDirectory: app.getPath("temp") });
 }
 
 function writeJsonAtomic(filePath, value) {
@@ -107,12 +124,10 @@ function saveJobs(value) {
   if (!Array.isArray(value)) throw new Error("Danh sách job không hợp lệ");
   // Jobs are prepended in the renderer, so keep the newest records rather
   // than silently dropping them after the local history reaches the limit.
-  const persistent = value.slice(0, 500).map((job) => {
-    if (!job?.analysis?.previewFrames) return job;
-    const { previewFrames: _previewFrames, ...analysis } = job.analysis;
-    return { ...job, analysis };
-  });
-  writeJsonAtomic(jobsPath(), persistent);
+  // Keep the small analysis thumbnails with the job so a completed job can be
+  // inspected after restarting the desktop app. Older records without frames
+  // remain valid and simply show the scene list.
+  writeJsonAtomic(jobsPath(), value.slice(0, 500));
 }
 
 function findExecutable(name) {
@@ -161,28 +176,157 @@ async function probeVideoFile(filePath) {
         childProcess.execFileSync(ffmpeg, ["-hide_banner", "-i", absolutePath], { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
       } catch (error) {
         const output = `${error?.stdout || ""}\n${error?.stderr || ""}`;
-        return { path: absolutePath, durationSeconds: parseDuration(output), sizeBytes: stat.size };
+        return { path: absolutePath, durationSeconds: parseDuration(output), sizeBytes: stat.size, hasAudio: /Stream #[^\n]*Audio:/i.test(output) };
       }
     }
     return { path: absolutePath, durationSeconds: 0, sizeBytes: stat.size };
   }
-  const output = childProcess.execFileSync(ffprobe, ["-v", "error", "-show_entries", "format=duration:stream=width,height,r_frame_rate", "-of", "json", absolutePath], { encoding: "utf8", windowsHide: true });
+  const output = childProcess.execFileSync(ffprobe, ["-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height,r_frame_rate", "-of", "json", absolutePath], { encoding: "utf8", windowsHide: true });
   const parsed = JSON.parse(output);
   const format = parsed.format || {};
   const stream = (parsed.streams || []).find((item) => item.width || item.height) || {};
   const rate = String(stream.r_frame_rate || "").split("/");
   const stat = fs.statSync(absolutePath);
-  return { path: absolutePath, durationSeconds: Number(format.duration || 0), width: stream.width, height: stream.height, fps: rate.length === 2 && Number(rate[1]) ? Number(rate[0]) / Number(rate[1]) : undefined, sizeBytes: stat.size };
+  return { path: absolutePath, durationSeconds: Number(format.duration || 0), width: stream.width, height: stream.height, fps: rate.length === 2 && Number(rate[1]) ? Number(rate[0]) / Number(rate[1]) : undefined, sizeBytes: stat.size, hasAudio: (parsed.streams || []).some((item) => item.codec_type === "audio") };
+}
+
+function cookieHeader(response) {
+  const value = response.headers.get("set-cookie");
+  if (!value) return "";
+  return value.split(/,(?=[^;=]+=[^;]+)/).map((item) => item.split(";", 1)[0]).filter(Boolean).join("; ");
+}
+
+function canonicalDownloadUrl(value) {
+  const parsed = new URL(String(value));
+  // Tracking parameters on social links do not identify a different source.
+  // Keeping the canonical URL makes retries and multi-language batches reuse
+  // the same downloaded file instead of downloading the video repeatedly.
+  if (isTikTokHost(parsed.hostname)) return `${parsed.origin}${parsed.pathname}`;
+  return parsed.href;
+}
+
+function cachedDownloadPath(url) {
+  const digest = crypto.createHash("sha256").update(canonicalDownloadUrl(url)).digest("hex").slice(0, 24);
+  const directory = path.join(app.getPath("userData"), "downloads");
+  for (const extension of [".mp4", ".mov", ".webm", ".mkv", ".avi"]) {
+    const candidate = path.join(directory, `${digest}${extension}`);
+    try { if (fs.statSync(candidate).size > 0) return candidate; } catch { /* cache miss */ }
+  }
+  return { directory, digest };
+}
+
+const tikTokHeaders = (cookie = "") => ({
+  Accept: "video/*,application/octet-stream,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+  Referer: "https://www.tiktok.com/",
+  Origin: "https://www.tiktok.com",
+  ...(cookie ? { Cookie: cookie } : {}),
+});
+
+async function tryVideoUrl(url, signal, cookie = "") {
+  try {
+    const response = await fetch(url, { signal, redirect: "follow", headers: tikTokHeaders(cookie) });
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (response.ok && !contentType.includes("text/html") && (contentType.includes("video/") || contentType.includes("octet-stream"))) {
+      return { response, url: String(url) };
+    }
+    await response.body?.cancel();
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    // Try the next signed URL or resolver below.
+  }
+  return null;
+}
+
+async function tryVideoUrlWithRetry(url, signal, cookie = "", attempts = 3) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const resolved = await tryVideoUrl(url, signal, cookie);
+    if (resolved) return resolved;
+    // CDN edges occasionally return a transient 503 for a freshly signed URL.
+    // A short retry avoids turning a temporary edge failure into a failed job.
+    if (attempt + 1 < attempts) await waitMs(350 * (attempt + 1));
+  }
+  return null;
+}
+
+async function resolveTikTokVideoUrl(parsed, signal) {
+  if (!isTikTokHost(parsed.hostname)) return null;
+  const pageHeaders = { ...tikTokHeaders(), Accept: "text/html,application/xhtml+xml" };
+  let pageCookie = "";
+  let pageUrls = [];
+  try {
+    const response = await fetch(parsed, { signal, redirect: "follow", headers: pageHeaders });
+    pageCookie = cookieHeader(response);
+    if (response.ok) pageUrls = extractTikTokVideoUrls(await response.text());
+    else await response.body?.cancel();
+  } catch {
+    // TikTok may challenge the request; the resolver API below can still work.
+  }
+  for (const candidate of pageUrls) {
+    const resolved = await tryVideoUrlWithRetry(candidate, signal, pageCookie);
+    if (resolved) return resolved;
+  }
+
+  // TikWM is only used for TikTok URLs and returns a signed CDN URL. Keeping
+  // this fallback in the desktop client avoids uploading the customer's video
+  // to our API just to resolve a source URL.
+  const configuredResolver = String(process.env.JACS_TIKTOK_RESOLVER_URL || "https://tikwm.com/api/");
+  const resolverEndpoints = [...new Set([configuredResolver, "https://www.tikwm.com/api/"])];
+  for (const resolverEndpoint of resolverEndpoints) {
+    let resolverUrl;
+    try {
+      resolverUrl = new URL(resolverEndpoint);
+      if (resolverUrl.protocol !== "https:") throw new Error("resolver must use HTTPS");
+      resolverUrl.searchParams.set("url", parsed.href);
+    } catch {
+      if (resolverEndpoint === configuredResolver) throw new Error("TikTok resolver không hợp lệ; hãy dùng URL HTTPS.");
+      continue;
+    }
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const response = await fetch(resolverUrl, { signal, headers: { Accept: "application/json", "User-Agent": pageHeaders["User-Agent"] } });
+        const payload = await response.json().catch(() => ({}));
+        const candidates = response.ok && (payload?.code === undefined || payload.code === 0) ? extractResolverVideoUrls(payload) : [];
+        for (const candidate of candidates) {
+          const resolved = await tryVideoUrlWithRetry(candidate, signal);
+          if (resolved) return resolved;
+        }
+        // TikWM enforces roughly one request per second. Retry rate limits and
+        // transient 5xx responses before trying the secondary endpoint.
+        const resolverMessage = String(payload?.msg || payload?.message || "");
+        const retryable = response.status === 429 || response.status >= 500 || payload?.code === -1 || /limit|too many|try again|rate/i.test(resolverMessage);
+        if (!retryable && candidates.length === 0) break;
+      } catch (error) {
+        if (signal.aborted) throw error;
+      }
+      if (attempt < 2) await waitMs(1100 * (attempt + 1));
+    }
+  }
+  throw new Error("Không tải được video TikTok. TikTok hoặc nguồn trung gian đang chặn video này; hãy thử link MP4 trực tiếp hoặc tải file về rồi chọn Local file.");
 }
 
 async function downloadVideo(event, url, operationId) {
   let parsed;
-  try { parsed = new URL(String(url)); } catch { throw new Error("URL video không hợp lệ"); }
+  try { parsed = new URL(normalizeVideoUrl(url)); } catch { throw new Error("URL video không hợp lệ"); }
   if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("URL video phải dùng HTTP hoặc HTTPS");
+  const cache = cachedDownloadPath(parsed.href);
+  if (typeof cache === "string") {
+    event.sender.send("runtime:download-progress", { progress: 100, stage: "downloaded", outputPath: cache, operationId });
+    return cache;
+  }
   const state = operationState(operationId);
   const timeout = AbortSignal.timeout(120000);
   const signal = state ? AbortSignal.any([state.controller.signal, timeout]) : timeout;
-  const response = await fetch(parsed, { signal });
+  let sourceUrl = parsed.href;
+  let response;
+  if (isTikTokHost(parsed.hostname)) {
+    const resolved = await resolveTikTokVideoUrl(parsed, signal);
+    response = resolved.response;
+    sourceUrl = resolved.url;
+  } else {
+    response = await fetch(parsed, { signal, redirect: "follow", headers: tikTokHeaders() });
+  }
   if (!response.ok) throw new Error(`Không tải được video (HTTP ${response.status})`);
   const contentType = String(response.headers.get("content-type") || "").toLowerCase();
   if (contentType.includes("text/html")) {
@@ -192,10 +336,10 @@ async function downloadVideo(event, url, operationId) {
   const maxBytes = 2 * 1024 * 1024 * 1024;
   if (contentLength > maxBytes) throw new Error("Video vượt quá giới hạn 2GB");
   const extensionsByType = { "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm", "video/x-msvideo": ".avi", "video/x-matroska": ".mkv" };
-  const extension = path.extname(parsed.pathname).toLowerCase() || extensionsByType[contentType.split(";", 1)[0]] || ".mp4";
-  const directory = path.join(app.getPath("userData"), "downloads");
+  const extension = path.extname(new URL(sourceUrl).pathname).toLowerCase() || extensionsByType[contentType.split(";", 1)[0]] || ".mp4";
+  const directory = cache.directory;
   fs.mkdirSync(directory, { recursive: true });
-  const filePath = path.join(directory, `${Date.now()}-${Math.random().toString(16).slice(2)}${extension}`);
+  const filePath = path.join(directory, `${cache.digest}${extension}`);
   const temporaryPath = `${filePath}.part`;
   const output = fs.createWriteStream(temporaryPath, { mode: 0o600 });
   let bytesWritten = 0;
@@ -413,6 +557,33 @@ function runProcess(command, args, onLine, operationId) {
   });
 }
 
+async function synthesizeNarration(record, text, voice, operationId) {
+  if (!text) return null;
+  if (!record) throw new Error("Chưa chọn provider giọng AI");
+  if (!record.apiKey) throw new Error("Provider giọng AI chưa có API key");
+  if (!record.capabilities?.includes("tts")) throw new Error("Provider giọng AI chưa bật capability tts");
+  if (!["openai", "openai-compatible"].includes(record.providerType)) throw new Error("Provider giọng AI hiện chưa hỗ trợ TTS trong desktop tool");
+  const endpoint = record.baseUrl.endsWith("/audio/speech") ? record.baseUrl : `${record.baseUrl}/audio/speech`;
+  const voices = { "vi-VN-HoaiMy": "nova", "vi-VN-NamMinh": "onyx", "en-US-AriaNeural": "coral", "en-US-GuyNeural": "echo", nova: "nova", shimmer: "shimmer", coral: "coral", onyx: "onyx", echo: "echo", fable: "fable" };
+  const state = operationState(operationId);
+  const timeout = AbortSignal.timeout(120000);
+  const signal = state ? AbortSignal.any([state.controller.signal, timeout]) : timeout;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { Accept: "audio/mpeg", "Content-Type": "application/json", Authorization: `Bearer ${record.apiKey}` },
+    body: JSON.stringify({ model: "tts-1", voice: voices[voice] || "nova", input: String(text).slice(0, 4000), response_format: "mp3" }),
+    signal,
+  });
+  assertOperationActive(operationId);
+  if (!response.ok) throw new Error(`Không tạo được giọng AI (HTTP ${response.status})`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length) throw new Error("Provider TTS trả về audio rỗng");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-narration-"));
+  const filePath = path.join(directory, "narration.mp3");
+  fs.writeFileSync(filePath, buffer, { mode: 0o600 });
+  return filePath;
+}
+
 async function renderVideoFile(event, filePath, folder, options = {}, operationId) {
   const probe = await probeVideoFile(filePath);
   const directory = folder ? path.resolve(folder) : outputPath();
@@ -423,6 +594,15 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   const clipDuration = clipEnd > clipStart ? clipEnd - clipStart : 0;
   const renderedDuration = clipDuration || Number(probe.durationSeconds || 0);
   const ffmpeg = findExecutable("ffmpeg");
+  const warnings = [];
+  let narrationPath = null;
+  if (options.narratorEnabled && options.narrationText) {
+    const record = providerStore().find(options.providerId);
+    if (record?.capabilities?.includes("tts")) {
+      try { narrationPath = await synthesizeNarration(record, options.narrationText, options.narratorVoice, operationId); }
+      catch (error) { warnings.push(error?.message || "Không tạo được giọng AI; render tiếp với audio gốc."); }
+    } else warnings.push("Provider chưa bật capability tts; render tiếp nhưng không có giọng AI.");
+  }
   const clipSuffix = clipDuration ? `-${Math.round(clipStart)}s-${Math.round(clipEnd)}s` : "";
   const destination = path.join(directory, `${base}${clipSuffix}-jacs-${Date.now()}${ffmpeg ? ".mp4" : path.extname(filePath)}`);
   event.sender.send("runtime:render-progress", { progress: 2, stage: "rendering", operationId });
@@ -430,7 +610,8 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     // Keep the workflow usable on a clean machine; installer can ship FFmpeg for encoded output.
     fs.copyFileSync(filePath, destination);
     event.sender.send("runtime:render-progress", { progress: 100, stage: "completed", outputPath: destination, operationId });
-    return { outputPath: destination, durationSeconds: renderedDuration, passthrough: true };
+    if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
+    return { outputPath: destination, durationSeconds: renderedDuration, passthrough: true, warnings };
   }
   const hardwareCodecs = options.mode === "local-gpu" && process.platform === "darwin"
     ? ["h264_videotoolbox"]
@@ -442,7 +623,11 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     const args = ["-y"];
     if (clipStart) args.push("-ss", String(clipStart));
     args.push("-i", path.resolve(filePath));
-    if (clipDuration) args.push("-t", String(clipDuration));
+    const musicPath = options.backgroundMusic && options.backgroundMusicPath && fs.existsSync(options.backgroundMusicPath) ? options.backgroundMusicPath : null;
+    if (options.backgroundMusic && !musicPath) warnings.push("Đã bật nhạc nền nhưng chưa chọn file nhạc hợp lệ.");
+    if (narrationPath) args.push("-i", narrationPath);
+    if (musicPath) args.push("-stream_loop", "-1", "-i", musicPath);
+    if (renderedDuration) args.push("-t", String(renderedDuration));
     const filters = {
       "9:16": "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
       "1:1": "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080",
@@ -455,7 +640,12 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     if (codec === "libx264") args.push("-preset", "fast");
     if (codec === "h264_nvenc") args.push("-preset", "p4");
     if (codec === "h264_videotoolbox") args.push("-b:v", "8M");
-    args.push("-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", destination);
+    args.push("-pix_fmt", "yuv420p");
+    const audioFilter = buildAudioFilter({ hasOriginalAudio: probe.hasAudio === true, narrationInputIndex: narrationPath ? 1 : undefined, musicInputIndex: musicPath ? (narrationPath ? 2 : 1) : undefined, keepOriginalAudio: options.keepOriginalAudio !== false, musicVolume: options.backgroundMusicVolume ?? 20 });
+    if (audioFilter) args.push("-filter_complex", audioFilter, "-map", "0:v:0", "-map", "[aout]", "-c:a", "aac");
+    else if (options.keepOriginalAudio === false || narrationPath || musicPath) args.push("-an");
+    else args.push("-c:a", "aac");
+    args.push("-movflags", "+faststart", destination);
     return runProcess(ffmpeg, args, (line) => {
       const match = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
       if (!match || !renderedDuration) return;
@@ -468,13 +658,15 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     try {
       await renderWithCodec(codec);
       event.sender.send("runtime:render-progress", { progress: 100, stage: "completed", outputPath: destination, operationId });
-      return { outputPath: destination, durationSeconds: renderedDuration, passthrough: false };
+      if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
+      return { outputPath: destination, durationSeconds: renderedDuration, passthrough: false, warnings };
     } catch (error) {
       lastError = error;
       if (error?.code === "JACS_OPERATION_CANCELLED" || operationState(operationId)?.cancelled) throw cancelledOperationError();
       event.sender.send("runtime:render-progress", { progress: 3, stage: "rendering", operationId });
     }
   }
+  if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
   throw lastError || new Error("Không thể render video bằng các codec khả dụng");
 }
 
@@ -558,6 +750,7 @@ function registerIpc() {
     return testStoredProvider(record);
   });
   ipcMain.handle("runtime:check-update", (_event, channel) => checkForUpdate(channel));
+  ipcMain.handle("runtime:download-update", (event, release) => downloadAndInstallUpdate(event, release));
   ipcMain.handle("runtime:open-external", async (_event, value) => {
     if (!isTrustedReleaseUrl(value)) throw new Error("URL cập nhật không được tin cậy");
     await shell.openExternal(String(value));
@@ -565,13 +758,14 @@ function registerIpc() {
   ipcMain.handle("runtime:pick-video", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi"] }] }); return result.canceled ? null : result.filePaths[0] ?? null; });
   ipcMain.handle("runtime:pick-videos", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi"] }] }); return result.canceled ? [] : result.filePaths; });
   ipcMain.handle("runtime:pick-output-folder", async () => { const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] }); return result.canceled ? null : result.filePaths[0] ?? null; });
+  ipcMain.handle("runtime:pick-audio", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Audio", extensions: ["mp3", "wav", "m4a", "aac", "flac", "ogg"] }] }); return result.canceled ? null : result.filePaths[0] ?? null; });
   ipcMain.handle("runtime:probe-video", (_event, value) => probeVideoFile(value));
   ipcMain.handle("runtime:download-video", async (event, value, operationId) => {
     const state = beginOperation(operationId);
     try { return await downloadVideo(event, value, operationId); }
     finally { if (state) endOperation(operationId); }
   });
-  ipcMain.handle("runtime:analyze-video", async (event, filePath, providerId, operationId) => {
+  ipcMain.handle("runtime:analyze-video", async (event, filePath, providerId, operationId, options = {}) => {
     const state = beginOperation(operationId);
     try {
       event.sender.send("runtime:analysis-progress", { progress: 4, stage: "probing", operationId });
@@ -579,24 +773,36 @@ function registerIpc() {
       const storeInstance = providerStore();
       // An explicit empty provider id means local-only analysis. The analysis
       // screen omits the argument when it wants the configured default provider.
-      const defaultProvider = providerId === undefined ? storeInstance.list().find((item) => item.enabled && item.capabilities.includes("analysis")) : undefined;
+      const defaultProvider = providerId === undefined ? storeInstance.list().find((item) => item.enabled && item.hasApiKey && item.capabilities.includes("analysis")) : undefined;
       const record = storeInstance.find(providerId || defaultProvider?.id);
+      if (providerId && (!record || !record.enabled || !record.apiKey || !record.capabilities?.includes("analysis"))) {
+        throw new Error("Provider AI phân tích không còn khả dụng, chưa có API key hoặc chưa bật capability analysis. Hãy kiểm tra lại Cài đặt tool.");
+      }
       if (!record) {
         event.sender.send("runtime:analysis-progress", { progress: 35, stage: "detecting-scenes", operationId });
         const result = localAnalysis(probe, await detectSceneTimes(filePath, probe.durationSeconds, operationId));
+        const frames = await extractAnalysisFrames(filePath, probe.durationSeconds, operationId);
         event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
-        return result;
+        return { ...result, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) };
       }
       event.sender.send("runtime:analysis-progress", { progress: 18, stage: "extracting-frames", operationId });
       const [frames, transcript] = await Promise.all([
-        record.capabilities?.includes("vision") ? extractAnalysisFrames(filePath, probe.durationSeconds, operationId) : Promise.resolve([]),
+        // Frame extraction is local and safe for every provider. Only vision
+        // capable providers receive the extracted images below.
+        extractAnalysisFrames(filePath, probe.durationSeconds, operationId),
         transcribeVideo(filePath, record, operationId),
       ]);
+      const providerFrames = record.capabilities?.includes("vision") ? frames.map((frame) => frame.data) : [];
       event.sender.send("runtime:analysis-progress", { progress: 68, stage: transcript ? "transcribed" : "frames-ready", operationId });
       const transcriptContext = transcript ? ` Transcript đã nhận dạng: ${transcript}` : " Không có transcript; không được tự bịa lời thoại.";
-      const prompt = `Bạn đang nhận ${frames.length} frame lấy đều từ video dài ${probe.durationSeconds.toFixed(1)} giây (${probe.width || "?"}x${probe.height || "?"}). Phân tích nội dung nhìn thấy, hook, nhịp, chủ thể và các đoạn đáng dựng.${transcriptContext} Trả về JSON duy nhất dạng {"summary":"...","score":0,"scenes":[{"start":"00:00","end":"00:12","title":"...","detail":"..."}]}. Mốc thời gian phải tăng dần, nằm trong thời lượng video và không bịa dữ liệu không có trong frame/transcript.`;
+      const languageHint = Array.isArray(options.languages) && options.languages.length ? ` Ngôn ngữ đầu ra: ${options.languages.join(", ")}.` : "";
+      const narrationHint = options.narratorEnabled ? ` Người dùng muốn giọng kể ${options.narratorGender === "female" ? "nữ" : "nam"}${options.narratorVoice ? ` (${options.narratorVoice})` : ""}; đề xuất câu thoại ngắn theo từng scene.` : "";
+      const audioHint = options.keepOriginalAudio === false ? " Người dùng chọn cắt tiếng gốc khỏi bản render." : " Giữ tiếng gốc nếu phù hợp.";
+      const hookHint = options.emphasizeHook ? " Đánh dấu rõ hook 3 giây đầu và các cao trào cần nhấn mạnh." : "";
+      const highlightHint = options.highlightOnly ? ` Chọn đúng một scene nổi bật nhất, đặt title bắt đầu bằng "HIGHLIGHT", ưu tiên đoạn tự đủ nghĩa và không dài quá ${Math.max(3, Number(options.highlightMaxSeconds || 30))} giây.` : "";
+      const prompt = `Bạn đang nhận ${providerFrames.length} frame lấy đều từ video dài ${probe.durationSeconds.toFixed(1)} giây (${probe.width || "?"}x${probe.height || "?"}). Phân tích nội dung nhìn thấy, hook, nhịp, chủ thể và các đoạn đáng dựng.${transcriptContext}${languageHint}${narrationHint}${audioHint}${hookHint}${highlightHint} Trả về JSON duy nhất dạng {"summary":"...","score":0,"scenes":[{"start":"00:00","end":"00:12","title":"...","detail":"..."}]}. Mốc thời gian phải tăng dần, nằm trong thời lượng video và không bịa dữ liệu không có trong frame/transcript.`;
       event.sender.send("runtime:analysis-progress", { progress: 76, stage: "requesting-provider", operationId });
-      const result = await providerRequest(record, prompt, frames.map((frame) => frame.data), operationId);
+      const result = await providerRequest(record, prompt, providerFrames, operationId);
       event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
       return { ...parseAnalysis(result.text, probe, result.usage), transcript, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) };
     } finally { if (state) endOperation(operationId); }
