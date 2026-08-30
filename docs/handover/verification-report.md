@@ -4,7 +4,7 @@ Ngày kiểm tra: 2026-08-30.
 
 ## Đã chạy thành công
 
-- `23` bài test API (auth, logout, token tamper, license, provider, jobs, projects,
+- `24` bài test API (auth, logout, token tamper/malformed, license, provider, jobs, projects,
   telemetry, release, persistence adapter và request ID).
 - Python bytecode compile cho `BE/api-server/app` và tests.
 - Ruff lint `BE/api-server/app` và tests.
