@@ -4,7 +4,7 @@ Ngày kiểm tra: 2026-08-30.
 
 ## Đã chạy thành công
 
-- `21` bài test API (auth, logout, license, provider, jobs, projects,
+- `23` bài test API (auth, logout, token tamper, license, provider, jobs, projects,
   telemetry, release, persistence adapter và request ID).
 - Python bytecode compile cho `BE/api-server/app` và tests.
 - Ruff lint `BE/api-server/app` và tests.
@@ -20,6 +20,8 @@ Ngày kiểm tra: 2026-08-30.
   độc lập: staging `localhost:85`, production `localhost:84`.
 - Sau lần promote mới nhất, cả hai hostname public đều trả `200` cho `/health/live`
   và `/health/ready`; readiness xác nhận backend đang dùng PostgreSQL.
+- Signed-token và revoke smoke test đã chạy trực tiếp trong container API của cả
+  staging và production; database healthcheck trả thành công.
 - Workflow deploy đã dùng tar stream qua SSH, không phụ thuộc `rsync` trên server.
 - Docker image API đã cài `psycopg[binary]`; PostgreSQL CRUD và khởi tạo bảng
   `jacs_records` đã được kiểm tra trong Compose local.
