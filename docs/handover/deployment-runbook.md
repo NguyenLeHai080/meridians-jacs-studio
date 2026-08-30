@@ -48,7 +48,10 @@ compose project hoặc volume của MintForge.
 Mỗi môi trường cần file `/opt/jacs-studio/<env>/.env` (không nằm trong Git).
 Sao chép từ `deploy/env.staging.example` hoặc `deploy/env.prod.example`, tạo
 hash bằng script `BE/api-server/scripts/hash_password.py`, rồi đặt
-`JACS_ADMIN_PASSWORD_HASH`, CORS đúng hostname và telemetry token ngẫu nhiên.
+`JACS_ADMIN_EMAIL`, `JACS_ADMIN_PASSWORD_HASH`, CORS đúng hostname và telemetry
+token ngẫu nhiên. `JACS_ADMIN_EMAIL` được truyền vào Admin Portal ở thời điểm
+build để điền sẵn đúng tài khoản; mật khẩu không bao giờ được đóng gói vào
+frontend.
 Script `deploy/deploy.sh` sẽ từ chối chạy nếu thiếu các biến bắt buộc.
 
 Lần triển khai thủ công đầu tiên (sau khi đã copy mã nguồn vào thư mục release):
