@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
-from fastapi import status
+from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
