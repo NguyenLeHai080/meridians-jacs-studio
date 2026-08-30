@@ -39,6 +39,7 @@ services:
       dockerfile: deploy/admin.Dockerfile
       args:
         VITE_API_URL: ""
+        VITE_ADMIN_EMAIL: ${JACS_ADMIN_EMAIL:?JACS_ADMIN_EMAIL is required}
     depends_on:
       api:
         condition: service_healthy

@@ -5,8 +5,10 @@ import { setToken } from "../../core/session";
 type Props = { onAuthenticated: () => void };
 
 export function LoginPage({ onAuthenticated }: Props) {
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("change-me");
+  // Keep local development convenient while never shipping demo credentials in production.
+  const configuredEmail = import.meta.env.VITE_ADMIN_EMAIL || (import.meta.env.DEV ? "admin@example.com" : "");
+  const [email, setEmail] = useState(configuredEmail);
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

@@ -8,7 +8,9 @@ COPY packages packages
 RUN pnpm install --frozen-lockfile
 COPY FE/admin-portal FE/admin-portal
 ARG VITE_API_URL=
+ARG VITE_ADMIN_EMAIL=
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_ADMIN_EMAIL=$VITE_ADMIN_EMAIL
 RUN pnpm --dir FE/admin-portal build
 
 FROM nginx:1.27-alpine
