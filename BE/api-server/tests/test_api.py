@@ -69,6 +69,11 @@ def test_auth_token_signature_cannot_be_tampered():
     assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tampered}"}).status_code == 401
 
 
+def test_malformed_auth_token_returns_401():
+    response = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer !!!not-base64!!!"})
+    assert response.status_code == 401
+
+
 def test_provider_secret_is_not_returned():
     headers = auth_headers()
     response = client.post(
