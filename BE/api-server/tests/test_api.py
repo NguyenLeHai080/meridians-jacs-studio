@@ -54,6 +54,14 @@ def test_logout_revokes_token():
     assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
 
 
+def test_auth_token_signature_cannot_be_tampered():
+    headers = auth_headers()
+    token = headers["Authorization"].removeprefix("Bearer ")
+    header, payload, signature = token.split(".")
+    tampered = f"{header}.{payload[:-1]}{'A' if payload[-1:] != 'A' else 'B'}.{signature}"
+    assert client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {tampered}"}).status_code == 401
+
+
 def test_provider_secret_is_not_returned():
     headers = auth_headers()
     response = client.post(
