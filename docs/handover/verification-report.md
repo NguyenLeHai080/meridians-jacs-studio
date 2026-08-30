@@ -1,6 +1,6 @@
 # Báo cáo kiểm tra hiện tại
 
-Ngày kiểm tra: 2026-08-30.
+Ngày kiểm tra: 2026-08-31.
 
 ## Đã chạy thành công
 
@@ -49,6 +49,16 @@ Ngày kiểm tra: 2026-08-30.
   đa ngôn ngữ, tiếng gốc, hook và nhạc nền.
 - Native desktop test suite hiện có `25` test pass; backend API suite có `34`
   test pass. Production build Desktop và Admin Portal đều pass sau thay đổi mới.
+- Desktop `0.3.4` đã được đóng gói thành công với app Universal macOS; `lipo`
+  xác nhận entrypoint, FFmpeg và FFprobe đều chứa `x86_64 arm64`. SHA-512 của
+  ZIP Universal dùng cho OTA là
+  `60bb5381692eeeb10574ef5451810f84c9fe9673b5b665fda3deec322b76304fca39ddb2cacdfb32ddae1b3080d6e980a0889894d2246002d6edbb7fdefd51ae`.
+  Artifact đã được đặt tại `/opt/jacs-studio/downloads` và release `v0.3.4`
+  macOS stable đã publish trên production; endpoint check từ `v0.3.3` trả
+  `update_available: true`.
+- Artifact ARM64 `0.3.4` riêng cũng đã build lại trên macOS và upload cùng
+  Universal ZIP/DMG; các URL download production trả HTTP `200`. Production
+  API và PostgreSQL readiness vẫn pass sau khi publish release.
 - Native media pipeline smoke test đã pass: tạo video thật bằng FFmpeg, probe
   duration/kích thước, trích frame, render clip 9:16 và xác minh output duration.
 - Desktop release `0.3.3` đã được build tuần tự để tránh tranh chấp archive:
