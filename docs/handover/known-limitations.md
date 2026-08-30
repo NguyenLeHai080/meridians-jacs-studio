@@ -13,10 +13,14 @@
   cốt lõi; release management, job progress realtime và RBAC chi tiết vẫn cần
   hoàn thiện theo backlog.
 - Desktop đã có Electron shell, UI module, IPC preload allowlist, Device ID dẫn
-  xuất, secure storage cho license, heartbeat định kỳ, đồng bộ client job có
-  quota/idempotency và local queue trong renderer. Pipeline build tạo DMG/ZIP
-  macOS cùng NSIS Windows. Artifact macOS ARM64 và Windows x64 hiện unsigned.
-  Device ID hiện là fingerprint dẫn xuất, chưa phải hardware attestation;
+  xuất từ định danh nền tảng (macOS `IOPlatformUUID`, Windows `MachineGuid`,
+  Linux `machine-id`), secure storage cho license, heartbeat định kỳ, đồng bộ
+  client job có quota/idempotency và local queue trong renderer. Device ID được
+  băm một chiều với salt riêng của app; khi không đọc được định danh nền tảng,
+  app dùng installation ID ngẫu nhiên ổn định giữa các lần mở. Đây là nhận diện
+  thiết bị thực tế, không phải hardware attestation chống giả mạo tuyệt đối.
+  Pipeline build tạo DMG/ZIP macOS cùng NSIS Windows. Artifact macOS ARM64 và
+  Windows x64 hiện unsigned.
   FFmpeg/GPU worker, provider execution thật, queue worker nền và OTA ký số vẫn
   là production gate.
 - Docker Compose cung cấp dependency local; chưa phải topology HA production.

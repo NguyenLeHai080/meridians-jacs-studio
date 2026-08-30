@@ -14,6 +14,9 @@ from app.core.store import SqliteStore, store
 from app.main import app
 
 client = TestClient(app)
+HWID_MAC = "JACS-MAC-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+HWID_WIN = "JACS-WIN-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+HWID_LNX = "JACS-LNX-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
 
 
 def setup_function():
@@ -99,7 +102,7 @@ def test_license_key_is_returned_once_and_stored_as_hash():
     response = client.post(
         "/api/v1/licenses",
         headers=headers,
-        json={"customer_name": "Demo", "customer_contact": "demo@example.com", "hwid": "demo-hwid-0002"},
+        json={"customer_name": "Demo", "customer_contact": "demo@example.com", "hwid": HWID_MAC},
     )
     assert response.status_code == 201
     body = response.json()
@@ -109,15 +112,26 @@ def test_license_key_is_returned_once_and_stored_as_hash():
     assert listed[-1]["key_hint"].startswith("JACS-****-")
 
 
+def test_demo_hwid_cannot_be_issued_or_activated():
+    headers = auth_headers()
+    rejected = client.post(
+        "/api/v1/licenses",
+        headers=headers,
+        json={"customer_name": "Demo", "customer_contact": "demo@example.com", "hwid": "WEB-DEMO-MACHINE"},
+    )
+    assert rejected.status_code == 422
+    assert rejected.json()["error"]["code"] == "LICENSE_HWID_INVALID"
+
+
 def test_license_validate_and_hwid_mismatch():
     headers = auth_headers()
     created = client.post("/api/v1/licenses", headers=headers, json={
-        "customer_name": "Demo", "customer_contact": "demo@example.com", "hwid": "demo-hwid-validate",
+        "customer_name": "Demo", "customer_contact": "demo@example.com", "hwid": HWID_MAC,
     }).json()
-    valid = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": "demo-hwid-validate"})
+    valid = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": HWID_MAC})
     assert valid.status_code == 200
     assert valid.json()["data"]["valid"] is True
-    mismatch = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": "other-hwid-0000"})
+    mismatch = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": HWID_WIN})
     assert mismatch.status_code == 403
     assert mismatch.json()["error"]["code"] == "LICENSE_HWID_MISMATCH"
 
@@ -125,20 +139,23 @@ def test_license_validate_and_hwid_mismatch():
 def test_license_heartbeat_revalidates_running_desktop_session():
     headers = auth_headers()
     created = client.post("/api/v1/licenses", headers=headers, json={
-        "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": "desktop-hwid-01",
+        "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": HWID_MAC,
     }).json()
     heartbeat = client.post("/api/v1/licenses/heartbeat", json={
-        "key": created["key"], "hwid": "desktop-hwid-01", "app_version": "v0.3.0", "platform": "macos",
+        "key": created["key"], "hwid": HWID_MAC, "app_version": "v0.3.0", "platform": "macos",
     })
     assert heartbeat.status_code == 200
     assert heartbeat.json()["data"]["valid"] is True
     assert heartbeat.json()["data"]["platform"] == "macos"
+    listed = client.get("/api/v1/licenses", headers=headers).json()
+    assert listed[-1]["last_app_version"] == "v0.3.0"
+    assert listed[-1]["last_platform"] == "macos"
 
 
 def test_license_revoke_and_renew():
     headers = auth_headers()
     created = client.post("/api/v1/licenses", headers=headers, json={
-        "customer_name": "Demo", "customer_contact": "demo@example.com", "hwid": "demo-hwid-renew",
+        "customer_name": "Demo", "customer_contact": "demo@example.com", "hwid": HWID_WIN,
     }).json()
     license_id = created["id"]
     blocked = client.patch(f"/api/v1/licenses/{license_id}/status", headers=headers, json={"status": "blocked"})
@@ -191,9 +208,9 @@ def test_desktop_job_requires_license_and_is_idempotent():
     assert denied.status_code == 401
     headers = auth_headers()
     created = client.post("/api/v1/licenses", headers=headers, json={
-        "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": "desktop-hwid-02", "max_jobs_per_day": 1,
+        "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": HWID_WIN, "max_jobs_per_day": 1,
     }).json()
-    client_headers = {"X-License-Key": created["key"], "X-Device-Id": "desktop-hwid-02"}
+    client_headers = {"X-License-Key": created["key"], "X-Device-Id": HWID_WIN}
     payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu"}
     first = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
     assert first.status_code == 202
@@ -219,10 +236,10 @@ def test_telemetry_requires_ingest_token_and_is_queryable():
 def test_telemetry_accepts_activated_desktop_headers():
     admin_headers = auth_headers()
     created = client.post("/api/v1/licenses", headers=admin_headers, json={
-        "customer_name": "Telemetry", "customer_contact": "telemetry@example.com", "hwid": "telemetry-hwid-1",
+        "customer_name": "Telemetry", "customer_contact": "telemetry@example.com", "hwid": HWID_LNX,
     }).json()
     event = {"event_name": "desktop.warning", "severity": "warning", "app_version": "v0.3.0", "fingerprint": "desktop-1", "message": "low disk"}
-    accepted = client.post("/api/v1/telemetry/logs", headers={"X-License-Key": created["key"], "X-Device-Id": "telemetry-hwid-1"}, json=event)
+    accepted = client.post("/api/v1/telemetry/logs", headers={"X-License-Key": created["key"], "X-Device-Id": HWID_LNX}, json=event)
     assert accepted.status_code == 202
 
 

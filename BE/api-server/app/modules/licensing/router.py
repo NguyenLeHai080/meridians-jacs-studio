@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -23,6 +24,25 @@ from app.modules.licensing.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/licenses", tags=["licensing"])
+DEVICE_ID_PATTERN = re.compile(r"^JACS-(MAC|WIN|LNX)-[A-F0-9]{32}$")
+
+
+def _normalize_hwid(hwid: str) -> str:
+    normalized = hwid.strip().upper()
+    if normalized == "WEB-DEMO-MACHINE":
+        raise AppError("LICENSE_HWID_INVALID", "Không thể cấp hoặc kích hoạt license bằng mã máy demo", 422)
+    return normalized
+
+
+def _validate_hwid(hwid: str) -> str:
+    normalized = _normalize_hwid(hwid)
+    if not DEVICE_ID_PATTERN.fullmatch(normalized):
+        raise AppError(
+            "LICENSE_HWID_INVALID",
+            "Mã máy không hợp lệ; hãy dùng Device ID từ bản Desktop Electron",
+            422,
+        )
+    return normalized
 
 
 def make_key() -> str:
@@ -36,6 +56,7 @@ def hash_key(value: str) -> str:
 
 def _active_license(key: str, hwid: str) -> dict:
     """Resolve a client license and update its last-seen timestamp."""
+    hwid = _normalize_hwid(hwid)
     submitted_hash = hash_key(key.strip())
     match = next((item for item in store.list("licenses") if item["key_hash"] == submitted_hash), None)
     if not match or match["status"] != LicenseStatus.active:
@@ -52,11 +73,13 @@ def _active_license(key: str, hwid: str) -> dict:
 
 @router.post("", response_model=LicenseCreatedResponse, status_code=201)
 async def create_license(payload: CreateLicenseRequest, user: dict = Depends(require_auth)):
+    hwid = _validate_hwid(payload.hwid)
     raw_key = make_key()
     record = store.create(
         "licenses",
         {
-            **payload.model_dump(),
+            **payload.model_dump(exclude={"hwid"}),
+            "hwid": hwid,
             "key_hash": hash_key(raw_key),
             "key_hint": f"JACS-****-{raw_key[-4:]}",
             "status": LicenseStatus.active,
@@ -98,8 +121,7 @@ async def renew_license(license_id: UUID, payload: LicenseRenewRequest, user: di
 
 @router.post("/{license_id}/reset-hwid", response_model=LicenseResponse)
 async def reset_hwid(license_id: UUID, payload: HwidResetRequest, user: dict = Depends(require_auth)):
-
-    updated = store.update("licenses", UUID(str(license_id)), {"hwid": payload.hwid})
+    updated = store.update("licenses", UUID(str(license_id)), {"hwid": _validate_hwid(payload.hwid)})
     if not updated:
         raise AppError("LICENSE_NOT_FOUND", "Không tìm thấy license", 404)
     store.create("audit", {"action": "license.hwid_reset", "license_id": str(license_id), "reason": payload.reason, "actor": user["email"]})
@@ -116,13 +138,18 @@ async def validate_license(payload: ValidateLicenseRequest):
 async def license_heartbeat(payload: LicenseHeartbeatRequest):
     """Revalidate a running desktop session without issuing a new token."""
     match = _active_license(payload.key, payload.hwid)
+    updated = store.update(
+        "licenses",
+        match["id"],
+        {"last_app_version": payload.app_version, "last_platform": payload.platform},
+    ) or match
     return {
         "data": {
             "valid": True,
-            "license_id": str(match["id"]),
-            "premium_ai": match["premium_ai"],
-            "expires_at": match["expires_at"],
-            "max_jobs_per_day": match["max_jobs_per_day"],
+            "license_id": str(updated["id"]),
+            "premium_ai": updated["premium_ai"],
+            "expires_at": updated["expires_at"],
+            "max_jobs_per_day": updated["max_jobs_per_day"],
             "app_version": payload.app_version,
             "platform": payload.platform,
         }

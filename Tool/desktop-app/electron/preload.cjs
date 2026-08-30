@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   savePreferences: (value) => ipcRenderer.invoke("runtime:save-preferences", value),
   pickVideo: () => ipcRenderer.invoke("runtime:pick-video"),
   revealPath: (value) => ipcRenderer.invoke("runtime:reveal-path", value),
+  copyText: (value) => ipcRenderer.invoke("runtime:copy-text", value),
 });

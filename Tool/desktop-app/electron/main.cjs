@@ -1,12 +1,19 @@
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require("electron");
-const crypto = require("node:crypto");
-const os = require("node:os");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
+const { createMachineInfo } = require("./machine-id.cjs");
 
-function machineId() {
-  const seed = [os.platform(), os.arch(), os.hostname(), app.getPath("userData")].join(":");
-  return `JACS-${crypto.createHash("sha256").update(seed).digest("hex").slice(0, 24).toUpperCase()}`;
+let cachedMachineInfo;
+function machineInfo() {
+  if (!cachedMachineInfo) {
+    cachedMachineInfo = createMachineInfo({
+      userDataPath: app.getPath("userData"),
+      arch: process.arch,
+      platform: process.platform,
+      appVersion: app.getVersion(),
+    });
+  }
+  return cachedMachineInfo;
 }
 
 function licensePath() { return path.join(app.getPath("userData"), "license.bin"); }
@@ -26,7 +33,7 @@ function writePreferences(value) {
 }
 
 function registerIpc() {
-  ipcMain.handle("runtime:machine-info", () => ({ machineId: machineId(), platform: process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux", arch: process.arch, appVersion: app.getVersion() }));
+  ipcMain.handle("runtime:machine-info", () => machineInfo());
   ipcMain.handle("runtime:read-license", () => {
     try {
       if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(licensePath())) return null;
@@ -44,6 +51,10 @@ function registerIpc() {
   ipcMain.handle("runtime:save-preferences", (_event, value) => { if (!value || typeof value !== "object") throw new Error("Invalid preferences"); writePreferences(value); });
   ipcMain.handle("runtime:pick-video", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi"] }] }); return result.canceled ? null : result.filePaths[0] ?? null; });
   ipcMain.handle("runtime:reveal-path", (_event, value) => { if (typeof value === "string" && value.length < 1024) void shell.openPath(value); });
+  ipcMain.handle("runtime:copy-text", (_event, value) => {
+    if (typeof value !== "string" || value.length > 1024) throw new Error("Invalid clipboard value");
+    clipboard.writeText(value);
+  });
 }
 
 function createWindow() {
