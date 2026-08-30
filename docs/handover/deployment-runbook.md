@@ -66,8 +66,9 @@ Fernet (`JACS_SECRET_KEY`) trước khi lưu vào PostgreSQL.
 ## Tự động deploy khi merge
 
 Workflow `.github/workflows/deploy.yml` chạy sau push vào `staging` hoặc `prod`
-(tức sau khi PR được merge), chạy lại CI rồi rsync release và build Docker trên
-server. Cấu hình các GitHub Actions secrets sau:
+(tức sau khi PR được merge), chạy lại CI rồi stream một tar archive qua SSH và
+build Docker trên server. Cách này không yêu cầu cài `rsync` trên máy chủ.
+Cấu hình các GitHub Actions secrets sau:
 
 - `JACS_DEPLOY_HOST=221.121.1.3`
 - `JACS_DEPLOY_USER=root` (khuyến nghị user deploy không có quyền root khi harden)
