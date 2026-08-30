@@ -4,7 +4,7 @@ Ngày kiểm tra: 2026-08-30.
 
 ## Đã chạy thành công
 
-- `16` bài test API (auth, logout, license, provider, jobs, projects,
+- `21` bài test API (auth, logout, license, provider, jobs, projects,
   telemetry, release, persistence adapter và request ID).
 - Python bytecode compile cho `BE/api-server/app` và tests.
 - Ruff lint `BE/api-server/app` và tests.
@@ -18,6 +18,9 @@ Ngày kiểm tra: 2026-08-30.
   admin và HTTP response của hai Vite dev server.
 - Docker build và triển khai thành công trên server `221.121.1.3` với hai stack
   độc lập: staging `localhost:85`, production `localhost:84`.
+- Sau lần promote mới nhất, cả hai hostname public đều trả `200` cho `/health/live`
+  và `/health/ready`; readiness xác nhận backend đang dùng PostgreSQL.
+- Workflow deploy đã dùng tar stream qua SSH, không phụ thuộc `rsync` trên server.
 - Docker image API đã cài `psycopg[binary]`; PostgreSQL CRUD và khởi tạo bảng
   `jacs_records` đã được kiểm tra trong Compose local.
 - Build Electron macOS ARM64 thành công: DMG và ZIP trong
@@ -29,8 +32,9 @@ Ngày kiểm tra: 2026-08-30.
 
 ## Chưa chạy được trên máy hiện tại
 
-- GitHub Actions chưa được kích hoạt trên remote vì repository chưa có quyền xác
-  thực push và chưa đặt các Actions secrets.
+- GitHub Actions chưa được kích hoạt trên remote vì máy hiện tại chưa có quyền
+  xác thực GitHub và repository chưa đặt các Actions secrets. Các branch local đã
+  được promote đến `prod`; cần push sau khi cấu hình credential.
 - Code signing, FFmpeg/GPU probe và provider vendor thật: chưa có
   credential/toolchain tương ứng trong workspace; Windows x64 NSIS đã được
   cross-build thành công bằng electron-builder/Wine để QA.
