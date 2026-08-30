@@ -14,6 +14,7 @@ from app.modules.licensing.schemas import (
     CreateLicenseRequest,
     HwidResetRequest,
     LicenseCreatedResponse,
+    LicenseHeartbeatRequest,
     LicenseRenewRequest,
     LicenseResponse,
     LicenseStatus,
@@ -31,6 +32,22 @@ def make_key() -> str:
 
 def hash_key(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _active_license(key: str, hwid: str) -> dict:
+    """Resolve a client license and update its last-seen timestamp."""
+    submitted_hash = hash_key(key.strip())
+    match = next((item for item in store.list("licenses") if item["key_hash"] == submitted_hash), None)
+    if not match or match["status"] != LicenseStatus.active:
+        raise AppError("LICENSE_INVALID", "License không hợp lệ hoặc đã bị khóa", 401)
+    if match["hwid"] != hwid:
+        raise AppError("LICENSE_HWID_MISMATCH", "License không thuộc thiết bị này", 403)
+    now = datetime.now(UTC)
+    if match["expires_at"] and match["expires_at"] <= now:
+        store.update("licenses", match["id"], {"status": LicenseStatus.expired})
+        raise AppError("LICENSE_EXPIRED", "License đã hết hạn", 403)
+    updated = store.update("licenses", match["id"], {"last_seen_at": now})
+    return updated or match
 
 
 @router.post("", response_model=LicenseCreatedResponse, status_code=201)
@@ -91,14 +108,22 @@ async def reset_hwid(license_id: UUID, payload: HwidResetRequest, user: dict = D
 
 @router.post("/validate")
 async def validate_license(payload: ValidateLicenseRequest):
-    submitted_hash = hash_key(payload.key)
-    match = next((item for item in store.list("licenses") if item["key_hash"] == submitted_hash), None)
-    if not match or match["status"] != LicenseStatus.active:
-        raise AppError("LICENSE_INVALID", "License không hợp lệ hoặc đã bị khóa", 401)
-    if match["hwid"] != payload.hwid:
-        raise AppError("LICENSE_HWID_MISMATCH", "License không thuộc thiết bị này", 403)
-    if match["expires_at"] and match["expires_at"] <= datetime.now(UTC):
-        store.update("licenses", match["id"], {"status": LicenseStatus.expired})
-        raise AppError("LICENSE_EXPIRED", "License đã hết hạn", 403)
-    store.update("licenses", match["id"], {"last_seen_at": datetime.now(UTC)})
-    return {"data": {"valid": True, "license_id": str(match["id"]), "premium_ai": match["premium_ai"]}}
+    match = _active_license(payload.key, payload.hwid)
+    return {"data": {"valid": True, "license_id": str(match["id"]), "premium_ai": match["premium_ai"], "expires_at": match["expires_at"], "max_jobs_per_day": match["max_jobs_per_day"]}}
+
+
+@router.post("/heartbeat")
+async def license_heartbeat(payload: LicenseHeartbeatRequest):
+    """Revalidate a running desktop session without issuing a new token."""
+    match = _active_license(payload.key, payload.hwid)
+    return {
+        "data": {
+            "valid": True,
+            "license_id": str(match["id"]),
+            "premium_ai": match["premium_ai"],
+            "expires_at": match["expires_at"],
+            "max_jobs_per_day": match["max_jobs_per_day"],
+            "app_version": payload.app_version,
+            "platform": payload.platform,
+        }
+    }

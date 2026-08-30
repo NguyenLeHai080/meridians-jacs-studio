@@ -12,3 +12,5 @@ Desktop, Backend và QA trước khi viết User Story.
 - [business-rules.md](business-rules.md): quy tắc License, telemetry và OTA.
 - [ai-provider-and-rendering.md](ai-provider-and-rendering.md): cấu hình BYOK,
   provider AI, render local GPU/cloud/hybrid.
+- [desktop-workflow.md](desktop-workflow.md): menu Desktop Tool, batch/scene
+  job, license-HWID, telemetry, OTA và tiêu chí nghiệm thu.

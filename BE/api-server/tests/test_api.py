@@ -102,6 +102,19 @@ def test_license_validate_and_hwid_mismatch():
     assert mismatch.json()["error"]["code"] == "LICENSE_HWID_MISMATCH"
 
 
+def test_license_heartbeat_revalidates_running_desktop_session():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": "desktop-hwid-01",
+    }).json()
+    heartbeat = client.post("/api/v1/licenses/heartbeat", json={
+        "key": created["key"], "hwid": "desktop-hwid-01", "app_version": "v0.3.0", "platform": "macos",
+    })
+    assert heartbeat.status_code == 200
+    assert heartbeat.json()["data"]["valid"] is True
+    assert heartbeat.json()["data"]["platform"] == "macos"
+
+
 def test_license_revoke_and_renew():
     headers = auth_headers()
     created = client.post("/api/v1/licenses", headers=headers, json={
@@ -151,6 +164,27 @@ def test_cloud_job_requires_provider_capability_and_project_can_be_created():
     assert client.get(f"/api/v1/projects/{project.json()['id']}", headers=headers).status_code == 200
 
 
+def test_desktop_job_requires_license_and_is_idempotent():
+    denied = client.post("/api/v1/client/jobs", json={
+        "client_job_id": "desktop-job-denied", "name": "Denied", "source_name": "clip.mp4", "execution_mode": "local-cpu",
+    })
+    assert denied.status_code == 401
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": "desktop-hwid-02", "max_jobs_per_day": 1,
+    }).json()
+    client_headers = {"X-License-Key": created["key"], "X-Device-Id": "desktop-hwid-02"}
+    payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu"}
+    first = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
+    assert first.status_code == 202
+    second = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
+    assert second.status_code == 202
+    assert second.json()["id"] == first.json()["id"]
+    listed = client.get("/api/v1/client/jobs", headers=client_headers)
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+
+
 def test_telemetry_requires_ingest_token_and_is_queryable():
     event = {"event_name": "render.crash", "severity": "fatal", "app_version": "v1.0.0", "fingerprint": "abc", "message": "GPU unavailable"}
     unauthorized = client.post("/api/v1/telemetry/logs", json=event)
@@ -160,6 +194,16 @@ def test_telemetry_requires_ingest_token_and_is_queryable():
     logs = client.get("/api/v1/telemetry/logs?severity=fatal", headers=auth_headers())
     assert logs.status_code == 200
     assert logs.json()["data"][0]["fingerprint"] == "abc"
+
+
+def test_telemetry_accepts_activated_desktop_headers():
+    admin_headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=admin_headers, json={
+        "customer_name": "Telemetry", "customer_contact": "telemetry@example.com", "hwid": "telemetry-hwid-1",
+    }).json()
+    event = {"event_name": "desktop.warning", "severity": "warning", "app_version": "v0.3.0", "fingerprint": "desktop-1", "message": "low disk"}
+    accepted = client.post("/api/v1/telemetry/logs", headers={"X-License-Key": created["key"], "X-Device-Id": "telemetry-hwid-1"}, json=event)
+    assert accepted.status_code == 202
 
 
 def test_provider_endpoint_rejects_private_network():
