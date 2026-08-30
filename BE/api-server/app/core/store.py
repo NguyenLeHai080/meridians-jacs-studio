@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from collections import defaultdict
 import json
 import sqlite3
-from threading import Lock, RLock
-from datetime import datetime
+from collections import defaultdict
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
+from threading import Lock, RLock
 from uuid import UUID, uuid4
 
 
@@ -72,7 +72,7 @@ class SqliteStore:
         record = {"id": uuid4(), **value}
         payload = json.dumps(record, default=_json_default)
         with self._lock, sqlite3.connect(self.path) as connection:
-            connection.execute("INSERT INTO records(collection, id, data, created_at) VALUES (?, ?, ?, ?)", (collection, str(record["id"]), payload, datetime.now().timestamp()))
+            connection.execute("INSERT INTO records(collection, id, data, created_at) VALUES (?, ?, ?, ?)", (collection, str(record["id"]), payload, datetime.now(UTC).timestamp()))
         return record.copy()
 
     def list(self, collection: str) -> list[dict]:

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi import Request
 
 from app.core.config import get_settings
 from app.core.errors import AppError, app_error_handler
@@ -14,8 +13,8 @@ from app.modules.auth.router import router as auth_router
 from app.modules.health.router import router as health_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.licensing.router import router as licensing_router
-from app.modules.releases.router import router as releases_router
 from app.modules.projects.router import router as projects_router
+from app.modules.releases.router import router as releases_router
 from app.modules.telemetry.router import router as telemetry_router
 
 settings = get_settings()

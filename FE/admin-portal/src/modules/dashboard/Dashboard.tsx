@@ -18,6 +18,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [licenseForm, setLicenseForm] = useState({ customer_name: "", customer_contact: "", hwid: "", expires_at: "", max_jobs_per_day: "100", premium_ai: false });
   const [providerForm, setProviderForm] = useState({ name: "", provider_type: "openai", base_url: "https://api.openai.com/v1", model: "gpt-4o-mini", api_key: "", capabilities: "text" });
   const [generatedKey, setGeneratedKey] = useState("");
+  const [providerStatus, setProviderStatus] = useState<Record<string, string>>({});
 
   async function refresh() {
     setLoading(true);
@@ -69,6 +70,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     try { await apiRequest(`/api/v1/licenses/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, token); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Không cập nhật được license"); }
   }
 
+  async function testProvider(provider: Provider) {
+    setProviderStatus((current) => ({ ...current, [provider.id]: "Đang kiểm tra..." }));
+    try {
+      const result = await apiRequest<{ status: string; detail: string; latency_ms: number }>(`/api/v1/ai-providers/${provider.id}/test`, { method: "POST" }, token);
+      setProviderStatus((current) => ({ ...current, [provider.id]: `${result.status} · ${result.latency_ms}ms` }));
+    } catch (reason) {
+      setProviderStatus((current) => ({ ...current, [provider.id]: reason instanceof Error ? reason.message : "Kiểm tra thất bại" }));
+    }
+  }
+
   function logout() { clearToken(); onLogout(); }
 
   return (
@@ -82,7 +93,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       {message && <p className="success">{message}</p>}{error && <p className="error">{error}</p>}
       <section className="content-grid">
         <div className="card panel"><div className="panel-heading"><h2>License</h2><button type="button" className="ghost" onClick={() => void refresh()} disabled={loading}>Làm mới</button></div><div className="table-wrap"><table><thead><tr><th>Key</th><th>Khách hàng</th><th>HWID</th><th>Hết hạn</th><th>Trạng thái</th><th /></tr></thead><tbody>{licenses.map((item) => <tr key={item.id}><td><code>{item.key_hint}</code></td><td>{item.customer_name}<br /><small>{item.customer_contact}</small></td><td><code>{item.hwid}</code></td><td>{item.expires_at ? new Date(item.expires_at).toLocaleString("vi-VN") : "Vĩnh viễn"}</td><td><span className="badge">{item.status}</span></td><td><button type="button" className="ghost" onClick={() => void toggleLicense(item)}>{item.status === "active" ? "Khóa" : "Mở khóa"}</button></td></tr>)}{!loading && licenses.length === 0 && <tr><td colSpan={6} className="muted">Chưa có license</td></tr>}</tbody></table></div></div>
-        <div className="card panel"><div className="panel-heading"><h2>AI Providers</h2></div>{providers.map((provider) => <div className="provider-row" key={provider.id}><div><strong>{provider.name}</strong><p className="muted">{provider.provider_type} · {provider.model}</p></div><code>{provider.masked_key}</code></div>)}{!loading && providers.length === 0 && <p className="muted">Chưa cấu hình provider.</p>}<h2 className="subheading">Cảnh báo gần đây</h2>{logs.map((log) => <div className="log-row" key={log.id}><span className={`badge severity-${log.severity}`}>{log.severity}</span><div><strong>{log.event_name}</strong><p className="muted">{log.message} · {log.app_version}</p></div></div>)}{!loading && logs.length === 0 && <p className="muted">Chưa có telemetry.</p>}</div>
+        <div className="card panel"><div className="panel-heading"><h2>AI Providers</h2></div>{providers.map((provider) => <div className="provider-row" key={provider.id}><div><strong>{provider.name}</strong><p className="muted">{provider.provider_type} · {provider.model}</p><small className="muted">{providerStatus[provider.id] ?? "Chưa kiểm tra"}</small></div><div className="provider-actions"><code>{provider.masked_key}</code><button type="button" className="ghost" onClick={() => void testProvider(provider)}>Test API</button></div></div>)}{!loading && providers.length === 0 && <p className="muted">Chưa cấu hình provider.</p>}<h2 className="subheading">Cảnh báo gần đây</h2>{logs.map((log) => <div className="log-row" key={log.id}><span className={`badge severity-${log.severity}`}>{log.severity}</span><div><strong>{log.event_name}</strong><p className="muted">{log.message} · {log.app_version}</p></div></div>)}{!loading && logs.length === 0 && <p className="muted">Chưa có telemetry.</p>}</div>
       </section>
     </main>
   );

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from typing import Optional
-
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,12 +12,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://localhost:4173"
     admin_email: str = "admin@example.com"
     admin_password: str = "change-me"
-    admin_password_hash: Optional[str] = None
+    admin_password_hash: str | None = None
     token_ttl_minutes: int = 60
     store_backend: str = "memory"
     sqlite_path: str = "./data/jacs.sqlite3"
-    database_url: Optional[str] = None
-    secret_key: Optional[str] = None
+    database_url: str | None = None
+    secret_key: str | None = None
     telemetry_enabled: bool = True
     telemetry_ingest_token: str = ""
     telemetry_max_payload_bytes: int = 256_000

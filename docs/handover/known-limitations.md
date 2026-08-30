@@ -5,8 +5,9 @@
   trường. PostgreSQL hiện là single-node, chưa có HA/replica tự động.
 - Auth hỗ trợ password hash PBKDF2-SHA256 nhưng token vẫn in-memory; production gate
   yêu cầu identity store, JWT/session chuẩn, refresh rotation, RBAC và MFA.
-- Provider connection test đang trả `mock_reachable`; adapter OpenAI/Gemini/
-  Anthropic thật, usage/cost và circuit breaker chưa hoàn tất.
+- Provider connection test đã gọi request kiểm tra tối thiểu tới OpenAI, Gemini,
+  Anthropic và OpenAI-compatible; custom provider vẫn cần adapter được phê duyệt.
+  Usage/cost, circuit breaker và job adapter thực thi thật vẫn là production gate.
 - Frontend mới có login/dashboard cơ bản; form quản lý provider, telemetry,
   release, job progress và license actions cần hoàn thiện.
 - Desktop đã có Electron shell và pipeline build DMG/ZIP macOS cùng NSIS
