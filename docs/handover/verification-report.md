@@ -45,19 +45,18 @@ Ngày kiểm tra: 2026-08-30.
 - Native media pipeline smoke test đã pass: tạo video thật bằng FFmpeg, probe
   duration/kích thước, trích frame, render clip 9:16 và xác minh output duration.
 - Desktop release `0.3.3` đã được build tuần tự để tránh tranh chấp archive:
-  macOS ARM64 DMG/ZIP và Windows x64 NSIS đều kiểm tra archive thành công.
-  Artifact x64 mới nhất (sau khi sửa luồng local không tự gọi cloud provider) có
-  SHA-256: DMG `15332a6ba4fa971f5c769c542a82488ada81d54bef59da75b8f4c82e23f51290`,
-  ZIP `ca4461890ede454fb0b5ed399d0d41ea23d03b495a3c593d79098d6b618fcca1`,
-  EXE `b673120d010df2829e05695070ff73af2e5ede7acf868d25116417b61a40db77`.
-  Bản ARM64 mới nhất có SHA-256 DMG `e80499e83d31494ac9fe52112e8d92dea9132c230a4f00f2fe130ba48dc39716`
-  và ZIP `da20d93426594aa011c81ddfb48e490a0c22b9fdd594e8e098c0d23eaac605` để
-  chạy trên Apple Silicon.
+  macOS ARM64/Intel DMG/ZIP và Windows x64 NSIS đều kiểm tra archive thành công.
+  SHA-256 artifact hiện tại: ARM64 DMG
+  `691201aacd922eb32fbd7766db9068c6dee2bdae56848ce074cd329c6cd7ec17`, ARM64
+  ZIP `ef540a4119e786838725eae5ae43a4d846289ed431321f9a6403e6983a489123`, Intel
+  DMG `9acbb7cd5a309a7e0b81d825b15ba41fe2c6f1d0d90decd0ea84cec00ead2407`, Intel
+  ZIP `6c4ef205c85c1ac48f87327ecbf56fcebc147182c24b514cd3506c0627fe6491`, Windows
+  EXE `812f8110b5bdf4adcc6a720381b574d80bd21d7ca23ff7ebc7d5210c2bc049c8`.
   Cả macOS và Windows packaged app đều chứa `electron/machine-id.cjs`,
   `main.cjs` và `preload.cjs` trong `app.asar`.
 - Smoke test qua Cloudflare: hai hostname public trả HTTP 200 cho frontend và
-  `/health/live`; build Admin Portal trên server hiện vẫn là artifact cũ cho đến
-  khi commit này được push và workflow deploy hoàn tất.
+  `/health/live`; cả staging và production đã chạy mã commit `10a7c47` với
+  Desktop version `0.3.3`.
 
 ## Chưa chạy được trên máy hiện tại
 
