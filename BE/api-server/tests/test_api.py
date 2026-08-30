@@ -34,6 +34,13 @@ def test_live_health():
     assert response.headers["x-request-id"]
 
 
+def test_readiness_checks_the_active_store(monkeypatch):
+    monkeypatch.setattr(store, "healthcheck", lambda: False)
+    response = client.get("/health/ready")
+    assert response.status_code == 503
+    assert response.json()["data"]["dependencies"]["store"] == "error"
+
+
 def test_request_id_is_preserved_on_error():
     response = client.get("/api/v1/auth/me", headers={"X-Request-Id": "uat-request-123"})
     assert response.status_code == 401
