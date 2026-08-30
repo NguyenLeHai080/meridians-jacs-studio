@@ -54,8 +54,8 @@ Ngày kiểm tra: 2026-08-30.
 - Desktop release `0.3.3` đã được build tuần tự để tránh tranh chấp archive:
   macOS ARM64/Intel DMG/ZIP và Windows x64 NSIS đều kiểm tra archive thành công.
   SHA-256 artifact hiện tại: ARM64 DMG
-  `691201aacd922eb32fbd7766db9068c6dee2bdae56848ce074cd329c6cd7ec17`, ARM64
-  ZIP `ef540a4119e786838725eae5ae43a4d846289ed431321f9a6403e6983a489123`, Intel
+  `83565805f660df27068ae1318cd46214e76a812998322d7fcb4c624376fea9e5`, ARM64
+  ZIP `29ef2ca564b752c6d8d109be8f4676327a6ae400ba5c39de5de5b7efd788d310`, Intel
   DMG `9acbb7cd5a309a7e0b81d825b15ba41fe2c6f1d0d90decd0ea84cec00ead2407`, Intel
   ZIP `6c4ef205c85c1ac48f87327ecbf56fcebc147182c24b514cd3506c0627fe6491`, Windows
   EXE `812f8110b5bdf4adcc6a720381b574d80bd21d7ca23ff7ebc7d5210c2bc049c8`.
