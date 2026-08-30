@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import UUID
 
 from fastapi import APIRouter, Header, status
+from pydantic import BaseModel, Field
 
 from app.core.errors import AppError
 from app.core.store import store
@@ -13,6 +13,16 @@ from app.modules.licensing.router import _active_license
 router = APIRouter(prefix="/api/v1/client", tags=["desktop-client"])
 
 
+class DesktopJobUpdate(BaseModel):
+    status: str | None = Field(default=None, pattern=r"^(queued|running|completed|failed|cancelled)$")
+    progress: int | None = Field(default=None, ge=0, le=100)
+    stage: str | None = Field(default=None, max_length=40)
+    error: str | None = Field(default=None, max_length=1000)
+    output_path: str | None = Field(default=None, max_length=1000)
+    tokens_used: int | None = Field(default=None, ge=0)
+    credits_used: int | None = Field(default=None, ge=0)
+
+
 def _license_from_headers(
     license_key: str | None = Header(default=None, alias="X-License-Key"),
     device_id: str | None = Header(default=None, alias="X-Device-Id"),
@@ -20,20 +30,6 @@ def _license_from_headers(
     if not license_key or not device_id:
         raise AppError("CLIENT_LICENSE_REQUIRED", "Tool phải được kích hoạt trước khi dùng dịch vụ", 401)
     return _active_license(license_key, device_id)
-
-
-def _provider_for_job(provider_id: UUID | None, execution_mode: str, kind: str) -> dict | None:
-    if execution_mode not in {"cloud", "hybrid"}:
-        return None
-    if not provider_id:
-        raise AppError("JOB_PROVIDER_REQUIRED", "Job cloud/hybrid phải chỉ định provider", 422)
-    provider = store.get("providers", provider_id)
-    if not provider:
-        raise AppError("PROVIDER_NOT_FOUND", "Không tìm thấy provider", 404)
-    capability = {"analysis": "analysis", "tts": "tts", "render": "video_render"}[kind]
-    if capability not in provider.get("capabilities", []):
-        raise AppError("PROVIDER_CAPABILITY_UNSUPPORTED", "Provider không hỗ trợ capability của job", 422, {"required": capability})
-    return provider
 
 
 @router.post("/jobs", response_model=DesktopJobResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -66,7 +62,9 @@ async def create_desktop_job(
     if jobs_today >= license_record["max_jobs_per_day"]:
         raise AppError("LICENSE_DAILY_QUOTA_EXCEEDED", "Đã đạt giới hạn job trong ngày của license", 429)
 
-    _provider_for_job(payload.provider_id, payload.execution_mode.value, payload.kind.value)
+    # The desktop sends an opaque local provider id. Secrets and capability
+    # checks are handled in the Electron main process; the API stores only a
+    # non-sensitive job snapshot and must not require an Admin-managed UUID.
     return store.create(
         "jobs",
         {
@@ -87,3 +85,35 @@ async def list_desktop_jobs(
 ):
     license_record = _license_from_headers(license_key, device_id)
     return [item for item in store.list("jobs") if item.get("license_id") == license_record["id"]]
+
+
+@router.patch("/jobs/{client_job_id}", response_model=DesktopJobResponse)
+async def update_desktop_job(
+    client_job_id: str,
+    payload: DesktopJobUpdate,
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+):
+    license_record = _license_from_headers(license_key, device_id)
+    job = next((item for item in store.list("jobs") if item.get("license_id") == license_record["id"] and item.get("client_job_id") == client_job_id), None)
+    if not job:
+        raise AppError("CLIENT_JOB_NOT_FOUND", "Không tìm thấy job của thiết bị", 404)
+    values = payload.model_dump(exclude_none=True)
+    updated = store.update("jobs", job["id"], values)
+    return updated or job
+
+
+@router.get("/metrics")
+async def desktop_metrics(
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+):
+    license_record = _license_from_headers(license_key, device_id)
+    jobs = [item for item in store.list("jobs") if item.get("license_id") == license_record["id"]]
+    return {
+        "total_jobs": len(jobs),
+        "failed_jobs": sum(1 for item in jobs if item.get("status") == "failed"),
+        "completed_jobs": sum(1 for item in jobs if item.get("status") == "completed"),
+        "tokens_used": sum(int(item.get("tokens_used") or 0) for item in jobs),
+        "credits_used": sum(int(item.get("credits_used") or 0) for item in jobs),
+    }

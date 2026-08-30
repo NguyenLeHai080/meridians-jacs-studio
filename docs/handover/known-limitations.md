@@ -8,7 +8,8 @@
   chi tiết, rate-limit login và MFA.
 - Provider connection test đã gọi request kiểm tra tối thiểu tới OpenAI, Gemini,
   Anthropic và OpenAI-compatible; custom provider vẫn cần adapter được phê duyệt.
-  Usage/cost, circuit breaker và job adapter thực thi thật vẫn là production gate.
+  Usage/cost phía provider vẫn phụ thuộc vendor; Desktop đã ghi nhận token/credit
+  theo kết quả adapter và đồng bộ metrics theo license.
 - Admin Portal hiện có login/dashboard và các thao tác license/provider/telemetry
   cốt lõi; release management, job progress realtime và RBAC chi tiết vẫn cần
   hoàn thiện theo backlog.
@@ -21,8 +22,15 @@
   thiết bị thực tế, không phải hardware attestation chống giả mạo tuyệt đối.
   Pipeline build tạo DMG/ZIP macOS cùng NSIS Windows. Artifact macOS ARM64 và
   Windows x64 hiện unsigned.
-  FFmpeg/GPU worker, provider execution thật, queue worker nền và OTA ký số vẫn
-  là production gate.
+  Desktop hỗ trợ cấu hình provider BYOK và test kết nối trực tiếp trong Electron
+  main process. Luồng file/URL, probe, trích frame gửi vision, phân tích JSON,
+  render FFmpeg và tiến trình đã được nối trong app; nếu máy không có FFmpeg,
+  app dùng passthrough có cảnh báo ngầm trong metadata thay vì giả lập tiến trình.
+  Installer hiện đã kèm FFmpeg/FFprobe theo từng nền tảng; artifact `0.3.2`
+  chạy được pipeline probe/trích frame/render thật. Artifact vẫn unsigned và
+  OTA ký số cần hoàn thiện trước khi phát hành đại trà. Settings đã kiểm tra
+  manifest release qua `/api/v1/releases/check` và chỉ mở URL HTTPS tin cậy;
+  bước tải/xác minh chữ ký/cài đặt tự động vẫn là release gate.
 - Docker Compose cung cấp dependency local; chưa phải topology HA production.
 - Các SLO, retention, quota, pricing và chính sách dữ liệu còn cần Product/Tech
   Lead chốt bằng issue trước UAT chính thức.

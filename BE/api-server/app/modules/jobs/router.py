@@ -20,7 +20,7 @@ async def create_job(payload: JobCreate, _: dict = Depends(require_auth)):
     provider = store.get("providers", payload.provider_id) if payload.provider_id else None
     if payload.provider_id and not provider:
         raise AppError("PROVIDER_NOT_FOUND", "Không tìm thấy provider", 404)
-    required_capability = {"analysis": "analysis", "tts": "tts", "render": "video_render"}[payload.kind]
+    required_capability = "analysis" if payload.kind == "render" and payload.execution_mode == "hybrid" else {"analysis": "analysis", "tts": "tts", "render": "video_render"}[payload.kind]
     if provider and payload.execution_mode in {"cloud", "hybrid"} and required_capability not in provider.get("capabilities", []):
         raise AppError("PROVIDER_CAPABILITY_UNSUPPORTED", "Provider không hỗ trợ capability của job", 422, {"required": required_capability})
     return store.create("jobs", {**payload.model_dump(), "status": "queued", "progress": 0, "engine": payload.execution_mode.value})

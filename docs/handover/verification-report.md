@@ -4,10 +4,14 @@ Ngày kiểm tra: 2026-08-30.
 
 ## Đã chạy thành công
 
-- `21` bài test API nền tảng đã pass trong lần kiểm tra trước; bổ sung thêm `3`
-  regression test cho token tamper/malformed và database readiness (đã compile và
-  smoke-test trong container),
-  telemetry, release, persistence adapter và request ID).
+- Bổ sung kiểm tra cập nhật từ Desktop qua release manifest có kiểm tra platform,
+  semver và HTTPS/loopback URL; bổ sung hủy tiến trình native (download, phân tích,
+  FFmpeg) và nút chạy lại job lỗi/hủy trong Batch Queue.
+- Màn hình phân tích video giữ đúng execution mode (CPU/GPU/Cloud/Hybrid) khi tạo
+  scene jobs; không tự gửi video local lên provider nếu người dùng chưa chọn cloud.
+
+- `31` bài test API đã pass bằng Python 3.12, bao gồm auth, licensing/HWID,
+  provider, telemetry, release, persistence adapter, readiness và request ID.
 - Python bytecode compile cho `BE/api-server/app` và tests.
 - Ruff lint `BE/api-server/app` và tests.
 - Docker Compose schema validation.
@@ -32,17 +36,28 @@ Ngày kiểm tra: 2026-08-30.
 - Native machine ID test chạy bằng Electron Node: đọc/parsing macOS
   `IOPlatformUUID`, Windows `MachineGuid`, không làm lộ giá trị gốc và giữ ổn
   định installation fallback giữa các lần khởi động.
-- Desktop release `0.3.1` đã được build lại tuần tự để tránh tranh chấp archive:
+- Native provider-store test chạy bằng Electron Node: metadata được mã hóa trước
+  khi ghi, API key không xuất hiện trong DTO hoặc file lưu trữ, chỉnh sửa provider
+  giữ key khi để trống và endpoint không an toàn bị từ chối.
+- Desktop media smoke build đã pass với typed IPC cho multi-file picker, URL
+  download, persistent jobs, provider analysis, render progress và output path;
+  TypeScript/Vite build và Electron syntax check đều pass.
+- Native media pipeline smoke test đã pass: tạo video thật bằng FFmpeg, probe
+  duration/kích thước, trích frame, render clip 9:16 và xác minh output duration.
+- Desktop release `0.3.2` đã được build tuần tự để tránh tranh chấp archive:
   macOS ARM64 DMG/ZIP và Windows x64 NSIS đều kiểm tra archive thành công.
-  SHA-256: DMG `499b84a12c285fe1704f765ceb6a1200324e041f43be32bbe1417d433cabc602`,
-  ZIP `f50f77fc57ee940e87366dfd406f48a1ca05dd20e83b6870af4b21bfc4e826b`,
-  EXE `f1ae4c35464701d500c82bc4367576a494f95b5f6e266aefca49c3a65b7f0ace`.
+  Artifact x64 mới nhất (sau khi sửa luồng local không tự gọi cloud provider) có
+  SHA-256: DMG `15332a6ba4fa971f5c769c542a82488ada81d54bef59da75b8f4c82e23f51290`,
+  ZIP `ca4461890ede454fb0b5ed399d0d41ea23d03b495a3c593d79098d6b618fcca1`,
+  EXE `b673120d010df2829e05695070ff73af2e5ede7acf868d25116417b61a40db77`.
+  Bản ARM64 mới nhất có SHA-256 DMG `e80499e83d31494ac9fe52112e8d92dea9132c230a4f00f2fe130ba48dc39716`
+  và ZIP `da20d93426594aa011c81ddfb48e490a0c22b9fdd594e8e098c0d23eaac605` để
+  chạy trên Apple Silicon.
   Cả macOS và Windows packaged app đều chứa `electron/machine-id.cjs`,
   `main.cjs` và `preload.cjs` trong `app.asar`.
-- Smoke test qua Cloudflare thành công:
-  `https://test-jacs-studio.nexoratech.com.vn` và
-  `https://jacs-studio.nexoratech.com.vn` trả HTTP 200; `/health/live` và đăng
-  nhập admin hoạt động trên cả hai hostname.
+- Smoke test qua Cloudflare: hai hostname public trả HTTP 200 cho frontend và
+  `/health/live`; build Admin Portal trên server hiện vẫn là artifact cũ cho đến
+  khi commit này được push và workflow deploy hoàn tất.
 
 ## Chưa chạy được trên máy hiện tại
 

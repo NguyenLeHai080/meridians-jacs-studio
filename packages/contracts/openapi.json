@@ -307,6 +307,153 @@
         }
       }
     },
+    "/api/v1/client/jobs/{client_job_id}": {
+      "patch": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Update Desktop Job",
+        "operationId": "update_desktop_job_api_v1_client_jobs__client_job_id__patch",
+        "parameters": [
+          {
+            "name": "client_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Client Job Id"
+            }
+          },
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesktopJobUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client/metrics": {
+      "get": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Desktop Metrics",
+        "operationId": "desktop_metrics_api_v1_client_metrics_get",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/licenses": {
       "get": {
         "tags": [
@@ -1584,7 +1731,8 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid"
+                "maxLength": 128,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -1598,6 +1746,36 @@
             "minLength": 1,
             "title": "Project Id",
             "default": "desktop"
+          },
+          "source_type": {
+            "type": "string",
+            "pattern": "^(file|url)$",
+            "title": "Source Type",
+            "default": "file"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "tokens_used": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tokens Used",
+            "default": 0
+          },
+          "credits_used": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Credits Used",
+            "default": 0
           }
         },
         "type": "object",
@@ -1642,7 +1820,8 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid"
+                "maxLength": 128,
+                "minLength": 1
               },
               {
                 "type": "null"
@@ -1656,6 +1835,36 @@
             "minLength": 1,
             "title": "Project Id",
             "default": "desktop"
+          },
+          "source_type": {
+            "type": "string",
+            "pattern": "^(file|url)$",
+            "title": "Source Type",
+            "default": "file"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "tokens_used": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tokens Used",
+            "default": 0
+          },
+          "credits_used": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Credits Used",
+            "default": 0
           },
           "id": {
             "type": "string",
@@ -1673,6 +1882,39 @@
           "engine": {
             "type": "string",
             "title": "Engine"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Path"
           }
         },
         "type": "object",
@@ -1687,6 +1929,97 @@
           "engine"
         ],
         "title": "DesktopJobResponse"
+      },
+      "DesktopJobUpdate": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(queued|running|completed|failed|cancelled)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "output_path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Path"
+          },
+          "tokens_used": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Used"
+          },
+          "credits_used": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits Used"
+          }
+        },
+        "type": "object",
+        "title": "DesktopJobUpdate"
       },
       "ExecutionMode": {
         "type": "string",
@@ -1901,6 +2234,28 @@
             ],
             "title": "Last Seen At"
           },
+          "last_app_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last App Version"
+          },
+          "last_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Platform"
+          },
           "key": {
             "type": "string",
             "title": "Key"
@@ -1923,7 +2278,7 @@
         "properties": {
           "key": {
             "type": "string",
-            "maxLength": 128,
+            "maxLength": 256,
             "minLength": 8,
             "title": "Key"
           },
@@ -2048,6 +2403,28 @@
               }
             ],
             "title": "Last Seen At"
+          },
+          "last_app_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last App Version"
+          },
+          "last_platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Platform"
           }
         },
         "type": "object",
@@ -2688,7 +3065,7 @@
         "properties": {
           "key": {
             "type": "string",
-            "maxLength": 128,
+            "maxLength": 256,
             "minLength": 8,
             "title": "Key"
           },

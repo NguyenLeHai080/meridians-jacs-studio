@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  macos:
-    runs-on: macos-latest
+  macos-arm64:
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -18,11 +18,35 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
+      - run: brew install ffmpeg
+      - run: node Tool/desktop-app/scripts/prepare-media-binaries.cjs
       - run: pnpm --dir Tool/desktop-app build
-      - run: pnpm --dir Tool/desktop-app exec electron-builder --mac dmg zip
+      - run: pnpm --dir Tool/desktop-app exec electron-builder --mac dmg zip --arm64
       - uses: actions/upload-artifact@v4
         with:
-          name: jacs-studio-macos
+          name: jacs-studio-macos-arm64
+          path: Tool/desktop-app/release/*
+
+  macos-x64:
+    # macos-13 is Intel, so the bundled FFmpeg is executable by the x64 app.
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - run: brew install ffmpeg
+      - run: JACS_TARGET_ARCH=x64 node Tool/desktop-app/scripts/prepare-media-binaries.cjs
+      - run: pnpm --dir Tool/desktop-app build
+      - run: pnpm --dir Tool/desktop-app exec electron-builder --mac dmg zip --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jacs-studio-macos-x64
           path: Tool/desktop-app/release/*
 
   windows:
@@ -37,6 +61,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
+      - run: choco install ffmpeg -y --no-progress
+      - run: JACS_TARGET_ARCH=x64 node Tool/desktop-app/scripts/prepare-media-binaries.cjs
       - run: pnpm --dir Tool/desktop-app build
       - run: pnpm --dir Tool/desktop-app exec electron-builder --win nsis --x64
       - uses: actions/upload-artifact@v4

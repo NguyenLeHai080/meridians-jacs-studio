@@ -28,12 +28,20 @@ async def ingest(request: Request, event: TelemetryEvent, telemetry_token: str |
         raise AppError("TELEMETRY_DISABLED", "Telemetry đang tắt", 503)
     license_key = request.headers.get("X-License-Key")
     device_id = request.headers.get("X-Device-Id")
+    license_record = None
     token_valid = bool(telemetry_token and settings.telemetry_ingest_token and compare_digest(telemetry_token, settings.telemetry_ingest_token))
     if settings.telemetry_ingest_token and not token_valid:
         if not license_key or not device_id:
             raise AppError("TELEMETRY_UNAUTHORIZED", "Telemetry token không hợp lệ", 401)
-        _active_license(license_key, device_id)
-    record = store.create("telemetry", event.model_dump())
+        license_record = _active_license(license_key, device_id)
+    payload = event.model_dump()
+    # Keep desktop incidents attributable to a license without ever storing
+    # the raw license key. Device IDs are already one-way JACS identifiers.
+    if license_record:
+        payload["license_id"] = str(license_record["id"])
+        if not payload.get("hwid_hash"):
+            payload["hwid_hash"] = device_id
+    record = store.create("telemetry", payload)
     return {"data": {"accepted": True, "event_id": str(record["id"])} }
 
 

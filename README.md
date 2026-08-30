@@ -35,13 +35,14 @@ quản trị; mật khẩu luôn phải nhập thủ công và không được l
 ### Desktop Tool React/Electron (`Tool/`)
 
 ```bash
-pnpm dev:desktop
+pnpm dev:electron
 ```
 
 Desktop có shell điều hướng theo module, activation UI, Device ID dẫn xuất,
-secure storage qua Electron, file picker và cài đặt tự lưu. FFmpeg/GPU worker,
-provider generation thực, signed OTA và cross-platform smoke test vẫn cần hoàn
-thành trước khi phát hành rộng cho khách hàng.
+secure storage qua Electron, file picker, hàng đợi job bền vững, phân tích frame
+qua provider BYOK và render FFmpeg có tiến trình. `pnpm dev:desktop` chỉ dùng để
+xem renderer trong trình duyệt; muốn chọn file, lấy mã máy thật, nhập provider
+và render video phải chạy `pnpm dev:electron` hoặc installer native.
 
 ### Hạ tầng local
 
@@ -77,7 +78,17 @@ pytest -q
 ruff check app tests
 ```
 
-Kết quả mong đợi hiện tại: `25 passed`.
+Kết quả mong đợi hiện tại: `31 passed`.
+
+### 1b. Test native Desktop
+
+```bash
+pnpm test:desktop
+```
+
+Lệnh này chạy các kiểm thử Device ID, secure provider storage và media
+pipeline (FFmpeg probe, trích frame, render clip). Cần cài Node.js và chạy
+`pnpm install` trước.
 
 ### 2. Chạy API và Swagger
 

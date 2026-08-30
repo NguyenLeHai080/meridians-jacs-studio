@@ -9,6 +9,16 @@ __pycache__/
 node_modules/
 dist/
 Tool/desktop-app/release/
+Tool/desktop-app/bin/darwin/ffmpeg
+Tool/desktop-app/bin/darwin/ffprobe
+Tool/desktop-app/bin/win32/ffmpeg.exe
+Tool/desktop-app/bin/win32/ffprobe.exe
+Tool/desktop-app/bin/darwin-arm64/ffmpeg
+Tool/desktop-app/bin/darwin-arm64/ffprobe
+Tool/desktop-app/bin/darwin-x64/ffmpeg
+Tool/desktop-app/bin/darwin-x64/ffprobe
+Tool/desktop-app/bin/win32-x64/ffmpeg.exe
+Tool/desktop-app/bin/win32-x64/ffprobe.exe
 .pnpm-store/
 .vite/
 *.tsbuildinfo

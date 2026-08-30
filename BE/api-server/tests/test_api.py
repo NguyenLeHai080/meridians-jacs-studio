@@ -136,6 +136,63 @@ def test_license_validate_and_hwid_mismatch():
     assert mismatch.json()["error"]["code"] == "LICENSE_HWID_MISMATCH"
 
 
+def test_license_expiry_without_timezone_is_normalized():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "Timezone", "customer_contact": "timezone@example.com", "hwid": HWID_MAC,
+        "expires_at": "2099-01-01T00:00:00",
+    })
+    assert created.status_code == 201
+    assert created.json()["expires_at"].endswith("Z")
+    validated = client.post("/api/v1/licenses/validate", json={"key": created.json()["key"], "hwid": HWID_MAC})
+    assert validated.status_code == 200
+
+
+def test_license_validation_normalizes_hwid_whitespace():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "HWID copy", "customer_contact": "hwid@example.com", "hwid": HWID_MAC,
+    }).json()
+    copied_hwid = f"  {HWID_MAC[:12]}\n{HWID_MAC[12:]}  "
+    response = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": copied_hwid})
+    assert response.status_code == 200
+    assert response.json()["data"]["valid"] is True
+
+
+def test_license_validation_rejects_non_desktop_hwid():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "HWID invalid", "customer_contact": "invalid@example.com", "hwid": HWID_MAC,
+    }).json()
+    response = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": "WEB-DEMO-MACHINE"})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "LICENSE_HWID_INVALID"
+
+
+def test_license_validation_normalizes_copied_whitespace_and_rejects_malformed_key():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "Copy test", "customer_contact": "copy@example.com", "hwid": HWID_MAC,
+    }).json()
+    copied_with_linebreak = f"  {created['key'][:9]}\n{created['key'][9:]}  "
+    valid = client.post("/api/v1/licenses/validate", json={"key": copied_with_linebreak, "hwid": HWID_MAC})
+    assert valid.status_code == 200
+    malformed = client.post("/api/v1/licenses/validate", json={"key": "JACS-not-a-key", "hwid": HWID_MAC})
+    assert malformed.status_code == 401
+    assert malformed.json()["error"]["code"] == "LICENSE_INVALID"
+
+
+def test_blocked_license_is_rejected_with_actionable_code():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "Blocked", "customer_contact": "blocked@example.com", "hwid": HWID_WIN,
+    }).json()
+    assert client.patch(f"/api/v1/licenses/{created['id']}/status", headers=headers, json={"status": "blocked"}).status_code == 200
+    response = client.post("/api/v1/licenses/validate", json={"key": created["key"], "hwid": HWID_WIN})
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "LICENSE_INVALID"
+
+
 def test_license_heartbeat_revalidates_running_desktop_session():
     headers = auth_headers()
     created = client.post("/api/v1/licenses", headers=headers, json={
@@ -211,15 +268,33 @@ def test_desktop_job_requires_license_and_is_idempotent():
         "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": HWID_WIN, "max_jobs_per_day": 1,
     }).json()
     client_headers = {"X-License-Key": created["key"], "X-Device-Id": HWID_WIN}
-    payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu"}
+    payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu", "provider_id": "customer-local-provider-1"}
     first = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
     assert first.status_code == 202
+    assert first.json()["provider_id"] == "customer-local-provider-1"
     second = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
     assert second.status_code == 202
     assert second.json()["id"] == first.json()["id"]
     listed = client.get("/api/v1/client/jobs", headers=client_headers)
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+
+
+def test_desktop_job_progress_update_and_metrics():
+    headers = auth_headers()
+    created = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "Metrics", "customer_contact": "metrics@example.com", "hwid": HWID_MAC,
+    }).json()
+    client_headers = {"X-License-Key": created["key"], "X-Device-Id": HWID_MAC}
+    payload = {"client_job_id": "desktop-metrics-1", "name": "Metrics clip", "source_name": "clip.mov", "execution_mode": "local-cpu", "tokens_used": 20, "credits_used": 1}
+    assert client.post("/api/v1/client/jobs", headers=client_headers, json=payload).status_code == 202
+    updated = client.patch("/api/v1/client/jobs/desktop-metrics-1", headers=client_headers, json={"status": "failed", "stage": "failed", "progress": 44, "error": "test"})
+    assert updated.status_code == 200
+    assert updated.json()["status"] == "failed"
+    metrics = client.get("/api/v1/client/metrics", headers=client_headers)
+    assert metrics.status_code == 200
+    assert metrics.json()["failed_jobs"] == 1
+    assert metrics.json()["tokens_used"] == 20
 
 
 def test_telemetry_requires_ingest_token_and_is_queryable():
@@ -241,6 +316,10 @@ def test_telemetry_accepts_activated_desktop_headers():
     event = {"event_name": "desktop.warning", "severity": "warning", "app_version": "v0.3.0", "fingerprint": "desktop-1", "message": "low disk"}
     accepted = client.post("/api/v1/telemetry/logs", headers={"X-License-Key": created["key"], "X-Device-Id": HWID_LNX}, json=event)
     assert accepted.status_code == 202
+    logs = client.get("/api/v1/telemetry/logs", headers=admin_headers).json()["data"]
+    stored = next(item for item in logs if item["fingerprint"] == "desktop-1")
+    assert stored["license_id"] == created["id"]
+    assert stored["hwid_hash"] == HWID_LNX
 
 
 def test_provider_endpoint_rejects_private_network():

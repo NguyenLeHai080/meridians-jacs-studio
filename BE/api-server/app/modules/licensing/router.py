@@ -25,12 +25,23 @@ from app.modules.licensing.schemas import (
 
 router = APIRouter(prefix="/api/v1/licenses", tags=["licensing"])
 DEVICE_ID_PATTERN = re.compile(r"^JACS-(MAC|WIN|LNX)-[A-F0-9]{32}$")
+LICENSE_KEY_PATTERN = re.compile(r"^JACS-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$")
 
 
 def _normalize_hwid(hwid: str) -> str:
-    normalized = hwid.strip().upper()
+    # Device IDs are frequently copied from chat messages with line breaks;
+    # normalize all whitespace before validating/binding the value.
+    normalized = re.sub(r"[\s\u200b-\u200d\ufeff]+", "", str(hwid)).upper()
     if normalized == "WEB-DEMO-MACHINE":
         raise AppError("LICENSE_HWID_INVALID", "Không thể cấp hoặc kích hoạt license bằng mã máy demo", 422)
+    return normalized
+
+
+def _normalize_key(key: str) -> str:
+    """Normalize keys copied from chat/email without accepting malformed keys."""
+    normalized = re.sub(r"[\s\u200b-\u200d\ufeff]+", "", str(key)).upper()
+    if not LICENSE_KEY_PATTERN.fullmatch(normalized):
+        raise AppError("LICENSE_INVALID", "License không hợp lệ hoặc đã bị khóa", 401)
     return normalized
 
 
@@ -45,6 +56,16 @@ def _validate_hwid(hwid: str) -> str:
     return normalized
 
 
+def _as_utc(value: datetime | str | None) -> datetime | None:
+    """Keep expiry comparisons safe for clients that omit an ISO timezone."""
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value) if isinstance(value, str) else value
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def make_key() -> str:
     parts = [secrets.token_hex(2).upper(), secrets.token_hex(2).upper(), secrets.token_hex(2).upper()]
     return "JACS-" + "-".join(parts)
@@ -56,15 +77,17 @@ def hash_key(value: str) -> str:
 
 def _active_license(key: str, hwid: str) -> dict:
     """Resolve a client license and update its last-seen timestamp."""
-    hwid = _normalize_hwid(hwid)
-    submitted_hash = hash_key(key.strip())
+    hwid = _validate_hwid(hwid)
+    normalized_key = _normalize_key(key)
+    submitted_hash = hash_key(normalized_key)
     match = next((item for item in store.list("licenses") if item["key_hash"] == submitted_hash), None)
     if not match or match["status"] != LicenseStatus.active:
         raise AppError("LICENSE_INVALID", "License không hợp lệ hoặc đã bị khóa", 401)
     if match["hwid"] != hwid:
         raise AppError("LICENSE_HWID_MISMATCH", "License không thuộc thiết bị này", 403)
     now = datetime.now(UTC)
-    if match["expires_at"] and match["expires_at"] <= now:
+    expires_at = _as_utc(match.get("expires_at"))
+    if expires_at and expires_at <= now:
         store.update("licenses", match["id"], {"status": LicenseStatus.expired})
         raise AppError("LICENSE_EXPIRED", "License đã hết hạn", 403)
     updated = store.update("licenses", match["id"], {"last_seen_at": now})
@@ -75,10 +98,12 @@ def _active_license(key: str, hwid: str) -> dict:
 async def create_license(payload: CreateLicenseRequest, user: dict = Depends(require_auth)):
     hwid = _validate_hwid(payload.hwid)
     raw_key = make_key()
+    values = payload.model_dump(exclude={"hwid"})
+    values["expires_at"] = _as_utc(values.get("expires_at"))
     record = store.create(
         "licenses",
         {
-            **payload.model_dump(exclude={"hwid"}),
+            **values,
             "hwid": hwid,
             "key_hash": hash_key(raw_key),
             "key_hint": f"JACS-****-{raw_key[-4:]}",

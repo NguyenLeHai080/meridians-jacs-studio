@@ -43,6 +43,11 @@ Hệ thống không tự động chuyển local sang cloud nếu chưa có xác 
 phát sinh phí và truyền dữ liệu video. Khi GPU không khả dụng, app đề xuất CPU,
 remote render hoặc hủy job; lựa chọn mặc định do khách thiết lập.
 
+Desktop hiện thực thi `cloud`/`hybrid` theo nghĩa **AI cloud + render local**:
+Electron trích frame (và transcript nếu provider hỗ trợ), gửi qua profile BYOK,
+sau đó FFmpeg cắt/crop/encode trên máy khách. Remote video render là capability
+riêng, chưa được giả định chỉ vì provider có chat/vision.
+
 ## Luồng người dùng
 
 1. Khách mở **AI Providers**, thêm provider, nhập URL/key/model và chạy Test

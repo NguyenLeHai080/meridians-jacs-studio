@@ -11,9 +11,10 @@ pip install -e '.[dev]'
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Admin chạy bằng `pnpm dev:admin`; Desktop prototype chạy bằng
-`pnpm dev:desktop`. Swagger ở `/docs`, liveness ở `/health/live` và readiness ở
-`/health/ready`.
+Admin chạy bằng `pnpm dev:admin`; `pnpm dev:desktop` chỉ mở renderer Vite để
+kiểm tra giao diện. Muốn test tool thật (file picker, Device ID, secure
+storage, FFmpeg và render), dùng `pnpm dev:electron`. Swagger ở `/docs`,
+liveness ở `/health/live` và readiness ở `/health/ready`.
 
 ## Staging/production gate
 

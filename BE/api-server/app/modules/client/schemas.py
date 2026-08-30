@@ -15,8 +15,15 @@ class DesktopJobCreate(BaseModel):
     source_name: str = Field(min_length=1, max_length=255)
     kind: JobKind = JobKind.render
     execution_mode: ExecutionMode
-    provider_id: UUID | None = None
+    # Desktop BYOK profiles live in the customer's OS secure storage, so their
+    # identifier is intentionally opaque to the API (it is not a managed
+    # provider UUID from the Admin Portal).
+    provider_id: str | None = Field(default=None, min_length=1, max_length=128)
     project_id: str = Field(default="desktop", min_length=1, max_length=160)
+    source_type: str = Field(default="file", pattern=r"^(file|url)$")
+    duration_seconds: float | None = Field(default=None, ge=0)
+    tokens_used: int = Field(default=0, ge=0)
+    credits_used: int = Field(default=0, ge=0)
 
 
 class DesktopJobResponse(DesktopJobCreate):
@@ -24,3 +31,6 @@ class DesktopJobResponse(DesktopJobCreate):
     status: str
     progress: int
     engine: str
+    stage: str | None = None
+    error: str | None = None
+    output_path: str | None = None

@@ -15,9 +15,11 @@ React modules -> core/native client -> preload allowlist -> Electron main
 ```
 
 `Tool/desktop-app/electron/preload.cjs` chỉ expose các hàm tối thiểu: lấy thông
-tin thiết bị, đọc/ghi/xóa license, mở file chooser và reveal path. Main process
-không trả secret về renderer. Lớp bridge này là điểm duy nhất được phép thêm API
-native mới; mỗi method mới cần threat review và test Windows/macOS.
+tin thiết bị, đọc/ghi/xóa license, quản lý profile provider (chỉ metadata/mask),
+test provider trong main process, mở file chooser và reveal path. Main process
+không trả API key thô về renderer; key được mã hóa bằng `safeStorage` và chỉ
+được giải mã trong lúc gọi provider. Lớp bridge này là điểm duy nhất được phép
+thêm API native mới; mỗi method mới cần threat review và test Windows/macOS.
 
 ## Cấu trúc code mục tiêu
 
@@ -60,9 +62,9 @@ chỉ import facade/type công khai qua `core` hoặc `shared`.
 | Installer/update | DMG/ZIP, ký + notarize | NSIS/MSI, Authenticode | Manifest ký + checksum + rollback |
 | App data | Application Support | AppData | Schema config versioned và migration |
 
-Lưu ý: `safeStorage` là lớp mã hóa theo OS của Electron, phù hợp lưu license
-material ngắn hạn trong MVP. API key BYOK production cần secure-store adapter đã
-được kiểm thử trên từng OS; không coi fallback plaintext là production-ready.
+Lưu ý: `safeStorage` là lớp mã hóa theo OS của Electron, được dùng cho license
+và profile API key BYOK. Nếu secure storage không khả dụng, thao tác lưu bị từ
+chối thay vì fallback plaintext.
 
 ## Local media runtime
 
@@ -94,9 +96,11 @@ rõ lựa chọn CPU, remote render hoặc hủy - không tự upload video lên
 - Job đang render phải được checkpoint hoặc yêu cầu người dùng chọn thời điểm
   restart trước update; không đóng ứng dụng làm hỏng output.
 
-## Các ràng buộc chưa hoàn tất
+## Các ràng buộc còn lại
 
-Shell đã có typed IPC cho activation/file picking, nhưng FFmpeg worker, GPU
-probe, provider generation thực, updater signing và persistent local job store
-vẫn là các story triển khai tiếp theo. Không được quảng bá UI prototype là chức
-năng render/OTA production cho đến khi các story này đạt Definition of Done.
+Typed IPC hiện đã bao gồm chọn nhiều file, tải URL HTTP(S), probe metadata,
+trích frame, phân tích provider, render FFmpeg, progress event, hủy tiến trình,
+kiểm tra release manifest và persistent local job store. Cần đóng gói binary FFmpeg/FFprobe vào `bin/<platform>-<arch>` trước
+khi build installer để encode H.264/GPU; nếu thiếu binary, app chỉ tạo
+passthrough output giữ nguyên container nguồn. OTA ký số, code signing/notarize
+và cloud render worker vẫn là các story phát hành tiếp theo.

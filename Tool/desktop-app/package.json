@@ -1,19 +1,21 @@
 {
   "name": "@jacs/desktop-app",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "JACS Studio desktop video analysis and rendering tool",
   "author": "NexoraTech",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "dev:electron": "pnpm build && electron .",
+    "dev:electron": "pnpm build && node electron/launch.cjs",
     "build": "tsc -b && vite build",
+    "test": "pnpm test:native",
     "test:native": "node --test tests/*.test.cjs",
-    "dist": "pnpm build && electron-builder",
-    "dist:mac": "pnpm build && electron-builder --mac dmg zip",
-    "dist:win": "pnpm build && electron-builder --win nsis --x64"
+    "prepare:media": "node scripts/prepare-media-binaries.cjs",
+    "dist": "pnpm prepare:media && pnpm build && electron-builder",
+    "dist:mac": "pnpm prepare:media && pnpm build && electron-builder --mac dmg zip",
+    "dist:win": "pnpm prepare:media && pnpm build && electron-builder --win nsis --x64"
   },
   "dependencies": { "react": "^18.3.1", "react-dom": "^18.3.1" },
   "devDependencies": {
@@ -30,6 +32,7 @@
     "productName": "JACS Studio",
     "directories": { "output": "release" },
     "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "extraResources": [{ "from": "bin", "to": "bin", "filter": ["**/*"] }],
     "mac": { "target": ["dmg", "zip"], "category": "public.app-category.video" },
     "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] }
   }

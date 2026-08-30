@@ -19,6 +19,7 @@ test("reads the macOS IOPlatformUUID and never exposes the raw value", () => {
 test("parses the Windows MachineGuid registry value", () => {
   const raw = "12345678-90ab-cdef-1234-567890abcdef";
   assert.equal(readWindowsMachineGuid(() => `MachineGuid    REG_SZ    ${raw}`), raw);
+  assert.equal(readWindowsMachineGuid(() => `M\u0000a\u0000c\u0000h\u0000i\u0000n\u0000e\u0000G\u0000u\u0000i\u0000d\u0000    REG_SZ    ${raw}`), raw);
 });
 
 test("returns a stable installation identifier when platform lookup fails", () => {

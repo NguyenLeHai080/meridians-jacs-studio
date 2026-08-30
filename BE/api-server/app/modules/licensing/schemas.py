@@ -43,7 +43,7 @@ class LicenseCreatedResponse(LicenseResponse):
 
 
 class ValidateLicenseRequest(BaseModel):
-    key: str = Field(min_length=8, max_length=128)
+    key: str = Field(min_length=8, max_length=256)
     hwid: str = Field(min_length=8, max_length=256)
 
 

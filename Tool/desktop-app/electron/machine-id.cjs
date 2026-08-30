@@ -8,7 +8,9 @@ const childProcess = require("node:child_process");
 const APP_SALT = "jacs-studio-hwid-v1";
 
 function normalizeIdentifier(value) {
-  return String(value ?? "").trim().replace(/^"|"$/g, "");
+  // `reg.exe` can return UTF-16 data with embedded NULs when launched from
+  // Electron; remove them before parsing the identifier.
+  return String(value ?? "").replace(/\0/g, "").trim().replace(/^"|"$/g, "");
 }
 
 function readMacPlatformUuid(execFileSync = childProcess.execFileSync) {
@@ -23,7 +25,7 @@ function readMacPlatformUuid(execFileSync = childProcess.execFileSync) {
 function readWindowsMachineGuid(execFileSync = childProcess.execFileSync) {
   try {
     const output = execFileSync("reg.exe", ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"], { encoding: "utf8", windowsHide: true });
-    const line = output.split(/\r?\n/).find((item) => /MachineGuid\s+REG_/i.test(item));
+    const line = output.split(/\r?\n/).map(normalizeIdentifier).find((item) => /MachineGuid\s+REG_/i.test(item));
     return normalizeIdentifier(line?.match(/MachineGuid\s+REG_\S+\s+(.+)$/i)?.[1]);
   } catch {
     return "";
