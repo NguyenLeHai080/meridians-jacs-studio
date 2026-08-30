@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import secrets
+from datetime import UTC, datetime
 from hashlib import sha256
-from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -12,17 +12,16 @@ from app.core.security import require_auth
 from app.core.store import store
 from app.modules.licensing.schemas import (
     CreateLicenseRequest,
-    LicenseCreatedResponse,
-    LicenseResponse,
-    LicenseStatusUpdate,
     HwidResetRequest,
+    LicenseCreatedResponse,
     LicenseRenewRequest,
+    LicenseResponse,
     LicenseStatus,
+    LicenseStatusUpdate,
     ValidateLicenseRequest,
 )
 
 router = APIRouter(prefix="/api/v1/licenses", tags=["licensing"])
-UTC = timezone.utc
 
 
 def make_key() -> str:

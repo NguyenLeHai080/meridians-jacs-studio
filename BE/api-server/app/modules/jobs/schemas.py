@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from uuid import UUID
-from typing import Optional
 
 from pydantic import BaseModel, Field
+
 from app.core.compat import StrEnum
 
 
@@ -23,7 +23,7 @@ class ExecutionMode(StrEnum):
 class JobCreate(BaseModel):
     kind: JobKind
     execution_mode: ExecutionMode
-    provider_id: Optional[UUID] = None
+    provider_id: UUID | None = None
     project_id: str = Field(min_length=1, max_length=160)
 
 

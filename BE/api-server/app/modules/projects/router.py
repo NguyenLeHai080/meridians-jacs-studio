@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -11,7 +11,6 @@ from app.core.store import store
 from app.modules.projects.schemas import ProjectCreate, ProjectResponse
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
-UTC = timezone.utc
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)

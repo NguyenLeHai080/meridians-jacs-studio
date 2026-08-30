@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from uuid import UUID
-from typing import Optional
 
 from pydantic import BaseModel, Field, HttpUrl
+
 from app.core.compat import StrEnum
 
 
@@ -26,12 +26,12 @@ class ProviderCreate(BaseModel):
 
 
 class ProviderUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    base_url: Optional[HttpUrl] = None
-    model: Optional[str] = Field(default=None, min_length=1, max_length=160)
-    capabilities: Optional[list[str]] = None
-    enabled: Optional[bool] = None
-    api_key: Optional[str] = Field(default=None, min_length=8, max_length=4096)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    base_url: HttpUrl | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=160)
+    capabilities: list[str] | None = None
+    enabled: bool | None = None
+    api_key: str | None = Field(default=None, min_length=8, max_length=4096)
 
 
 class ProviderResponse(BaseModel):

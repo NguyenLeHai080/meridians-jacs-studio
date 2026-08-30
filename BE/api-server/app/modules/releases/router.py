@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query
 
 from app.core.security import require_auth
 from app.core.store import store

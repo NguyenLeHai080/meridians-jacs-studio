@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+import asyncio
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, status
+
+from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.providers.connection import test_connection
 from app.core.providers.endpoint_policy import validate_provider_endpoint
+from app.core.providers.secrets import secret_store
 from app.core.security import require_auth
 from app.core.store import store
-from app.core.providers.secrets import secret_store
-from app.modules.ai_providers.schemas import ProviderCreate, ProviderResponse, ProviderUpdate
+from app.modules.ai_providers.schemas import (
+    ProviderCreate,
+    ProviderResponse,
+    ProviderUpdate,
+)
 
 router = APIRouter(prefix="/api/v1/ai-providers", tags=["ai-providers"])
 
@@ -76,11 +84,15 @@ async def test_provider(provider_id: UUID, _: dict = Depends(require_auth)):
     provider = store.get("providers", UUID(str(provider_id)))
     if not provider:
         raise AppError("PROVIDER_NOT_FOUND", "Không tìm thấy provider", 404)
-    return {
-        "data": {
-            "provider_id": str(provider["id"]),
-            "status": "mock_reachable",
-            "capabilities": provider["capabilities"],
-            "note": "MVP chưa gọi vendor thật; adapter production cần được triển khai.",
-        }
-    }
+    secret = secret_store.get(provider.get("secret_ref", ""))
+    if not secret:
+        raise AppError("PROVIDER_SECRET_MISSING", "Provider chưa có API key", 422)
+    result = await asyncio.to_thread(
+        test_connection,
+        str(provider["provider_type"]),
+        str(provider["base_url"]),
+        provider["model"],
+        secret,
+        get_settings().provider_timeout_seconds,
+    )
+    return {"data": {"provider_id": str(provider["id"]), **result.__dict__, "capabilities": provider["capabilities"]}}
