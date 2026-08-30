@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from base64 import b64decode, b64encode
+from binascii import Error as BinasciiError
 from datetime import UTC, datetime, timedelta
 from hashlib import pbkdf2_hmac, sha256
 from hmac import compare_digest, new as hmac_new
@@ -87,7 +88,7 @@ def current_user(authorization: str | None) -> dict:
         claims = json.loads(_unb64url(payload))
         if not compare_digest(signature, expected) or claims.get("exp", 0) <= int(datetime.now(UTC).timestamp()):
             raise ValueError
-    except (ValueError, TypeError, json.JSONDecodeError):
+    except (BinasciiError, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError):
         raise AppError("AUTH_INVALID", "Token không hợp lệ hoặc đã hết hạn", 401)
     token_hash = _token_hash(token)
     revoked = next(
@@ -122,5 +123,5 @@ def revoke_token(authorization: str | None) -> None:
                     "expires_at": datetime.fromtimestamp(claims.get("exp", 0), UTC),
                 },
             )
-        except (ValueError, TypeError, json.JSONDecodeError):
+        except (BinasciiError, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError):
             return
