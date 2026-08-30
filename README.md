@@ -29,7 +29,8 @@ pnpm dev:admin
 ```
 
 Mở `http://localhost:5173`; đặt `VITE_API_URL` nếu API không chạy ở
-`http://localhost:8000`.
+`http://localhost:8000`. Biến `VITE_ADMIN_EMAIL` có thể dùng để điền sẵn email
+quản trị; mật khẩu luôn phải nhập thủ công và không được lưu trong frontend.
 
 ### Desktop Tool React/Electron (`Tool/`)
 
@@ -76,7 +77,7 @@ pytest -q
 ruff check app tests
 ```
 
-Kết quả mong đợi hiện tại: `21 passed`.
+Kết quả mong đợi hiện tại: `25 passed`.
 
 ### 2. Chạy API và Swagger
 
@@ -104,7 +105,9 @@ pnpm install
 pnpm dev:admin       # http://localhost:5173
 ```
 
-Đăng nhập bằng `admin@example.com` / `change-me`. Để chạy Desktop renderer,
+Đăng nhập local bằng `admin@example.com` / `change-me` (hoặc giá trị bạn đặt qua
+`JACS_ADMIN_EMAIL`/`JACS_ADMIN_PASSWORD`). Staging và production lấy email từ
+`JACS_ADMIN_EMAIL` khi build, không đóng gói mật khẩu demo. Để chạy Desktop renderer,
 mở terminal khác và dùng `pnpm dev:desktop`; để kiểm tra native shell + IPC,
 dùng `pnpm dev:electron`.
 

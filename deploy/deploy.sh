@@ -25,6 +25,7 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
 fi
 
 grep -q '^JACS_ADMIN_PASSWORD_HASH=.' "$ENV_FILE" || { echo "JACS_ADMIN_PASSWORD_HASH is required" >&2; exit 78; }
+grep -q '^JACS_ADMIN_EMAIL=.' "$ENV_FILE" || { echo "JACS_ADMIN_EMAIL is required" >&2; exit 78; }
 grep -q '^JACS_CORS_ORIGINS=.' "$ENV_FILE" || { echo "JACS_CORS_ORIGINS is required" >&2; exit 78; }
 grep -q '^JACS_DATABASE_URL=.' "$ENV_FILE" || { echo "JACS_DATABASE_URL is required" >&2; exit 78; }
 grep -q '^JACS_DB_NAME=.' "$ENV_FILE" || { echo "JACS_DB_NAME is required" >&2; exit 78; }
