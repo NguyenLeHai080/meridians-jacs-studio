@@ -74,9 +74,9 @@ Lệnh đóng gói sẽ chạy `prepare:media` trước khi build. Script này t
 thực hiện bước này trên runner native nên installer luôn có media engine.
 
 File cài đặt nằm trong `Tool/desktop-app/release/`: macOS ARM64
-`JACS Studio-0.3.3-arm64.dmg`/`.zip`, macOS Intel
-`JACS Studio-0.3.3.dmg`/`.zip` và Windows x64
-`JACS Studio Setup 0.3.3.exe`. Windows x64 được build trên Windows runner của
+`JACS Studio-0.3.4-arm64.dmg`/`.zip`, macOS Intel
+`JACS Studio-0.3.4.dmg`/`.zip` và Windows x64
+`JACS Studio Setup 0.3.4.exe`. Windows x64 được build trên Windows runner của
 workflow; artifact local dùng cho QA. Workflow
 `.github/workflows/desktop-release.yml` tự build artifact macOS và Windows khi
 push tag `vX.Y.Z`. Bản macOS local chưa ký Developer ID nên chỉ dùng QA; muốn

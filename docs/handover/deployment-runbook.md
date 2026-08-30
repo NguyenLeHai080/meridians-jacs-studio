@@ -99,9 +99,9 @@ Installer khách hàng được đặt ngoài source tại `/opt/jacs-studio/dow
 và được mount read-only vào web container. URL production chuẩn:
 
 ```text
-https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-windows-x64.exe
-https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-macos-arm64.dmg
-https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.3-macos-x64.dmg
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-windows-x64.exe
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-arm64.dmg
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-x64.dmg
 ```
 
 Release manifest dùng asset ZIP macOS (cùng build với DMG) để nút **Cập nhật**
