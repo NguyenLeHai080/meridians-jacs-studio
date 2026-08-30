@@ -31,10 +31,19 @@ JACS_API_URL=https://test-jacs-studio.nexoratech.com.vn pnpm dev:desktop
 License material được Electron mã hóa bằng OS secure storage. Khi mở app, tool
 gọi heartbeat định kỳ để phát hiện key bị khóa/hết hạn; job mới được đồng bộ lên
 `/api/v1/client/jobs` với header license + device ID và vẫn giữ hàng đợi local nếu
-API tạm thời không sẵn sàng. Cấu hình không
+API tạm thời không sẵn sàng. Device ID trong bản Electron là mã ổn định theo
+từng máy: macOS đọc `IOPlatformUUID` bằng `ioreg`, Windows đọc `MachineGuid` từ
+registry, Linux đọc `/etc/machine-id`. Giá trị gốc không bao giờ gửi lên API;
+app băm với salt riêng của JACS và chỉ gửi mã dạng `JACS-MAC-...`,
+`JACS-WIN-...` hoặc `JACS-LNX-...`. Nếu hệ điều hành không cung cấp định danh,
+app tạo một installation ID ngẫu nhiên, lưu cục bộ với quyền hạn chế và giữ ổn
+định giữa các lần mở. Cấu hình không
 nhạy cảm (workspace, cache, telemetry, auto-update, engine) được tự lưu trong
 thư mục app-data của từng hệ điều hành. API key provider chưa được lưu từ UI
-Desktop; chỉ đưa qua provider secure adapter sau khi story đó hoàn tất.
+Desktop; chỉ đưa qua provider secure adapter sau khi story đó hoàn tất. Mã
+`WEB-DEMO-MACHINE` chỉ tồn tại khi mở renderer bằng Vite trong trình duyệt để
+xem UI; bản Electron không sử dụng mã demo và không cho phép kích hoạt license
+từ renderer đó.
 
 Desktop hiện chạy trong Electron để có thể tạo installer native:
 
@@ -44,7 +53,7 @@ pnpm --dir Tool/desktop-app dist:win   # Windows NSIS .exe (chạy trên Windows
 ```
 
 File cài đặt nằm trong `Tool/desktop-app/release/`: macOS ARM64
-`JACS Studio-0.3.0-arm64.dmg`/`.zip` vừa build; Windows x64 được build trên
+`JACS Studio-0.3.1-arm64.dmg`/`.zip` vừa build; Windows x64 được build trên
 Windows runner của workflow. Workflow
 `.github/workflows/desktop-release.yml` tự build artifact macOS và Windows khi
 push tag `vX.Y.Z`. Bản macOS local chưa ký Developer ID nên chỉ dùng QA; muốn

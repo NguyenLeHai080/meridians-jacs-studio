@@ -29,6 +29,16 @@ Ngày kiểm tra: 2026-08-30.
   `jacs_records` đã được kiểm tra trong Compose local.
 - Build Electron macOS ARM64 thành công: DMG và ZIP trong
   `Tool/desktop-app/release/` (unsigned).
+- Native machine ID test chạy bằng Electron Node: đọc/parsing macOS
+  `IOPlatformUUID`, Windows `MachineGuid`, không làm lộ giá trị gốc và giữ ổn
+  định installation fallback giữa các lần khởi động.
+- Desktop release `0.3.1` đã được build lại tuần tự để tránh tranh chấp archive:
+  macOS ARM64 DMG/ZIP và Windows x64 NSIS đều kiểm tra archive thành công.
+  SHA-256: DMG `499b84a12c285fe1704f765ceb6a1200324e041f43be32bbe1417d433cabc602`,
+  ZIP `f50f77fc57ee940e87366dfd406f48a1ca05dd20e83b6870af4b21bfc4e826b`,
+  EXE `f1ae4c35464701d500c82bc4367576a494f95b5f6e266aefca49c3a65b7f0ace`.
+  Cả macOS và Windows packaged app đều chứa `electron/machine-id.cjs`,
+  `main.cjs` và `preload.cjs` trong `app.asar`.
 - Smoke test qua Cloudflare thành công:
   `https://test-jacs-studio.nexoratech.com.vn` và
   `https://jacs-studio.nexoratech.com.vn` trả HTTP 200; `/health/live` và đăng
