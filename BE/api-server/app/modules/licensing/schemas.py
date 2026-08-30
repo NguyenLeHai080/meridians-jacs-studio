@@ -34,6 +34,8 @@ class LicenseResponse(LicenseBase):
     status: LicenseStatus
     created_at: datetime
     last_seen_at: datetime | None = None
+    last_app_version: str | None = None
+    last_platform: str | None = None
 
 
 class LicenseCreatedResponse(LicenseResponse):
