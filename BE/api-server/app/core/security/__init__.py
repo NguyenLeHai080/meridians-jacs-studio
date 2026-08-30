@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
+import secrets
 from base64 import b64decode, b64encode
 from binascii import Error as BinasciiError
 from datetime import UTC, datetime, timedelta
 from hashlib import pbkdf2_hmac, sha256
-from hmac import compare_digest, new as hmac_new
-import json
-import secrets
+from hmac import compare_digest
+from hmac import new as hmac_new
 
 from fastapi import Security
 from fastapi.security import APIKeyHeader
