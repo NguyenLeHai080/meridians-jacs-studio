@@ -4,7 +4,9 @@ Ngày kiểm tra: 2026-08-30.
 
 ## Đã chạy thành công
 
-- `24` bài test API (auth, logout, token tamper/malformed, license, provider, jobs, projects,
+- `21` bài test API nền tảng đã pass trong lần kiểm tra trước; bổ sung thêm `3`
+  regression test cho token tamper/malformed và database readiness (đã compile và
+  smoke-test trong container),
   telemetry, release, persistence adapter và request ID).
 - Python bytecode compile cho `BE/api-server/app` và tests.
 - Ruff lint `BE/api-server/app` và tests.
