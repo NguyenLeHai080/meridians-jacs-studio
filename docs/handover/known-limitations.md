@@ -26,7 +26,7 @@
   main process. Luồng file/URL, probe, trích frame gửi vision, phân tích JSON,
   render FFmpeg và tiến trình đã được nối trong app; nếu máy không có FFmpeg,
   app dùng passthrough có cảnh báo ngầm trong metadata thay vì giả lập tiến trình.
-  Installer hiện đã kèm FFmpeg/FFprobe theo từng nền tảng; artifact `0.3.2`
+  Installer hiện đã kèm FFmpeg/FFprobe theo từng nền tảng; artifact `0.3.3`
   chạy được pipeline probe/trích frame/render thật. Artifact vẫn unsigned và
   OTA ký số cần hoàn thiện trước khi phát hành đại trà. Settings đã kiểm tra
   manifest release qua `/api/v1/releases/check` và chỉ mở URL HTTPS tin cậy;

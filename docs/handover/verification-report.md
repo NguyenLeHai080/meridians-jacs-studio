@@ -44,7 +44,7 @@ Ngày kiểm tra: 2026-08-30.
   TypeScript/Vite build và Electron syntax check đều pass.
 - Native media pipeline smoke test đã pass: tạo video thật bằng FFmpeg, probe
   duration/kích thước, trích frame, render clip 9:16 và xác minh output duration.
-- Desktop release `0.3.2` đã được build tuần tự để tránh tranh chấp archive:
+- Desktop release `0.3.3` đã được build tuần tự để tránh tranh chấp archive:
   macOS ARM64 DMG/ZIP và Windows x64 NSIS đều kiểm tra archive thành công.
   Artifact x64 mới nhất (sau khi sửa luồng local không tự gọi cloud provider) có
   SHA-256: DMG `15332a6ba4fa971f5c769c542a82488ada81d54bef59da75b8f4c82e23f51290`,

@@ -11,7 +11,7 @@
 
 ## Smoke test trước UAT
 
-1. Mở app 0.3.2, sao chép Device ID, tạo license từ Admin và kích hoạt trên đúng máy.
+1. Mở app 0.3.3, sao chép Device ID, tạo license từ Admin và kích hoạt trên đúng máy.
 2. Nhập key sai, key khóa, key hết hạn và HWID sai; UI hiển thị lỗi đúng, feature
    job bị chặn và không mất dữ liệu local.
 3. Chọn bốn video, tạo batch, hủy một job, retry một job lỗi; các job khác vẫn
