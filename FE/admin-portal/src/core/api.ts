@@ -2,7 +2,21 @@
 // explicit API origin so the dev server can run independently.
 const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "")).replace(/\/$/, "");
 
-export type ApiError = { error?: { code?: string; message?: string } };
+export type ApiError = { error?: { code?: string; message?: string; request_id?: string } };
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly requestId?: string;
+
+  constructor(message: string, status: number, code?: string, requestId?: string) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.code = code;
+    this.requestId = requestId;
+  }
+}
 
 export function getApiBaseUrl() { return API_URL || window.location.origin; }
 
@@ -15,9 +29,17 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, token?
       ...(init.headers ?? {}),
     },
   });
-  const raw = response.status === 204 ? undefined : await response.json();
+  const raw = response.status === 204 ? undefined : await response.json().catch(() => undefined);
   const body = raw as (T & ApiError & { data?: T }) | undefined;
-  if (!response.ok) throw new Error(body?.error?.message ?? "API request failed");
+  if (!response.ok) {
+    const details = body?.error;
+    throw new ApiRequestError(
+      details?.message ?? `API request failed (HTTP ${response.status})`,
+      response.status,
+      details?.code,
+      details?.request_id,
+    );
+  }
   // API endpoints may return an envelope or a direct resource during the MVP.
   return (body && "data" in body ? body.data : body) as T;
 }

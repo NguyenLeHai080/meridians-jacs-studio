@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { apiRequest, getApiBaseUrl } from "../../core/api";
+import { ApiRequestError, apiRequest, getApiBaseUrl } from "../../core/api";
 import { clearToken, getToken } from "../../core/session";
 
 type License = { id: string; key_hint: string; customer_name: string; customer_contact: string; hwid: string; status: string; expires_at?: string; last_seen_at?: string; last_app_version?: string; last_platform?: string; max_jobs_per_day?: number; premium_ai?: boolean };
@@ -22,6 +22,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [keyCopied, setKeyCopied] = useState(false);
   const [providerStatus, setProviderStatus] = useState<Record<string, string>>({});
 
+  function handleRequestError(reason: unknown): boolean {
+    if (reason instanceof ApiRequestError && reason.status === 401) {
+      clearToken();
+      onLogout();
+      return true;
+    }
+    return false;
+  }
+
   async function refresh() {
     setLoading(true);
     setError("");
@@ -35,6 +44,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       setProviders(providerResult);
       setLogs(telemetryResult);
     } catch (reason) {
+      if (handleRequestError(reason)) return;
       setError(reason instanceof Error ? reason.message : "Không tải được dữ liệu");
     } finally {
       setLoading(false);
@@ -55,7 +65,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       setMessage("Đã tạo license thật trên hệ thống");
       setLicenseForm({ customer_name: "", customer_contact: "", hwid: "", expires_at: "", max_jobs_per_day: "100", premium_ai: false });
       await refresh();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Không tạo được license"); }
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không tạo được license");
+    }
   }
 
   async function copyLicenseKey() {
@@ -102,12 +115,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       setProviderForm({ name: "", provider_type: "openai", base_url: "https://api.openai.com/v1", model: "gpt-4o-mini", api_key: "", capabilities: "analysis, vision, transcription" });
       setMessage("Đã lưu provider thật; API key chỉ được lưu dạng secret reference");
       await refresh();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Không lưu được provider"); }
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không lưu được provider");
+    }
   }
 
   async function toggleLicense(item: License) {
     const status = item.status === "active" ? "blocked" : "active";
-    try { await apiRequest(`/api/v1/licenses/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, token); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Không cập nhật được license"); }
+    try { await apiRequest(`/api/v1/licenses/${item.id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }, token); await refresh(); } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không cập nhật được license");
+    }
   }
 
   async function renewLicense(item: License) {
@@ -118,7 +137,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     const expiresAt = parsed.toISOString();
     const reason = window.prompt("Lý do gia hạn:", "Gia hạn theo hợp đồng") ?? "";
     if (reason.trim().length < 3) return;
-    try { await apiRequest(`/api/v1/licenses/${item.id}/renew`, { method: "POST", body: JSON.stringify({ expires_at: expiresAt, reason }) }, token); setMessage(`Đã gia hạn license ${item.key_hint}`); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Không gia hạn được license"); }
+    try { await apiRequest(`/api/v1/licenses/${item.id}/renew`, { method: "POST", body: JSON.stringify({ expires_at: expiresAt, reason }) }, token); setMessage(`Đã gia hạn license ${item.key_hint}`); await refresh(); } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không gia hạn được license");
+    }
   }
 
   async function resetHwid(item: License) {
@@ -128,7 +150,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     if (!/^JACS-(MAC|WIN|LNX)-[A-F0-9]{32}$/.test(normalizedHwid)) { setError("Mã máy phải có dạng JACS-MAC/WIN/LNX-32 ký tự hex"); return; }
     const reason = window.prompt("Lý do đổi máy:", "Khách đổi thiết bị") ?? "";
     if (reason.trim().length < 3) return;
-    try { await apiRequest(`/api/v1/licenses/${item.id}/reset-hwid`, { method: "POST", body: JSON.stringify({ hwid: normalizedHwid, reason }) }, token); setMessage(`Đã bind license ${item.key_hint} vào mã máy mới`); await refresh(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Không đổi được mã máy"); }
+    try { await apiRequest(`/api/v1/licenses/${item.id}/reset-hwid`, { method: "POST", body: JSON.stringify({ hwid: normalizedHwid, reason }) }, token); setMessage(`Đã bind license ${item.key_hint} vào mã máy mới`); await refresh(); } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không đổi được mã máy");
+    }
   }
 
   async function testProvider(provider: Provider) {
@@ -137,6 +162,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       const result = await apiRequest<{ status: string; detail: string; latency_ms: number }>(`/api/v1/ai-providers/${provider.id}/test`, { method: "POST" }, token);
       setProviderStatus((current) => ({ ...current, [provider.id]: `${result.status} · ${result.latency_ms}ms` }));
     } catch (reason) {
+      if (handleRequestError(reason)) return;
       setProviderStatus((current) => ({ ...current, [provider.id]: reason instanceof Error ? reason.message : "Kiểm tra thất bại" }));
     }
   }
