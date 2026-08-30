@@ -49,6 +49,9 @@ class InMemoryStore:
         with self._lock:
             self._data.clear()
 
+    def healthcheck(self) -> bool:
+        return True
+
 
 class SqliteStore:
     """Small persistent adapter for demos and single-node deployments.
@@ -103,6 +106,14 @@ class SqliteStore:
     def clear(self) -> None:
         with self._lock, sqlite3.connect(self.path) as connection:
             connection.execute("DELETE FROM records")
+
+    def healthcheck(self) -> bool:
+        try:
+            with self._lock, sqlite3.connect(self.path) as connection:
+                connection.execute("SELECT 1").fetchone()
+            return True
+        except sqlite3.Error:
+            return False
 
 
 class PostgresStore:
@@ -193,6 +204,14 @@ class PostgresStore:
     def clear(self) -> None:
         with self._lock, self._connect() as connection:
             connection.execute("DELETE FROM jacs_records")
+
+    def healthcheck(self) -> bool:
+        try:
+            with self._lock, self._connect() as connection:
+                connection.execute("SELECT 1").fetchone()
+            return True
+        except self._psycopg.Error:
+            return False
 
 
 def _json_default(value):
