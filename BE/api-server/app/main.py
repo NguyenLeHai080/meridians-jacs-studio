@@ -10,6 +10,7 @@ from app.core.errors import AppError, app_error_handler
 from app.core.http import request_context_middleware
 from app.modules.ai_providers.router import router as ai_provider_router
 from app.modules.auth.router import router as auth_router
+from app.modules.client.router import router as client_router
 from app.modules.health.router import router as health_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.licensing.router import router as licensing_router
@@ -48,6 +49,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(client_router)
 app.include_router(licensing_router)
 app.include_router(releases_router)
 app.include_router(projects_router)

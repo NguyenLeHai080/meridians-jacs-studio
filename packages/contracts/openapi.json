@@ -165,6 +165,148 @@
         }
       }
     },
+    "/api/v1/client/jobs": {
+      "post": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Create Desktop Job",
+        "operationId": "create_desktop_job_api_v1_client_jobs_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesktopJobCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "List Desktop Jobs",
+        "operationId": "list_desktop_jobs_api_v1_client_jobs_get",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DesktopJobResponse"
+                  },
+                  "title": "Response List Desktop Jobs Api V1 Client Jobs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/licenses": {
       "get": {
         "tags": [
@@ -425,6 +567,46 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ValidateLicenseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/licenses/heartbeat": {
+      "post": {
+        "tags": [
+          "licensing"
+        ],
+        "summary": "License Heartbeat",
+        "description": "Revalidate a running desktop session without issuing a new token.",
+        "operationId": "license_heartbeat_api_v1_licenses_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LicenseHeartbeatRequest"
               }
             }
           },
@@ -1370,6 +1552,142 @@
         ],
         "title": "CreateLicenseRequest"
       },
+      "DesktopJobCreate": {
+        "properties": {
+          "client_job_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Client Job Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "source_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source Name"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind",
+            "default": "render"
+          },
+          "execution_mode": {
+            "$ref": "#/components/schemas/ExecutionMode"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "project_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Project Id",
+            "default": "desktop"
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_job_id",
+          "name",
+          "source_name",
+          "execution_mode"
+        ],
+        "title": "DesktopJobCreate",
+        "description": "Non-sensitive job metadata submitted from an activated desktop tool."
+      },
+      "DesktopJobResponse": {
+        "properties": {
+          "client_job_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Client Job Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "source_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source Name"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind",
+            "default": "render"
+          },
+          "execution_mode": {
+            "$ref": "#/components/schemas/ExecutionMode"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "project_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Project Id",
+            "default": "desktop"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "progress": {
+            "type": "integer",
+            "title": "Progress"
+          },
+          "engine": {
+            "type": "string",
+            "title": "Engine"
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_job_id",
+          "name",
+          "source_name",
+          "execution_mode",
+          "id",
+          "status",
+          "progress",
+          "engine"
+        ],
+        "title": "DesktopJobResponse"
+      },
       "ExecutionMode": {
         "type": "string",
         "enum": [
@@ -1600,6 +1918,42 @@
           "key"
         ],
         "title": "LicenseCreatedResponse"
+      },
+      "LicenseHeartbeatRequest": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Key"
+          },
+          "hwid": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 8,
+            "title": "Hwid"
+          },
+          "app_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "App Version"
+          },
+          "platform": {
+            "type": "string",
+            "pattern": "^(windows|macos|linux)$",
+            "title": "Platform"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "hwid",
+          "app_version",
+          "platform"
+        ],
+        "title": "LicenseHeartbeatRequest",
+        "description": "Periodic desktop check-in used to enforce revoke/expiry promptly."
       },
       "LicenseRenewRequest": {
         "properties": {

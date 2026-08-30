@@ -14,9 +14,10 @@ make export-openapi
 
 Không chỉnh tay snapshot; thay đổi schema phải đi kèm test contract và issue ID.
 
-Vertical slice hiện có auth/logout, license validate/renew/status/reset HWID,
-projects, jobs/cancel, provider CRUD/capability/test, telemetry ingest/inspector,
-release publish/check và health.
+Vertical slice hiện có auth/logout, license validate/heartbeat/renew/status/reset
+HWID, desktop client jobs có kiểm tra license/HWID/quota và idempotency, projects,
+jobs/cancel, provider CRUD/capability/test, telemetry ingest/inspector, release
+publish/check và health.
 
 Hợp đồng profile BYOK, capability và remote render tại
 [third-party-provider-contract.md](third-party-provider-contract.md).

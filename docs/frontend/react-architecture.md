@@ -37,11 +37,12 @@ Tool/
     └── src/
         ├── core/                 # IPC client, local state, job lifecycle
         ├── modules/
-        │   ├── activation/       # License activation và heartbeat
-        │   ├── projects/         # Project, media import, settings
-        │   ├── analyzer/         # AI analysis result và suggestions
-        │   ├── timeline/         # Video/voice/audio/subtitle tracks
-        │   ├── render-jobs/      # Queue, progress, cancel, result
+        │   ├── projects/         # Project, media import (kế hoạch)
+        │   ├── analysis/         # AI context analysis và suggestions
+        │   ├── jobs/             # Batch queue, progress, cancel, result
+        │   ├── render/           # Engine/output workspace
+        │   ├── activation/       # License + Device ID
+        │   ├── settings/         # Preferences và secure provider registry
         │   └── updater/          # OTA check, consent, install status
         ├── shared/               # Component và hook dùng trong app
         └── native/               # Adapter gọi preload/native bridge

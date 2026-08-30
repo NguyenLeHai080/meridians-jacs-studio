@@ -45,6 +45,13 @@ class ValidateLicenseRequest(BaseModel):
     hwid: str = Field(min_length=8, max_length=256)
 
 
+class LicenseHeartbeatRequest(ValidateLicenseRequest):
+    """Periodic desktop check-in used to enforce revoke/expiry promptly."""
+
+    app_version: str = Field(min_length=1, max_length=32)
+    platform: str = Field(pattern=r"^(windows|macos|linux)$")
+
+
 class LicenseStatusUpdate(BaseModel):
     status: LicenseStatus
 

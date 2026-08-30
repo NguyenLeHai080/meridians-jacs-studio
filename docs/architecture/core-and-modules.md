@@ -42,6 +42,27 @@ code giữa hai ngôn ngữ.
   `image_generation`, `video_render`.
 - Mọi thay đổi public module phải kèm test contract và issue ID.
 
+## Desktop module hiện tại
+
+`Tool/desktop-app/src` đang dùng các module React sau:
+
+```text
+core/       types, runtime bridge, API và state policy dùng chung
+modules/
+├── overview/       dashboard workspace
+├── jobs/           chọn footage và tạo batch queue
+├── analysis/       phân tích context và scene
+├── render/         output, encoder và render status
+├── activation/     Device ID, license validate và lock feature
+└── settings/       preferences, workspace/cache và provider registry
+shared/             icon, status pill và UI primitive thuần
+```
+
+`electron/preload.cjs` là adapter native, không phải module nghiệp vụ. Các
+module không gọi Electron IPC trực tiếp; chúng dùng `core/runtime` để có thể
+thay shell Electron bằng Tauri hoặc native host khác nếu quyết định kỹ thuật
+thay đổi.
+
 ## Checklist thêm module
 
 1. Xác định bounded context, owner và dữ liệu module sở hữu.

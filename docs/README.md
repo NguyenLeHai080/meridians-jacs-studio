@@ -24,6 +24,11 @@ Chuẩn ReactJS/Python và phân chia `core` + `modules` xem tại
 [python-architecture.md](backend/python-architecture.md) và
 [core-and-modules.md](architecture/core-and-modules.md).
 
+Luồng nghiệp vụ Desktop mới xem tại
+[desktop-workflow.md](business-analysis/desktop-workflow.md), thiết kế native
+macOS/Windows tại [desktop-runtime-design.md](architecture/desktop-runtime-design.md)
+và Product Backlog Scrum tại [product-backlog.md](planning/product-backlog.md).
+
 Mô hình hệ thống và quy mô xem tại [c4-model.md](architecture/c4-model.md),
 [deployment-model.md](architecture/deployment-model.md) và [scale](scale/).
 

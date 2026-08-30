@@ -31,14 +31,16 @@ pnpm dev:admin
 Mở `http://localhost:5173`; đặt `VITE_API_URL` nếu API không chạy ở
 `http://localhost:8000`.
 
-### Desktop Tool React prototype (`Tool/`)
+### Desktop Tool React/Electron (`Tool/`)
 
 ```bash
 pnpm dev:desktop
 ```
 
-Đây là renderer prototype; native shell, secure storage, HWID và FFmpeg sẽ được
-đưa vào các module Desktop theo tài liệu kiến trúc.
+Desktop có shell điều hướng theo module, activation UI, Device ID dẫn xuất,
+secure storage qua Electron, file picker và cài đặt tự lưu. FFmpeg/GPU worker,
+provider generation thực, signed OTA và cross-platform smoke test vẫn cần hoàn
+thành trước khi phát hành rộng cho khách hàng.
 
 ### Hạ tầng local
 
@@ -74,7 +76,7 @@ pytest -q
 ruff check app tests
 ```
 
-Kết quả mong đợi hiện tại: `16 passed`.
+Kết quả mong đợi hiện tại: `21 passed`.
 
 ### 2. Chạy API và Swagger
 
@@ -102,8 +104,9 @@ pnpm install
 pnpm dev:admin       # http://localhost:5173
 ```
 
-Đăng nhập bằng `admin@example.com` / `change-me`. Để chạy Desktop prototype,
-mở terminal khác và dùng `pnpm dev:desktop`.
+Đăng nhập bằng `admin@example.com` / `change-me`. Để chạy Desktop renderer,
+mở terminal khác và dùng `pnpm dev:desktop`; để kiểm tra native shell + IPC,
+dùng `pnpm dev:electron`.
 
 ### 4. Kiểm tra hạ tầng local
 
