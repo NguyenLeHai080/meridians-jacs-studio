@@ -15,6 +15,7 @@
     "prepare:media": "node scripts/prepare-media-binaries.cjs",
     "dist": "pnpm prepare:media && pnpm build && electron-builder",
     "dist:mac": "pnpm prepare:media && pnpm build && electron-builder --mac dmg zip",
+    "dist:mac:universal": "pnpm prepare:media && pnpm build && node scripts/build-mac-universal.cjs",
     "dist:win": "pnpm prepare:media && pnpm build && electron-builder --win nsis --x64"
   },
   "dependencies": { "react": "^18.3.1", "react-dom": "^18.3.1" },

@@ -84,6 +84,11 @@ phân phối rộng cần ký và notarize bằng tài khoản Apple Developer. 
 local cũng chưa ký Authenticode; nên phát hành artifact từ Windows runner sau
 khi cấu hình chứng thư ký.
 
+Để cập nhật tự động cho cả Mac Intel và Apple Silicon, dùng lệnh
+`pnpm dist:mac:universal`. Lệnh tạo `JACS Studio-<version>-universal-mac.zip`
+(manifest updater) và `JACS Studio-<version>-universal.dmg` (cài đặt mới); cả
+hai artifact chứa app và FFmpeg Universal (`x86_64 arm64`).
+
 ## Media pipeline
 
 Trong bản Desktop, **Tạo job hàng loạt** cho phép chọn nhiều file video hoặc dán

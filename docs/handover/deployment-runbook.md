@@ -102,9 +102,11 @@ và được mount read-only vào web container. URL production chuẩn:
 https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-windows-x64.exe
 https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-arm64.dmg
 https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-x64.dmg
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-universal.zip
 ```
 
-Release manifest dùng asset ZIP macOS (cùng build với DMG) để nút **Cập nhật**
+Release manifest `v0.3.4` dùng asset ZIP Universal macOS (cùng build với DMG)
+ở URL trên để nút **Cập nhật**
 có thể tự thay ứng dụng sau khi checksum hợp lệ. DMG dành cho cài đặt mới hoặc
 trường hợp người dùng cần thao tác kéo app vào Applications; Windows dùng NSIS
 `.exe` với chế độ silent updater.
