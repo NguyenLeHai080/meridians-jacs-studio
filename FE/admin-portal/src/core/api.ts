@@ -40,8 +40,17 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, token?
       details?.request_id,
     );
   }
-  // API endpoints may return an envelope or a direct resource during the MVP.
-  return (body && "data" in body ? body.data : body) as T;
+  // API endpoints may return an envelope or a direct resource.
+  if (body && typeof body === "object" && "data" in body) {
+    const data = (body as { data: unknown }).data;
+    if (data && typeof data === "object" && !Array.isArray(data) && !("data" in (data as Record<string, unknown>))) {
+      try {
+        Object.defineProperty(data, "data", { value: data, enumerable: false, configurable: true });
+      } catch { /* ignore non-extensible */ }
+    }
+    return data as T;
+  }
+  return body as T;
 }
 
 export async function login(email: string, password: string) {

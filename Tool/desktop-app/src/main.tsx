@@ -666,6 +666,70 @@ function App() {
     return () => window.clearInterval(timer);
   }, [activated, jobs]);
 
+  // Periodic Update Checks & In-Place OTA Notifications
+  const [availableUpdate, setAvailableUpdate] = useState<{
+    version: string;
+    release_notes?: string;
+    force_update?: boolean;
+    download_url?: string;
+    [key: string]: unknown;
+  } | null>(null);
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [updateStage, setUpdateStage] = useState<string>("");
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    if (getRuntime().onUpdateProgress) {
+      unlisten = getRuntime().onUpdateProgress?.((p) => {
+        setUpdateProgress(p.progress || 0);
+        setUpdateStage(p.stage || "downloading");
+      });
+    }
+
+    const checkUpdates = async () => {
+      try {
+        const checkFn = getRuntime().checkForUpdate;
+        if (checkFn) {
+          const res = await checkFn("stable");
+          if (res?.update_available && res.release) {
+            setAvailableUpdate(res.release as any);
+          } else {
+            setAvailableUpdate(null);
+          }
+        }
+      } catch {
+        /* ignore offline check */
+      }
+    };
+
+    void checkUpdates();
+    const timer = window.setInterval(() => void checkUpdates(), 45_000);
+    return () => {
+      window.clearInterval(timer);
+      unlisten?.();
+    };
+  }, []);
+
+  const handleApplyUpdate = async () => {
+    if (!availableUpdate) return;
+    setIsUpdating(true);
+    setUpdateProgress(0);
+    setUpdateStage("downloading");
+    try {
+      if (getRuntime().downloadUpdate) {
+        await getRuntime().downloadUpdate?.(availableUpdate as any);
+      } else {
+        await new Promise((r) => setTimeout(r, 1200));
+        window.location.reload();
+      }
+    } catch (err) {
+      setIsUpdating(false);
+      alert(err instanceof Error ? err.message : "Không thể cập nhật tự động.");
+    }
+  };
+
   // Root Gatekeeper Logic
   if (activated === null) {
     return (
@@ -1013,6 +1077,60 @@ function App() {
             </button>
           </div>
         </header>
+
+        {/* IN-PLACE OTA UPDATE NOTIFICATION BANNER */}
+        {availableUpdate && dismissedVersion !== availableUpdate.version && (
+          <div className="ota-update-banner">
+            <div className="ota-banner-left">
+              <span className="ota-badge">🎉 CẬP NHẬT MỚI</span>
+              <div className="ota-info">
+                <strong>Đã có phiên bản {availableUpdate.version}</strong>
+                <span>
+                  {(availableUpdate.release_notes as string) ||
+                    "Bản cập nhật tính năng mới & sửa lỗi. Bấm để load bản mới ngay mà không cần cài lại tool."}
+                </span>
+              </div>
+            </div>
+            <div className="ota-banner-actions">
+              {isUpdating ? (
+                <div className="ota-progress-box">
+                  <div className="ota-progress-bar">
+                    <div
+                      className="ota-progress-fill"
+                      style={{ width: `${Math.max(5, updateProgress)}%` }}
+                    />
+                  </div>
+                  <span className="ota-progress-text">
+                    {updateStage === "verifying"
+                      ? "Đang xác thực..."
+                      : updateStage === "installing"
+                      ? "Đang áp dụng..."
+                      : `Đang tải ${updateProgress}%`}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="ota-btn-apply"
+                    onClick={() => void handleApplyUpdate()}
+                  >
+                    ⚡ Tải & Cập nhật ngay
+                  </button>
+                  {!availableUpdate.force_update && (
+                    <button
+                      type="button"
+                      className="ota-btn-later"
+                      onClick={() => setDismissedVersion(availableUpdate.version)}
+                    >
+                      Để sau
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="page-content">
           <Page

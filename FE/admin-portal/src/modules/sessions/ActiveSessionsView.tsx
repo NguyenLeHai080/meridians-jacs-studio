@@ -29,12 +29,13 @@ export function ActiveSessionsView({
   const pageSize = 10;
 
   const filteredSessions = useMemo(() => {
-    return sessions.filter((session) => {
+    return (sessions || []).filter((session) => {
+      if (!session) return false;
       const matchesSearch =
-        session.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        session.customer_contact.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        session.hwid.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        session.key_hint.toLowerCase().includes(searchTerm.toLowerCase());
+        (session.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (session.customer_contact || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (session.hwid || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (session.key_hint || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesStatus =
         statusFilter === "all"

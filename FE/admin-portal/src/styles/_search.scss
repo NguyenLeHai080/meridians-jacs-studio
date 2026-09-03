@@ -1,0 +1,109 @@
+@use 'variables' as *;
+
+.search-container-relative {
+  position: relative;
+  width: 100%;
+}
+
+.navbar-search-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: #f1f5f9;
+  border: 1.5px solid #e2e8f0;
+  border-radius: $radius-full;
+  padding: 0.42rem 0.85rem;
+  width: 100%;
+  min-width: 0;
+  color: $text-muted;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:focus-within {
+    background-color: #ffffff;
+    border-color: $primary;
+    box-shadow: 0 0 0 3px rgba(249, 87, 56, 0.15);
+  }
+
+  input {
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 0.82rem;
+    color: $text-dark;
+    width: 100%;
+    min-width: 0;
+    font-family: inherit;
+  }
+}
+
+.search-shortcut-chip {
+  background: #ffffff;
+  border: 1px solid $border-light;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.65rem;
+  font-family: $font-mono;
+  color: $text-muted;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.search-dropdown-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  min-width: 380px;
+  max-width: 520px;
+  max-height: 440px;
+  overflow-y: auto;
+  background: #1a1d2e;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  z-index: 150;
+  padding: 0.6rem 0;
+  animation: scaleIn 0.15s ease-out;
+}
+
+.search-section-header {
+  padding: 0.4rem 1rem 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: $sidebar-heading;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.search-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 1rem;
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+
+  &:hover {
+    background: rgba(249, 87, 56, 0.15);
+    color: #ffffff;
+  }
+
+  strong {
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  small {
+    color: $sidebar-heading;
+    font-size: 0.72rem;
+  }
+}

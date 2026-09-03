@@ -29,11 +29,12 @@ async def ingest(request: Request, event: TelemetryEvent, telemetry_token: str |
     license_key = request.headers.get("X-License-Key")
     device_id = request.headers.get("X-Device-Id")
     license_record = None
-    token_valid = bool(telemetry_token and settings.telemetry_ingest_token and compare_digest(telemetry_token, settings.telemetry_ingest_token))
-    if settings.telemetry_ingest_token and not token_valid:
-        if not license_key or not device_id:
-            raise AppError("TELEMETRY_UNAUTHORIZED", "Telemetry token không hợp lệ", 401)
+    if license_key and device_id:
         license_record = _active_license(license_key, device_id)
+    else:
+        token_valid = bool(telemetry_token and settings.telemetry_ingest_token and compare_digest(telemetry_token, settings.telemetry_ingest_token))
+        if not token_valid:
+            raise AppError("TELEMETRY_UNAUTHORIZED", "Telemetry token hoặc license không hợp lệ", 401)
     payload = event.model_dump()
     # Keep desktop incidents attributable to a license without ever storing
     # the raw license key. Device IDs are already one-way JACS identifiers.
@@ -54,6 +55,28 @@ async def list_logs(_: dict = Depends(require_auth), severity: Severity | None =
     # Return newest first
     sorted_records = sorted(records, key=lambda x: str(x.get("created_at", "")), reverse=True)
     return {"data": sorted_records[:limit]}
+
+
+@router.delete("/logs/{log_id}")
+async def delete_log(log_id: str, _: dict = Depends(require_auth)):
+    store.delete("telemetry", log_id)
+    return {"data": {"success": True, "message": "Đã xóa log thành công"}}
+
+
+@router.delete("/logs")
+async def clear_all_logs(_: dict = Depends(require_auth)):
+    records = store.list("telemetry")
+    for r in records:
+        store.delete("telemetry", r["id"])
+    return {"data": {"success": True, "message": f"Đã xóa toàn bộ {len(records)} logs"}}
+
+
+@router.post("/logs/manual", status_code=201)
+async def create_manual_log(event: TelemetryEvent, user: dict = Depends(require_auth)):
+    payload = event.model_dump()
+    payload["actor"] = user["email"]
+    record = store.create("telemetry", payload)
+    return {"data": {"success": True, "event_id": str(record["id"])}}
 
 
 @router.get("/audit")
