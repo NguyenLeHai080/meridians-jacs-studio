@@ -20,10 +20,14 @@
 
 ## Trạng thái triển khai vertical slice
 
-Đã có API chạy được cho FR-01, FR-02 (generate/validate/status/reset/renew),
-FR-08 cơ bản, FR-10 manifest/check và FR-12 profile BYOK CRUD. FR-03--FR-07,
-FR-09, FR-11, FR-13--FR-15 cần hoàn thiện native engine, worker và adapter vendor
-thật trước UAT production; xem [known-limitations.md](../handover/known-limitations.md).
+Đã có API/native vertical slice cho FR-01, FR-02 (generate/validate/status/reset/renew),
+FR-03 (file/URL), FR-06 cơ bản (voice local/audio mix/FFmpeg), FR-07 cơ bản
+(queue/progress/retry/cancel), FR-08, FR-10 manifest/check và FR-12 profile BYOK
+CRUD. Các mục này chưa đồng nghĩa với việc đã đạt đầy đủ acceptance criteria của
+proposal. FR-04, FR-05, FR-09, FR-11, FR-13--FR-15 và các phần nâng cao của
+FR-03/FR-06/FR-07 còn cần hoàn thiện trước UAT production; xem
+[ai-video-pipeline-gap-analysis.md](ai-video-pipeline-gap-analysis.md) và
+[known-limitations.md](../handover/known-limitations.md).
 
 Mỗi yêu cầu phải được tách thành User Story với UI flow, API contract, error code
 và acceptance criteria trước khi vào Sprint.

@@ -50,5 +50,16 @@ async def list_logs(_: dict = Depends(require_auth), severity: Severity | None =
     limit = max(1, min(limit, 500))
     records = store.list("telemetry")
     if severity:
-        records = [item for item in records if item["severity"] == severity]
-    return {"data": records[-limit:]}
+        records = [item for item in records if item.get("severity") == severity]
+    # Return newest first
+    sorted_records = sorted(records, key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return {"data": sorted_records[:limit]}
+
+
+@router.get("/audit")
+async def list_audit_logs(_: dict = Depends(require_auth), limit: int = 200):
+    limit = max(1, min(limit, 500))
+    records = store.list("audit")
+    sorted_records = sorted(records, key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return {"data": sorted_records[:limit]}
+

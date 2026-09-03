@@ -26,7 +26,12 @@ export function providerIsReady(provider: ProviderProfile | undefined, capabilit
   return Boolean(
     provider?.enabled
     && provider.hasApiKey
-    && provider.capabilities.includes(capability)
+    // OpenAI-compatible gateways often do not publish a capability list. The
+    // desktop runtime probes the endpoint and provides a safe fallback, so a
+    // saved OpenAI profile with only URL + key remains usable.
+    && (provider.capabilities.includes(capability)
+      || (provider.providerType === "openai" && ["analysis", "transcription", "tts"].includes(capability))
+      || (provider.providerType === "openai-compatible" && ["analysis", "transcription", "tts"].includes(capability)))
     && (!supportedTypes || supportedTypes.includes(provider.providerType)),
   );
 }
@@ -61,4 +66,28 @@ export function highlightRange(job: Pick<Job, "highlightOnly" | "highlightMaxSec
   const requestedEnd = timestampSeconds(preferred.end, start + maxDuration);
   const end = Math.min(total, Math.max(start + 0.25, Math.min(start + maxDuration, requestedEnd)));
   return { startSeconds: start, endSeconds: end };
+}
+
+/** Decide whether a persisted job can be picked up after an app restart. */
+export function shouldResumeJob(job: Pick<Job, "sourceOnly" | "status" | "stage" | "localPath" | "sourceType" | "sourcePaths" | "childJobIds">) {
+  if (job.sourceOnly || job.childJobIds?.length) return false;
+  if (!(job.localPath || job.sourceType === "url" || job.sourcePaths?.length)) return false;
+  if (job.status === "queued" || (job.status === "running" && !["script_review", "timeline_review", "completed", "failed", "cancelled"].includes(job.stage || ""))) return true;
+  return job.status === "running" && job.stage === "downloading";
+}
+
+/** Uncertain matches must be reviewed before automatic scene fan-out. */
+export function hasUnreviewedSceneMatches(matches: Array<{ needsReview?: boolean }> | undefined) {
+  return Array.isArray(matches) && matches.some((match) => match.needsReview);
+}
+
+/** Mark all scene matches as operator-reviewed without changing their ranges. */
+export function approveSceneMatches<T extends { needsReview?: boolean }>(matches: T[] | undefined): T[] | undefined {
+  return Array.isArray(matches) ? matches.map((match) => ({ ...match, needsReview: false })) : matches;
+}
+
+/** Replace an uncertain match with a selected candidate clip. */
+export function replaceSceneMatch<T extends { sceneId: string; sourceStart: number; sourceEnd: number; needsReview?: boolean }>(matches: T[] | undefined, index: number, candidate: { sceneId: string; sourceStart: number; sourceEnd: number }): T[] | undefined {
+  if (!Array.isArray(matches) || !matches[index]) return matches;
+  return matches.map((match, matchIndex) => matchIndex === index ? { ...match, ...candidate, needsReview: false } : match);
 }

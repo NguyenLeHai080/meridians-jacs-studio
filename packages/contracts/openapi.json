@@ -389,6 +389,72 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Delete Desktop Job",
+        "description": "Remove one desktop job owned by the activated license.\n\nThe desktop queue is local-first, but deleting the remote snapshot as well\nprevents a removed job from reappearing during the next synchronization.",
+        "operationId": "delete_desktop_job_api_v1_client_jobs__client_job_id__delete",
+        "parameters": [
+          {
+            "name": "client_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Client Job Id"
+            }
+          },
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/client/metrics": {
@@ -1753,6 +1819,87 @@
             ],
             "title": "Tts Provider Id"
           },
+          "parent_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Job Id"
+          },
+          "scene_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Id"
+          },
+          "split_scenes": {
+            "type": "boolean",
+            "title": "Split Scenes",
+            "default": false
+          },
+          "analysis_only": {
+            "type": "boolean",
+            "title": "Analysis Only",
+            "default": false
+          },
+          "clip_start_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip Start Seconds"
+          },
+          "clip_end_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip End Seconds"
+          },
+          "output_file_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Name"
+          },
+          "timeline_clips": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Timeline Clips"
+          },
           "project_id": {
             "type": "string",
             "maxLength": 160,
@@ -1860,6 +2007,42 @@
             "minimum": 0.0,
             "title": "Background Music Volume",
             "default": 20
+          },
+          "subtitles_enabled": {
+            "type": "boolean",
+            "title": "Subtitles Enabled",
+            "default": true
+          },
+          "subtitle_style": {
+            "type": "string",
+            "pattern": "^(bottom|center|top)$",
+            "title": "Subtitle Style",
+            "default": "bottom"
+          },
+          "subtitle_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle Text"
+          },
+          "logo_position": {
+            "type": "string",
+            "pattern": "^(top-left|top-right|bottom-left|bottom-right)$",
+            "title": "Logo Position",
+            "default": "bottom-right"
+          },
+          "logo_opacity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.1,
+            "title": "Logo Opacity",
+            "default": 0.82
           }
         },
         "type": "object",
@@ -1926,6 +2109,87 @@
             ],
             "title": "Tts Provider Id"
           },
+          "parent_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Job Id"
+          },
+          "scene_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Id"
+          },
+          "split_scenes": {
+            "type": "boolean",
+            "title": "Split Scenes",
+            "default": false
+          },
+          "analysis_only": {
+            "type": "boolean",
+            "title": "Analysis Only",
+            "default": false
+          },
+          "clip_start_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip Start Seconds"
+          },
+          "clip_end_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip End Seconds"
+          },
+          "output_file_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Name"
+          },
+          "timeline_clips": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Timeline Clips"
+          },
           "project_id": {
             "type": "string",
             "maxLength": 160,
@@ -2033,6 +2297,42 @@
             "minimum": 0.0,
             "title": "Background Music Volume",
             "default": 20
+          },
+          "subtitles_enabled": {
+            "type": "boolean",
+            "title": "Subtitles Enabled",
+            "default": true
+          },
+          "subtitle_style": {
+            "type": "string",
+            "pattern": "^(bottom|center|top)$",
+            "title": "Subtitle Style",
+            "default": "bottom"
+          },
+          "subtitle_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle Text"
+          },
+          "logo_position": {
+            "type": "string",
+            "pattern": "^(top-left|top-right|bottom-left|bottom-right)$",
+            "title": "Logo Position",
+            "default": "bottom-right"
+          },
+          "logo_opacity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.1,
+            "title": "Logo Opacity",
+            "default": 0.82
           },
           "id": {
             "type": "string",
@@ -2161,6 +2461,106 @@
             ],
             "title": "Output Path"
           },
+          "parent_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Job Id"
+          },
+          "scene_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Id"
+          },
+          "split_scenes": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Scenes"
+          },
+          "analysis_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Only"
+          },
+          "clip_start_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip Start Seconds"
+          },
+          "clip_end_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip End Seconds"
+          },
+          "output_file_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 180
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Name"
+          },
+          "timeline_clips": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeline Clips"
+          },
           "tokens_used": {
             "anyOf": [
               {
@@ -2184,6 +2584,66 @@
               }
             ],
             "title": "Credits Used"
+          },
+          "subtitles_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitles Enabled"
+          },
+          "subtitle_style": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(bottom|center|top)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle Style"
+          },
+          "subtitle_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle Text"
+          },
+          "logo_position": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(top-left|top-right|bottom-left|bottom-right)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Position"
+          },
+          "logo_opacity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logo Opacity"
           }
         },
         "type": "object",
@@ -2758,6 +3218,18 @@
             "minLength": 1,
             "title": "Model"
           },
+          "tts_model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Model"
+          },
           "api_key": {
             "type": "string",
             "maxLength": 4096,
@@ -2811,6 +3283,17 @@
           "model": {
             "type": "string",
             "title": "Model"
+          },
+          "tts_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Model"
           },
           "capabilities": {
             "items": {
@@ -2898,6 +3381,18 @@
               }
             ],
             "title": "Model"
+          },
+          "tts_model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Model"
           },
           "capabilities": {
             "anyOf": [
