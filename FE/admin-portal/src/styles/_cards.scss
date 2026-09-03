@@ -1,0 +1,236 @@
+@use 'variables' as *;
+
+.kpi-cards-grid-mintforge {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card-mf {
+  background: #ffffff;
+  border-radius: $radius-xl;
+  border: 1px solid $border-light;
+  padding: 1.35rem 1.5rem;
+  box-shadow: $shadow-card;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    box-shadow: $shadow-card-hover;
+    transform: translateY(-2px);
+  }
+}
+
+.kpi-squircle-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.squircle-orange {
+  background: $squircle-orange-bg;
+  color: $squircle-orange-icon;
+}
+
+.squircle-green {
+  background: $squircle-green-bg;
+  color: $squircle-green-icon;
+}
+
+.squircle-blue {
+  background: $squircle-blue-bg;
+  color: $squircle-blue-icon;
+}
+
+.squircle-purple {
+  background: $squircle-purple-bg;
+  color: $squircle-purple-icon;
+}
+
+.kpi-content-box {
+  flex: 1;
+  min-width: 0;
+}
+
+.kpi-label-mf {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: $text-muted;
+  margin-bottom: 0.25rem;
+}
+
+.kpi-value-mf {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: $text-dark;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+}
+
+.kpi-subtext-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.subtext-green {
+  color: $success;
+  font-weight: 700;
+}
+
+.subtext-orange {
+  color: $primary;
+  font-weight: 700;
+}
+
+.subtext-gray {
+  color: $text-muted;
+}
+
+// Charts Layout Grid
+.charts-grid-mintforge {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.mf-card-panel {
+  background: $bg-card;
+  border-radius: $radius-xl;
+  border: 1px solid $border-light;
+  padding: 1.5rem;
+  box-shadow: $shadow-card;
+}
+
+.mf-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.mf-card-title-group {
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: $text-dark;
+    letter-spacing: -0.3px;
+  }
+
+  p {
+    font-size: 0.78rem;
+    color: $text-muted;
+    margin-top: 0.15rem;
+  }
+}
+
+.mf-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pill-dropdown-year {
+  padding: 0.25rem 0.65rem;
+  border-radius: $radius-full;
+  border: 1px solid $border-light;
+  background: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: $text-muted;
+  outline: none;
+  cursor: pointer;
+}
+
+.btn-dot-menu {
+  background: none;
+  border: none;
+  color: $text-dim;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 4px;
+
+  &:hover {
+    color: $text-dark;
+    background: #f1f5f9;
+  }
+}
+
+.mf-chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-size: 0.78rem;
+  color: $text-muted;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.mf-legend-dot-orange {
+  color: $primary;
+}
+
+.mf-legend-dot-navy {
+  color: #1e293b;
+}
+
+.mf-donut-status-layout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.5rem 0;
+}
+
+.mf-donut-left {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mf-donut-center-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.mf-donut-count {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: $text-dark;
+}
+
+.mf-donut-label {
+  font-size: 0.72rem;
+  color: $text-muted;
+}
+
+.mf-donut-breakdown {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mf-breakdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: $text-body;
+}

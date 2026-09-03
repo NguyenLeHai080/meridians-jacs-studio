@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
+from app.core.errors import AppError
 from app.core.security import require_auth
 from app.core.store import store
 from app.modules.billing.schemas import (
@@ -42,7 +42,23 @@ async def create_transaction(payload: CreateBillingTransactionRequest, user: dic
             "actor": user["email"],
         },
     )
-    return record
+@router.delete("/transactions/{transaction_id}")
+async def delete_transaction(transaction_id: UUID, user: dict = Depends(require_auth)):
+    existing = store.get("billing_transactions", UUID(str(transaction_id)))
+    if not existing:
+        raise AppError("TRANSACTION_NOT_FOUND", "Không tìm thấy giao dịch", 404)
+    store.delete("billing_transactions", UUID(str(transaction_id)))
+    store.create(
+        "audit",
+        {
+            "action": "billing.transaction_deleted",
+            "transaction_id": str(transaction_id),
+            "customer": existing.get("customer_name"),
+            "amount": existing.get("amount"),
+            "actor": user["email"],
+        },
+    )
+    return {"data": {"success": True, "message": "Đã xóa giao dịch thành công"}}
 
 
 @router.get("/summary", response_model=BillingSummaryResponse)

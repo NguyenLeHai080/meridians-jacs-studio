@@ -14,9 +14,12 @@ class Settings(BaseSettings):
     admin_password: str = "change-me"
     admin_password_hash: str | None = None
     token_ttl_minutes: int = 60
-    store_backend: str = "memory"
+    store_backend: str = "postgres"
     sqlite_path: str = "./data/jacs.sqlite3"
-    database_url: str | None = None
+    database_url: str | None = "postgresql://jacs:jacs-dev-password@localhost:5432/jacs"
+    database_min_pool_size: int = 1
+    database_max_pool_size: int = 20
+    database_pool_timeout_seconds: float = 10.0
     secret_key: str | None = None
     telemetry_enabled: bool = True
     telemetry_ingest_token: str = ""

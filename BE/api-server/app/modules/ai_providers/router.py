@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 import asyncio
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 
 from app.core.config import get_settings
 from app.core.errors import AppError
@@ -45,6 +43,7 @@ async def list_providers(_: dict = Depends(require_auth)):
 
 
 @router.patch("/{provider_id}", response_model=ProviderResponse)
+@router.put("/{provider_id}", response_model=ProviderResponse)
 async def update_provider(provider_id: UUID, payload: ProviderUpdate, _: dict = Depends(require_auth)):
     provider = store.get("providers", UUID(str(provider_id)))
     if not provider:
@@ -70,13 +69,14 @@ async def provider_capabilities(provider_id: UUID, _: dict = Depends(require_aut
     return provider["capabilities"]
 
 
-@router.delete("/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_provider(provider_id: UUID, _: dict = Depends(require_auth)) -> None:
+@router.delete("/{provider_id}")
+async def delete_provider(provider_id: UUID, _: dict = Depends(require_auth)):
     provider = store.get("providers", UUID(str(provider_id)))
     if not provider:
         raise AppError("PROVIDER_NOT_FOUND", "Không tìm thấy provider", 404)
     secret_store.delete(provider.get("secret_ref"))
     store.delete("providers", provider["id"])
+    return {"data": {"success": True, "message": "Đã xóa provider thành công"}}
 
 
 @router.post("/{provider_id}/test")
