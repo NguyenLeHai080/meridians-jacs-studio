@@ -131,12 +131,13 @@ export function LicensesView({
 
   // Filtered & Paginated items
   const filteredLicenses = useMemo(() => {
-    return licenses.filter((item) => {
+    return (licenses || []).filter((item) => {
+      if (!item) return false;
       const matchesSearch =
-        item.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.customer_contact.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.hwid.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.key_hint.toLowerCase().includes(searchTerm.toLowerCase());
+        (item.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.customer_contact || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.hwid || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.key_hint || "").toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesStatus =
         statusFilter === "all" ? true : item.status === statusFilter;
