@@ -1,66 +1,93 @@
-name: Deploy JACS Studio
+name: Automated Multi-Environment CI/CD Deploy
 
 on:
   push:
-    branches: [staging, prod]
+    branches:
+      - staging
+      - prod
   workflow_dispatch:
     inputs:
       target:
-        description: Environment to deploy
+        description: "Target Environment to Deploy"
         required: true
         type: choice
-        options: [staging, prod]
+        options:
+          - staging
+          - prod
 
 concurrency:
-  group: jacs-deploy-${{ github.ref_name }}
-  cancel-in-progress: false
+  group: jacs-deploy-${{ github.event_name == 'workflow_dispatch' && inputs.target || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   verify:
     uses: ./.github/workflows/ci.yml
 
   deploy:
+    name: Deploy to ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'prod') && 'Production' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') && 'Staging' || (github.ref_name == 'prod' && 'Production' || 'Staging') }}
     needs: verify
     runs-on: ubuntu-latest
     environment: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'prod') && 'production' || (github.event_name == 'workflow_dispatch' && inputs.target == 'staging') && 'staging' || (github.ref_name == 'prod' && 'production' || 'staging') }}
     env:
       TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.target || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Install SSH key
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node & PNPM Cache
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Dependencies & Pre-build Admin Portal (Optimizer)
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm build:admin
+
+      - name: Setup SSH Key & Known Hosts
         env:
           DEPLOY_SSH_KEY: ${{ secrets.JACS_DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST }}
+          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST || '221.121.1.3' }}
+          DEPLOY_PORT: ${{ secrets.JACS_DEPLOY_PORT || 22 }}
         run: |
-          test -n "$DEPLOY_SSH_KEY"
-          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_SSH_KEY" || { echo "Missing JACS_DEPLOY_SSH_KEY secret"; exit 1; }
+          test -n "$DEPLOY_HOST" || { echo "Missing JACS_DEPLOY_HOST secret"; exit 1; }
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/jacs_deploy
           chmod 600 ~/.ssh/jacs_deploy
-          ssh-keyscan -p "${{ secrets.JACS_DEPLOY_PORT || 22 }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
-      - name: Sync release to server
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Stream Optimized Release Archive to Server
         env:
-          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST }}
+          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST || '221.121.1.3' }}
           DEPLOY_USER: ${{ secrets.JACS_DEPLOY_USER || 'root' }}
           DEPLOY_PORT: ${{ secrets.JACS_DEPLOY_PORT || 22 }}
         run: |
           release_dir="/opt/jacs-studio/${TARGET_ENV}/current"
           export COPYFILE_DISABLE=1
-          # The deployment host does not require rsync; stream a clean release
-          # archive over SSH while preserving the environment file in the parent.
+          echo "Syncing code to $DEPLOY_HOST:$release_dir..."
+          
           ssh -i ~/.ssh/jacs_deploy -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "mkdir -p '$release_dir' && find '$release_dir' -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +"
+            "mkdir -p '$release_dir' && find '$release_dir' -mindepth 1 -maxdepth 1 -not -name '.env' -exec rm -rf -- {} +"
+
           tar -czf - \
             --no-xattrs --no-acls --no-fflags --no-mac-metadata \
-            --exclude='./.git' --exclude='./node_modules' --exclude='./dist' \
+            --exclude='./.git' --exclude='./node_modules' \
             --exclude='./._*' --exclude='./.DS_Store' \
-            --exclude='./release' --exclude='./.env' --exclude='./data' \
-            --exclude='*.tsbuildinfo' . |
+            --exclude='./Tool/desktop-app' --exclude='./release' \
+            --exclude='./data' --exclude='*.tsbuildinfo' . |
             ssh -i ~/.ssh/jacs_deploy -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
               "tar -xzf - -C '$release_dir'"
-      - name: Build and restart stack
+
+      - name: Execute Server Deployment & Health Verification
         env:
-          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST }}
+          DEPLOY_HOST: ${{ secrets.JACS_DEPLOY_HOST || '221.121.1.3' }}
           DEPLOY_USER: ${{ secrets.JACS_DEPLOY_USER || 'root' }}
           DEPLOY_PORT: ${{ secrets.JACS_DEPLOY_PORT || 22 }}
         run: |
