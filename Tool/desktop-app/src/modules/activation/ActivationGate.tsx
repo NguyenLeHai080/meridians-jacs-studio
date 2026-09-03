@@ -4,12 +4,13 @@ import { getRuntime } from "../../core/runtime";
 import type { MachineInfo } from "../../core/types";
 import { Icon } from "../../shared/Icon";
 import { LicenseRenewalModal } from "../renewal/LicenseRenewalModal";
+import { LegalTermsModal } from "../legal/LegalTermsModal";
 
-export function ActivationGate({
-  onActivated,
-}: {
-  onActivated: (customLogoUrl?: string) => void;
-}) {
+type Props = {
+  onActivated: (customLogo?: string, customerName?: string) => void;
+};
+
+export function ActivationGate({ onActivated }: Props) {
   const [machine, setMachine] = useState<MachineInfo | null>(null);
   const [key, setKey] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,15 +19,36 @@ export function ActivationGate({
   const [copiedHwid, setCopiedHwid] = useState(false);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [showRenewalModal, setShowRenewalModal] = useState(false);
+  
+  // Legal Terms Agreement Gate
+  const [showLegalGate, setShowLegalGate] = useState(false);
+  const [showLegalView, setShowLegalView] = useState(false);
+  const [pendingActivation, setPendingActivation] = useState<{
+    key: string;
+    customLogo?: string;
+    customerName?: string;
+  } | null>(null);
 
   useEffect(() => {
-    // 1. Read real Machine info
-    void getRuntime().getMachineInfo().then(setMachine);
+    let mounted = true;
+    void getRuntime()
+      .getMachineInfo()
+      .then((info) => {
+        if (mounted) setMachine(info);
+      });
 
-    // 2. Test server connectivity
-    void fetch(`${getApiBaseUrl()}/health/live`, { signal: AbortSignal.timeout(3000) })
-      .then((r) => setServerOnline(r.ok))
-      .catch(() => setServerOnline(false));
+    // Check server connection status
+    fetch(`${getApiBaseUrl()}/api/v1/system/terms`)
+      .then((res) => {
+        if (mounted) setServerOnline(res.ok);
+      })
+      .catch(() => {
+        if (mounted) setServerOnline(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   async function handleCopyHwid() {
@@ -61,27 +83,14 @@ export function ActivationGate({
     setLoading(true);
     try {
       const response = await validateLicense(cleanKey, machine.machineId);
-      await getRuntime().saveLicense(cleanKey);
-
-      // Save custom logo if issued by Admin
-      const customLogo = response.logo_url || undefined;
-      if (customLogo) {
-        try {
-          const prefs = await getRuntime().getPreferences();
-          await getRuntime().savePreferences({
-            ...prefs,
-            logoPath: customLogo,
-            brandKitLogo: customLogo,
-          });
-        } catch {
-          // best effort
-        }
-      }
-
-      setMessage("Kích hoạt thành công! Đang mở khóa không gian làm việc...");
-      setTimeout(() => {
-        onActivated(customLogo);
-      }, 600);
+      
+      // Store pending activation and open Legal Terms Agreement Modal
+      setPendingActivation({
+        key: cleanKey,
+        customLogo: response.logo_url || undefined,
+        customerName: response.customer_name || undefined,
+      });
+      setShowLegalGate(true);
     } catch (err) {
       setIsError(true);
       if (err instanceof ApiRequestError) {
@@ -89,7 +98,7 @@ export function ActivationGate({
           err.code === "LICENSE_HWID_MISMATCH"
             ? "Mã key này đã được gán cho một thiết bị khác. Vui lòng liên hệ Admin để đổi máy."
             : err.code === "LICENSE_EXPIRED"
-            ? "Mã key đã hết hạn sử dụng. Vui lòng liên hệ Admin để gia hạn."
+            ? "Mã key đã hết hạn sử dụng. Vui lòng gia hạn thêm."
             : err.code === "LICENSE_HWID_INVALID"
             ? "Mã máy không hợp lệ. Vui lòng chạy ứng dụng Desktop thật."
             : err.code === "LICENSE_INVALID"
@@ -104,6 +113,37 @@ export function ActivationGate({
     }
   }
 
+  async function handleAgreeAndUnlock() {
+    if (!pendingActivation) return;
+    try {
+      await getRuntime().saveLicense(pendingActivation.key);
+
+      // Save custom logo and operator name if issued by Admin
+      if (pendingActivation.customLogo || pendingActivation.customerName) {
+        try {
+          const prefs = await getRuntime().getPreferences();
+          await getRuntime().savePreferences({
+            ...prefs,
+            operatorName: pendingActivation.customerName || prefs.operatorName,
+            logoPath: pendingActivation.customLogo || prefs.logoPath,
+            brandKitLogo: pendingActivation.customLogo || prefs.brandKitLogo,
+          });
+        } catch {
+          // best effort
+        }
+      }
+
+      setShowLegalGate(false);
+      setMessage("Kích hoạt thành công! Đang mở khóa không gian làm việc...");
+      setTimeout(() => {
+        onActivated(pendingActivation.customLogo, pendingActivation.customerName);
+      }, 400);
+    } catch {
+      setIsError(true);
+      setMessage("Lỗi khi lưu bản quyền vào hệ thống cục bộ.");
+    }
+  }
+
   return (
     <div className="activation-gate-shell">
       <div className="activation-gate-bg-grid" />
@@ -112,8 +152,8 @@ export function ActivationGate({
 
       <div className="activation-gate-card animate-scale-in">
         <div className="gate-header">
-          <div className="gate-logo-badge">
-            <Icon name="key" size={26} />
+          <div className="gate-logo-badge" style={{ padding: 0, overflow: "hidden", border: "2px solid rgba(56, 189, 248, 0.45)", boxShadow: "0 0 24px rgba(56, 189, 248, 0.4)" }}>
+            <img src="./icon.png" alt="JACS Studio" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
           <h1 className="gate-title">JACS STUDIO</h1>
           <p className="gate-subtitle">Judicious AI Content Scanner & Video Synthesis Engine</p>
@@ -137,13 +177,13 @@ export function ActivationGate({
               onClick={handleCopyHwid}
               disabled={!machine?.machineId}
             >
-              <Icon name={copiedHwid ? "check" : "copy" as never} size={14} />
+              <Icon name={copiedHwid ? "check" : ("copy" as never)} size={14} />
               <span>{copiedHwid ? "Đã Copy" : "Copy Mã Máy"}</span>
             </button>
           </div>
 
           <p className="device-info-hint">
-            💡 Gửi mã máy này cho Quản trị viên để cấp quyền sử dụng và nhận mã License Key.
+            💡 Gửi mã máy này cho Quản trị viên để cấp quyền sử dụng hoặc quét mã gia hạn bên dưới.
           </p>
         </div>
 
@@ -185,40 +225,38 @@ export function ActivationGate({
             )}
           </button>
 
-          <div style={{ marginTop: "0.85rem", textAlign: "center" }}>
+          <div className="gate-renewal-wrapper" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <button
               type="button"
+              className="gate-renewal-btn"
               onClick={() => setShowRenewalModal(true)}
-              style={{
-                background: "transparent",
-                border: "1px dashed rgba(249, 115, 22, 0.6)",
-                color: "#f97316",
-                padding: "0.55rem 1rem",
-                borderRadius: "8px",
-                fontSize: "0.82rem",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.4rem",
-              }}
             >
               <Icon name="zap" size={15} />
-              Gia hạn bản quyền / Nâng cấp gói (Quét mã VietQR)
+              <span>Gia hạn bản quyền / Nâng cấp gói (Quét mã VietQR)</span>
+            </button>
+
+            <button
+              type="button"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#60a5fa",
+                fontSize: "12px",
+                cursor: "pointer",
+                padding: "4px 0",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "5px",
+                textDecoration: "underline",
+              }}
+              onClick={() => setShowLegalView(true)}
+            >
+              <Icon name="shield" size={13} />
+              <span>Xem Luật Miễn Trừ Trách Nhiệm & Điều Khoản Sử Dụng</span>
             </button>
           </div>
         </form>
-
-        <LicenseRenewalModal
-          isOpen={showRenewalModal}
-          onClose={() => setShowRenewalModal(false)}
-          currentKey={key}
-          onSuccess={() => {
-            if (key) {
-              void handleActivate({ preventDefault: () => {} } as React.FormEvent);
-            }
-          }}
-        />
 
         <div className="gate-footer">
           <div className="gate-meta-row">
@@ -229,7 +267,7 @@ export function ActivationGate({
               Kiến trúc: <strong>{machine?.arch || "x64"}</strong>
             </span>
             <span>
-              Phiên bản: <strong>v{machine?.appVersion || "0.3.17"}</strong>
+              Phiên bản: <strong>v{machine?.appVersion || "0.3.31"}</strong>
             </span>
           </div>
           <div className="gate-env-hint">
@@ -237,6 +275,33 @@ export function ActivationGate({
           </div>
         </div>
       </div>
+
+      {/* Renewal Modal */}
+      <LicenseRenewalModal
+        isOpen={showRenewalModal}
+        onClose={() => setShowRenewalModal(false)}
+        currentKey={key}
+        onSuccess={() => {
+          if (key) {
+            void handleActivate({ preventDefault: () => {} } as React.FormEvent);
+          }
+        }}
+      />
+
+      {/* Mandatory Agreement Gate upon entering Key */}
+      <LegalTermsModal
+        isOpen={showLegalGate}
+        onClose={() => setShowLegalGate(false)}
+        requireAgreement={true}
+        onAgreeAndProceed={handleAgreeAndUnlock}
+      />
+
+      {/* Standalone View Modal from Link */}
+      <LegalTermsModal
+        isOpen={showLegalView}
+        onClose={() => setShowLegalView(false)}
+        requireAgreement={false}
+      />
     </div>
   );
 }

@@ -6,99 +6,705 @@ import { defaultVoice, voicesForLanguage } from "../../core/voice-packs";
 import { Icon } from "../../shared/Icon";
 import { StatusPill } from "../../shared/StatusPill";
 import { Pagination } from "../../shared/Pagination";
+import { Modal } from "../../shared/Modal";
 
-type Source = { id: string; name: string; source: string; sourceType: "file" | "url"; localPath?: string };
+type Source = {
+  id: string;
+  name: string;
+  source: string;
+  sourceType: "file" | "url";
+  localPath?: string;
+};
 
 const LANGUAGE_OPTIONS = [
-  ["vi", "Việt Nam"], ["en", "English"], ["ja", "日本語"], ["ko", "한국어"],
-  ["zh-CN", "中文 · Trung Quốc"], ["zh-TW", "繁體中文 · Đài Loan"], ["th", "ไทย · Thái Lan"],
-  ["id", "Indonesia"], ["ms", "Melayu · Malaysia"], ["fil", "Filipino"], ["fr", "Français"],
-  ["es", "Español"], ["pt-BR", "Português · Brazil"], ["de", "Deutsch"], ["it", "Italiano"],
-  ["ru", "Русский"], ["tr", "Türkçe"], ["ar", "العربية"], ["hi", "हिन्दी"], ["nl", "Nederlands"],
+  ["vi", "Tiếng Việt"],
+  ["en", "English"],
+  ["ja", "日本語"],
+  ["ko", "한국어"],
+  ["zh-CN", "中文 · Trung Quốc"],
+  ["zh-TW", "繁體中文 · Đài Loan"],
+  ["th", "ไทย · Thái Lan"],
+  ["id", "Indonesia"],
+  ["ms", "Melayu · Malaysia"],
+  ["fil", "Filipino"],
+  ["fr", "Français"],
+  ["es", "Español"],
+  ["pt-BR", "Português · Brazil"],
+  ["de", "Deutsch"],
+  ["it", "Italiano"],
+  ["ru", "Русский"],
+  ["tr", "Türkçe"],
+  ["ar", "العربية"],
+  ["hi", "हिन्दी"],
+  ["nl", "Nederlands"],
 ] as const;
 const LANGUAGE_LABELS = Object.fromEntries(LANGUAGE_OPTIONS) as Record<string, string>;
-const STAGE_LABELS: Record<string, string> = { queued: "Đang chờ", downloading: "Đang tải video", probing: "Đọc metadata", analyzing: "Đang phân tích AI", outlining: "Đang lập kịch bản", script_review: "Chờ duyệt kịch bản", generating_voice: "Đang tạo voice", matching_scenes: "Đang khớp cảnh", timeline_review: "Chờ duyệt timeline", rendering: "Đang render", qa: "Đang kiểm tra chất lượng", completed: "Đã hoàn tất", failed: "Thất bại", cancelled: "Đã hủy" };
 
-function modeLabel(mode: Job["mode"]) { return mode === "local-gpu" ? "GPU local" : mode === "local-cpu" ? "CPU local" : mode === "hybrid" ? "Hybrid" : "Cloud AI"; }
-function languageLabel(value?: string) { return value ? LANGUAGE_LABELS[value] || value.toUpperCase() : "Mặc định"; }
-function sourceIcon(sourceType?: Job["sourceType"]): "link" | "video" { return sourceType === "url" ? "link" : "video"; }
+const STAGE_LABELS: Record<string, string> = {
+  queued: "Đang chờ",
+  downloading: "Đang tải video",
+  probing: "Đọc metadata",
+  analyzing: "Đang phân tích AI",
+  outlining: "Đang lập kịch bản",
+  script_review: "Chờ duyệt kịch bản",
+  generating_voice: "Đang tạo voice",
+  matching_scenes: "Đang khớp cảnh",
+  timeline_review: "Chờ duyệt timeline",
+  rendering: "Đang render",
+  qa: "Đang kiểm tra chất lượng",
+  completed: "Đã hoàn tất",
+  failed: "Thất bại",
+  cancelled: "Đã hủy",
+};
 
-function JobCard({ job, selected, bulkSelected, onSelect, onToggleBulk, onCancel, onRetry }: { job: Job; selected: boolean; bulkSelected: boolean; onSelect: () => void; onToggleBulk: () => void; onCancel?: () => void; onRetry?: () => void }) {
-  const terminal = ["completed", "failed", "cancelled"].includes(job.status);
-  const progress = Math.max(0, Math.min(100, job.progress || 0));
-  return <article className={`job-card ${selected ? "is-selected" : ""} status-card-${job.status}`} onClick={onSelect}>
-    <div className="job-card-main"><button type="button" className={`job-select-toggle ${bulkSelected ? "is-selected" : ""}`} title={bulkSelected ? "Bỏ chọn job" : "Chọn job để xoá"} aria-label={bulkSelected ? `Bỏ chọn ${job.name}` : `Chọn ${job.name} để xoá`} onClick={(event) => { event.stopPropagation(); onToggleBulk(); }}><span>{bulkSelected && <Icon name="check" size={12} />}</span></button><span className={`job-card-icon ${job.sourceType === "url" ? "url" : "file"}`}><Icon name={sourceIcon(job.sourceType)} size={17} /></span><div className="job-card-copy"><div className="job-card-title"><strong title={job.name}>{job.name}</strong><StatusPill status={job.status} /></div><p title={job.source}>{job.source}</p><div className="job-card-tags"><span>{modeLabel(job.mode)}</span><span>{languageLabel(job.languages?.[0])}</span>{job.highlightOnly && <span><Icon name="spark" size={11} /> Highlight ≤ {job.highlightMaxSeconds || 30}s</span>}{job.narratorEnabled && <span><Icon name="mic" size={11} /> Voice {job.narratorGender === "female" ? "nữ" : "nam"}</span>}{job.backgroundMusic && <span><Icon name="music" size={11} /> Nhạc nền</span>}</div>{job.error && <p className="job-error-inline" title={job.error}><Icon name="refresh" size={11} /> {job.error}</p>}</div><button type="button" className="icon-button job-card-open" title="Xem chi tiết" onClick={(event) => { event.stopPropagation(); onSelect(); }}><Icon name="arrow" size={15} /></button></div>
-    <div className="job-card-progress"><div className="progress-track"><i style={{ width: `${progress}%` }} /></div><span>{progress}%</span></div>
-    <div className="job-card-foot"><small>{STAGE_LABELS[job.stage || job.status] || job.stage || job.status} · {job.createdAt}</small><div className="job-card-actions">{!terminal && onCancel && <button type="button" className="queue-action" onClick={(event) => { event.stopPropagation(); onCancel(); }}>Hủy</button>}{(job.status === "failed" || job.status === "cancelled") && onRetry && <button type="button" className="queue-action retry" onClick={(event) => { event.stopPropagation(); onRetry(); }}><Icon name="refresh" size={12} /> Chạy lại</button>}</div></div>
-  </article>;
-}
+export function BatchJobsPage({
+  jobs,
+  onAddJob,
+  onCancelJob,
+  onRetryJob,
+  onDeleteJobs,
+  onOpenTimeline,
+}: {
+  jobs: Job[];
+  onAddJob: (job: Job) => void;
+  onCancelJob?: (jobId: string) => void;
+  onRetryJob?: (jobId: string) => void;
+  onDeleteJobs?: (jobIds: string[]) => void;
+  onOpenTimeline?: (jobId: string) => void;
+}) {
+  const [sources, setSources] = useState<Source[]>([]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
+  const [urlText, setUrlText] = useState("");
+  const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
+  const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+  const [message, setMessage] = useState("");
 
-function JobInspector({ job, onRetry, onOpenTimeline }: { job?: Job; onRetry?: (id: string) => void; onOpenTimeline?: (jobId: string) => void }) {
-  if (!job) return <div className="job-inspector empty"><span className="job-inspector-orb"><Icon name="layers" size={22} /></span><strong>Chọn một job để xem chi tiết</strong><p>Frame, scene, token, credit và file output sẽ hiển thị tại đây.</p></div>;
-  const frames = job.analysis?.previewFrames || [];
-  const scenes = job.analysis?.scenes || [];
-  const matches = job.analysis?.sceneMatches || [];
-  const voiceEvidence = job.narrationGenerated
-    ? job.voiceEngine === "provider" ? "Voice AI provider" : job.voiceEngine === "local" ? "Voice local theo locale" : "Voice đã tạo"
-    : "Không voice";
-  const renderEvidence = job.status === "completed"
-    ? `${voiceEvidence} · ${job.subtitlesBurned ? `${job.subtitleCueCount || 0} cue phụ đề đã burn` : "Không phụ đề burn"}`
-    : "Chưa render";
-  return <div className="job-inspector"><div className="job-inspector-head"><div><p className="eyebrow">JOB INSPECTOR</p><h3>{job.name}</h3><p>{job.source}</p></div><StatusPill status={job.status} /></div><div className="job-inspector-stats"><span><small>Tiến trình</small><strong>{job.progress}%</strong></span><span><small>Engine</small><strong>{modeLabel(job.mode)}</strong></span><span><small>Ngôn ngữ</small><strong>{languageLabel(job.languages?.[0])}</strong></span><span><small>Credit / token</small><strong>{job.creditsUsed || 0} / {(job.tokensUsed || 0).toLocaleString("vi-VN")}</strong></span></div><div className="inspector-progress"><div className="progress-track"><i style={{ width: `${Math.max(0, Math.min(100, job.progress || 0))}%` }} /></div><small>{STAGE_LABELS[job.stage || job.status] || job.stage || job.status}</small></div>{job.stage === "script_review" && <div className="job-review-notice"><Icon name="alert" size={14} /><span>Kịch bản AIDA đã sẵn sàng. Mở menu Kịch bản & Voice để duyệt trước khi render.</span></div>}{job.error && <div className="job-error"><Icon name="refresh" size={14} /><span>{job.error}</span></div>}{job.analysis?.summary && <div className="job-summary"><p className="eyebrow">AI SUMMARY</p><p>{job.analysis.summary}</p></div>}{job.analysis?.voiceScript && <div className="inspector-section"><div className="inspector-section-title"><strong>Kịch bản giọng đọc</strong><small>{job.analysis.sourceLanguage || "ngữ cảnh AI"} → {languageLabel(job.languages?.[0])}</small></div><p className="transcript-preview">{job.analysis.voiceScript}</p></div>}{job.analysis?.translatedTranscript && <div className="inspector-section"><div className="inspector-section-title"><strong>Bản dịch transcript</strong></div><p className="transcript-preview">{job.analysis.translatedTranscript}</p></div>}{frames.length > 0 && <div className="inspector-section"><div className="inspector-section-title"><strong>Preview frames</strong><small>{frames.length} frame từ video</small></div><div className="job-detail-frames">{frames.map((frame) => <figure key={frame.timestampSeconds}><img src={frame.imageDataUrl} alt={`Frame ${frame.timestampSeconds}s`} /><figcaption>{Math.round(frame.timestampSeconds)}s</figcaption></figure>)}</div></div>}{scenes.length > 0 && <div className="inspector-section"><div className="inspector-section-title"><strong>Scene timeline</strong><small>{scenes.length} scene · {matches.filter((match) => !match.needsReview).length} đã khớp</small></div><div className="job-detail-scenes">{scenes.map((scene, index) => { const match = matches.find((item) => item.sceneId === scene.id) || matches[index]; return <div key={`${scene.start}-${scene.title}`}><span>{scene.start}{scene.end ? ` → ${scene.end}` : ""}</span><b>{scene.title}</b><small>{scene.voiceover || scene.translation || scene.detail}</small>{match && <em className={match.needsReview ? "match-review" : "match-ok"}>{Math.round(match.matchScore * 100)}% · {match.needsReview ? "cần duyệt" : "đã khớp"}</em>}</div>; })}</div></div>}{job.analysis?.transcript && <div className="inspector-section"><div className="inspector-section-title"><strong>Transcript gốc</strong></div><p className="transcript-preview">{job.analysis.transcript}</p></div>}{job.qa && <div className="inspector-section"><div className="inspector-section-title"><strong>Render QA</strong><small>{job.qa.passed ? "PASS" : "FAIL"}</small></div><p className={job.qa.passed ? "form-help" : "form-error"}>{job.qa.checks.map((check) => `${check.passed ? "✓" : "✕"} ${check.detail}`).join(" · ")}</p></div>}<div className="job-inspector-bottom"><div><small>Audio preset · {renderEvidence}</small><strong>{job.narratorEnabled ? `Voice ${job.narratorGender === "female" ? "nữ" : "nam"}` : "Không voice-over"} · {job.keepOriginalAudio === false ? "Đã tắt tiếng gốc" : "Giữ tiếng gốc"}{job.backgroundMusic ? " · Nhạc nền" : ""}</strong></div><div className="job-inspector-actions">{onOpenTimeline && <button type="button" className="button-quiet timeline-entry-button" onClick={() => onOpenTimeline(job.id)}><Icon name="timeline" size={14} /> Chọn cảnh & timeline</button>}{job.subtitlesPath && <button type="button" className="button-quiet" onClick={() => void getRuntime().revealPath(job.subtitlesPath!)}><Icon name="captions" size={14} /> Mở SRT</button>}{job.outputPath ? <button type="button" className="button-quiet" onClick={() => void getRuntime().revealPath(job.outputPath!)}><Icon name="external" size={14} /> Mở output</button> : (job.status === "failed" || job.status === "cancelled") && onRetry ? <button type="button" className="button-quiet" onClick={() => onRetry(job.id)}><Icon name="refresh" size={14} /> Chạy lại</button> : null}</div></div></div>;
-}
+  // Preset configuration state
+  const [mode, setMode] = useState<Job["mode"]>("local-cpu");
+  const [providerId, setProviderId] = useState("");
+  const [splitScenes, setSplitScenes] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState<Job["aspectRatio"]>("9:16");
+  const [narratorEnabled, setNarratorEnabled] = useState(true);
+  const [narratorGender, setNarratorGender] = useState<"male" | "female">("female");
+  const [languages, setLanguages] = useState<string[]>(["vi"]);
+  const [keepOriginalAudio, setKeepOriginalAudio] = useState(true);
+  const [emphasizeHook, setEmphasizeHook] = useState(true);
+  const [highlightOnly, setHighlightOnly] = useState(false);
+  const [backgroundMusic, setBackgroundMusic] = useState(false);
+  const [providers, setProviders] = useState<ProviderProfile[]>([]);
 
-export function BatchJobsPage({ jobs, onAddJob, onCancelJob, onRetryJob, onDeleteJobs, onOpenTimeline }: { jobs: Job[]; onAddJob: (job: Job) => void; onCancelJob?: (jobId: string) => void; onRetryJob?: (jobId: string) => void; onDeleteJobs?: (jobIds: string[]) => void; onOpenTimeline?: (jobId: string) => void }) {
-  const [sources, setSources] = useState<Source[]>([]); const [selected, setSelected] = useState<string[]>([]); const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]); const [selectedJobId, setSelectedJobId] = useState(""); const [urlText, setUrlText] = useState("");
-  const [mode, setMode] = useState<Job["mode"]>("local-cpu"); const [providerId, setProviderId] = useState(""); const [transcriptionProviderId, setTranscriptionProviderId] = useState(""); const [ttsProviderId, setTtsProviderId] = useState(""); const [splitScenes, setSplitScenes] = useState(true); const [aspectRatio, setAspectRatio] = useState<Job["aspectRatio"]>("9:16");
-  const [narratorEnabled, setNarratorEnabled] = useState(false); const [narratorGender, setNarratorGender] = useState<"male" | "female">("female"); const [narratorVoice, setNarratorVoice] = useState("vi-female"); const [languages, setLanguages] = useState<string[]>(["vi"]);
-  const [keepOriginalAudio, setKeepOriginalAudio] = useState(true); const [emphasizeHook, setEmphasizeHook] = useState(true); const [highlightOnly, setHighlightOnly] = useState(false); const [highlightMaxSeconds, setHighlightMaxSeconds] = useState(30); const [backgroundMusic, setBackgroundMusic] = useState(false); const [backgroundMusicVolume, setBackgroundMusicVolume] = useState(20); const [backgroundMusicPath, setBackgroundMusicPath] = useState("");
-  const [providers, setProviders] = useState<ProviderProfile[]>([]); const [message, setMessage] = useState(""); const [sourcePage, setSourcePage] = useState(1); const [queuePage, setQueuePage] = useState(1); const sourcePageSize = 6; const queuePageSize = 8;
-  const processJobs = useMemo(() => jobs.filter((job) => !job.sourceOnly), [jobs]); const activeJobs = useMemo(() => processJobs.filter((job) => job.status === "queued" || job.status === "running").length, [processJobs]); const selectedJob = useMemo(() => processJobs.find((job) => job.id === selectedJobId) || processJobs[0], [processJobs, selectedJobId]); const pagedSources = useMemo(() => sources.slice((sourcePage - 1) * sourcePageSize, sourcePage * sourcePageSize), [sources, sourcePage]); const jobGroups = useMemo(() => { const groups = new Map<string, { key: string; title: string; source: string; jobs: Job[] }>(); processJobs.forEach((job) => { const key = job.localPath || job.source; const current = groups.get(key); if (current) current.jobs.push(job); else { const raw = job.localPath?.split(/[\\/]/).pop() || job.source.split(/[\\/]/).pop() || job.name; const title = raw.replace(/\.[^.]+$/, "").replace(/\s·\s.*$/, "") || job.name; groups.set(key, { key, title, source: job.source, jobs: [job] }); } }); return [...groups.values()]; }, [processJobs]); const pagedGroups = useMemo(() => jobGroups.slice((queuePage - 1) * queuePageSize, queuePage * queuePageSize), [jobGroups, queuePage]); const analysisProviders = providers.filter((provider) => providerIsReady(provider, "analysis")); const ttsProviders = providers.filter((provider) => providerIsReady(provider, "tts")); const contextualProviders = analysisProviders; const estimatedJobs = selected.length * Math.max(1, languages.length); const availableVoices = voicesForLanguage(languages[0] || "vi");
-  useEffect(() => { void getRuntime().getProviderProfiles().then(setProviders).catch(() => setProviders([])); }, []);
+  const [sourcePage, setSourcePage] = useState(1);
+  const [queuePage, setQueuePage] = useState(1);
+  const sourcePageSize = 5;
+  const queuePageSize = 8;
+
+  const processJobs = useMemo(() => jobs.filter((job) => !job.sourceOnly), [jobs]);
+  const pagedSources = useMemo(
+    () => sources.slice((sourcePage - 1) * sourcePageSize, sourcePage * sourcePageSize),
+    [sources, sourcePage]
+  );
+  const pagedJobs = useMemo(
+    () => processJobs.slice((queuePage - 1) * queuePageSize, queuePage * queuePageSize),
+    [processJobs, queuePage]
+  );
+
   useEffect(() => {
-    // Sources added in the dedicated Sources module are persisted as jobs.
-    // Hydrate them here so switching menus does not lose the workflow context.
-    const persisted = jobs.filter((job) => job.localPath || job.sourceType === "url").map((job) => ({ id: job.id, name: job.name, source: job.source, sourceType: job.sourceType || "file", localPath: job.localPath }));
+    void getRuntime().getProviderProfiles().then(setProviders).catch(() => setProviders([]));
+  }, []);
+
+  useEffect(() => {
+    const persisted = jobs
+      .filter((job) => job.localPath || job.sourceType === "url")
+      .map((job) => ({
+        id: job.id,
+        name: job.name,
+        source: job.source,
+        sourceType: (job.sourceType || "file") as "file" | "url",
+        localPath: job.localPath,
+      }));
     setSources((current) => {
       const merged = new Map(current.map((item) => [item.id, item]));
       persisted.forEach((item) => merged.set(item.id, { ...merged.get(item.id), ...item }));
       return [...merged.values()];
     });
   }, [jobs]);
-  useEffect(() => { setSourcePage((current) => Math.min(current, Math.max(1, Math.ceil(sources.length / sourcePageSize)))); }, [sources.length]); useEffect(() => { if (selectedJobId && !processJobs.some((job) => job.id === selectedJobId)) setSelectedJobId(""); setSelectedJobIds((current) => current.filter((id) => processJobs.some((job) => job.id === id))); setQueuePage((current) => Math.min(current, Math.max(1, Math.ceil(jobGroups.length / queuePageSize)))); }, [processJobs, selectedJobId, jobGroups.length]); useEffect(() => { setNarratorVoice(defaultVoice(languages[0] || "vi", narratorGender).id); }, [languages, narratorGender]);
-  function toggleJobSelection(jobId: string) { setSelectedJobIds((current) => current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]); }
-  function toggleAllJobs() { setSelectedJobIds((current) => current.length === processJobs.length ? [] : processJobs.map((job) => job.id)); }
-  function deleteSelectedJobs() { if (!onDeleteJobs || !selectedJobIds.length) return; if (!window.confirm(`Xoá ${selectedJobIds.length} job đã chọn? Hành động này không thể hoàn tác.`)) return; onDeleteJobs(selectedJobIds); setSelectedJobIds([]); setSelectedJobId(""); }
-  async function chooseVideos() { const picked = await getRuntime().pickVideos?.(); if (!picked?.length) return; const existing = new Set(sources.map((item) => item.localPath || item.source)); const stamp = Date.now(); const additions = picked.filter((file) => !existing.has(file)).map((localPath, index) => ({ id: `${localPath}-${stamp}-${index}`, name: localPath.split(/[\\/]/).pop() || localPath, source: localPath, sourceType: "file" as const, localPath })); setSources((current) => [...current, ...additions]); setSelected((current) => [...new Set([...current, ...additions.map((item) => item.id)])]); additions.forEach((source) => onAddJob({ id: source.id, name: source.name.replace(/\.[^.]+$/, ""), source: source.name, sourceType: "file", localPath: source.localPath, sourceOnly: true, mode: "local-cpu", status: "queued", stage: "queued", progress: 0, createdAt: new Date().toLocaleString("vi-VN"), synced: true })); setMessage(""); }
-  function addUrl() { const urls = urlText.split(/[\n,]+/).map(normalizePastedUrl).filter(Boolean); const invalid = urls.find((url) => !/^https?:\/\//i.test(url)); if (!urls.length || invalid) { setMessage("Mỗi URL phải bắt đầu bằng http:// hoặc https://"); return; } const existing = new Set(sources.map((item) => item.source)); const stamp = Date.now(); const additions = urls.filter((url) => !existing.has(url)).map((url, index) => ({ id: `${url}-${stamp}-${index}`, name: sourceNameFromUrl(url), source: url, sourceType: "url" as const })); setSources((current) => [...current, ...additions]); setSelected((current) => [...new Set([...current, ...additions.map((item) => item.id)])]); additions.forEach((source) => onAddJob({ id: source.id, name: source.name, source: source.source, sourceType: "url", sourceOnly: true, mode: "local-cpu", status: "queued", stage: "downloading", progress: 0, createdAt: new Date().toLocaleString("vi-VN"), synced: true })); setUrlText(""); setMessage(additions.length ? "" : "Các URL này đã có trong danh sách nguồn."); }
-  function toggleLanguage(value: string) { setLanguages((current) => current.includes(value) ? (current.length > 1 ? current.filter((item) => item !== value) : current) : [...current, value]); }
-  async function chooseMusic() { const picked = await getRuntime().pickAudio?.(); if (picked) { setBackgroundMusicPath(picked); setBackgroundMusic(true); } }
-  function createBatch() {
-    if (!isNativeRuntime()) {
-      setMessage("Bản xem trước trình duyệt chỉ hiển thị giao diện. Hãy mở JACS Studio Desktop (Electron) để tải video, gọi AI và render bằng FFmpeg.");
+
+  async function chooseVideos() {
+    const picked = await getRuntime().pickVideos?.();
+    if (!picked?.length) return;
+    const existing = new Set(sources.map((item) => item.localPath || item.source));
+    const stamp = Date.now();
+    const additions = picked
+      .filter((file) => !existing.has(file))
+      .map((localPath, index) => ({
+        id: `${localPath}-${stamp}-${index}`,
+        name: localPath.split(/[\\/]/).pop() || localPath,
+        source: localPath,
+        sourceType: "file" as const,
+        localPath,
+      }));
+    setSources((current) => [...current, ...additions]);
+    setSelectedSources((current) => [...new Set([...current, ...additions.map((item) => item.id)])]);
+    additions.forEach((source) =>
+      onAddJob({
+        id: source.id,
+        name: source.name.replace(/\.[^.]+$/, ""),
+        source: source.name,
+        sourceType: "file",
+        localPath: source.localPath,
+        sourceOnly: true,
+        mode: "local-cpu",
+        status: "queued",
+        stage: "queued",
+        progress: 0,
+        createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        synced: true,
+      })
+    );
+    setMessage(`Đã nạp ${additions.length} file video vào danh sách nguồn.`);
+  }
+
+  function addUrl() {
+    const urls = urlText.split(/[\n,]+/).map(normalizePastedUrl).filter(Boolean);
+    const invalid = urls.find((url) => !/^https?:\/\//i.test(url));
+    if (!urls.length || invalid) {
+      setMessage("Mỗi URL phải bắt đầu bằng http:// hoặc https://");
       return;
     }
-    const chosen = sources.filter((source) => selected.includes(source.id)); if (!chosen.length) { setMessage("Hãy chọn ít nhất một video hoặc URL để tạo job."); return; }
-    const needsAnalysisProvider = ["cloud", "hybrid"].includes(mode);
-    const selectedAnalysisProvider = analysisProviders.find((provider) => provider.id === providerId);
-    const selectedContextualProvider = contextualProviders.find((provider) => provider.id === providerId);
-    const resolvedProviderId = narratorEnabled
-      ? selectedContextualProvider?.id || contextualProviders[0]?.id || ""
-      : needsAnalysisProvider ? selectedAnalysisProvider?.id || analysisProviders[0]?.id || "" : providerId || undefined;
-    const resolvedTranscriptionProviderId = providers.find((provider) => provider.id === transcriptionProviderId && providerIsReady(provider, "transcription"))?.id || undefined;
-    const resolvedTtsProviderId = narratorEnabled
-      ? ttsProviders.find((provider) => provider.id === ttsProviderId)?.id || ttsProviders.find((provider) => provider.id === resolvedProviderId)?.id || ttsProviders[0]?.id
-      : undefined;
-    if (needsAnalysisProvider && !resolvedProviderId) { setMessage("Chế độ Cloud/Hybrid cần provider đã bật capability analysis và có API key. Mở Cài đặt tool để cấu hình trước."); return; }
-    if (narratorEnabled && !resolvedProviderId) { setMessage("Dịch/lồng tiếng theo ngữ cảnh cần provider analysis có URL + API key. Hãy cấu hình provider trong Cài đặt tool trước."); return; }
-    const stamp = Date.now(); const created: Job[] = []; chosen.forEach((source, sourceIndex) => languages.forEach((language, languageIndex) => {
-      const languageSuffix = languages.length > 1 ? ` · ${languageLabel(language)}` : "";
-      // Each output language must carry its own local voice profile. Reusing
-      // the first selected language's voice would make a multilingual batch
-      // speak every output with the wrong pronunciation.
-      const languageVoice = narratorEnabled ? defaultVoice(language, narratorGender).id : undefined;
-      created.push({ id: `job-${stamp}-${sourceIndex}-${languageIndex}`, name: `${source.name.replace(/\.[^.]+$/, "")}${languageSuffix}`, source: source.sourceType === "url" ? source.source : source.name, sourceType: source.sourceType, localPath: source.localPath, mode, providerId: needsAnalysisProvider || narratorEnabled ? resolvedProviderId : undefined, transcriptionProviderId: resolvedTranscriptionProviderId, ttsProviderId: resolvedTtsProviderId, splitScenes, aspectRatio, narratorEnabled, narratorGender, narratorVoice: languageVoice, languages: [language], keepOriginalAudio, emphasizeHook, highlightOnly, highlightMaxSeconds, backgroundMusic, backgroundMusicVolume, backgroundMusicPath: backgroundMusicPath || undefined, status: "queued", stage: source.sourceType === "url" ? "downloading" : "queued", progress: 0, createdAt: new Date().toLocaleString("vi-VN") });
-    })); created.forEach(onAddJob); setSelected([]); setMessage(`${created.length} job đã được thêm vào hàng đợi (${chosen.length} video × ${languages.length} ngôn ngữ).`); setSelectedJobId(created[0]?.id || "");
+    const existing = new Set(sources.map((item) => item.source));
+    const stamp = Date.now();
+    const additions = urls
+      .filter((url) => !existing.has(url))
+      .map((url, index) => ({
+        id: `${url}-${stamp}-${index}`,
+        name: sourceNameFromUrl(url),
+        source: url,
+        sourceType: "url" as const,
+      }));
+    setSources((current) => [...current, ...additions]);
+    setSelectedSources((current) => [...new Set([...current, ...additions.map((item) => item.id)])]);
+    additions.forEach((source) =>
+      onAddJob({
+        id: source.id,
+        name: source.name,
+        source: source.source,
+        sourceType: "url",
+        sourceOnly: true,
+        mode: "local-cpu",
+        status: "queued",
+        stage: "downloading",
+        progress: 0,
+        createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        synced: true,
+      })
+    );
+    setUrlText("");
+    setIsUrlModalOpen(false);
+    setMessage(`Đã thêm ${additions.length} URL video vào danh sách.`);
   }
-  return <div className="page-stack page-enter"><div className="page-title batch-page-title"><div><p className="eyebrow">MEDIA PIPELINE / BATCH</p><h2>Tạo job hàng loạt</h2><p>Đưa nhiều file hoặc URL vào một queue, chọn ngôn ngữ, giọng kể và lớp âm thanh trước khi render.</p></div><div className="batch-page-actions"><button type="button" className="button-quiet" onClick={() => onOpenTimeline?.(selectedJob?.id || "")} disabled={!selectedJob}><Icon name="timeline" size={16} /> Chọn cảnh & timeline</button><button onClick={createBatch} disabled={!selected.length}><Icon name="plus" size={16} /> Tạo {estimatedJobs} job</button></div></div>{message && <p className={message.includes("đã được thêm") ? "form-success" : "form-help"}>{message}</p>}<div className="batch-layout"><section className="panel-card media-picker"><div className="panel-head"><div><p className="eyebrow">01 / SOURCES</p><h3>Nguồn video</h3><span className="subtle">{selected.length}/{sources.length} nguồn được chọn</span></div><div className="panel-actions"><button className="text-button" type="button" onClick={() => setSelected(selected.length === sources.length ? [] : sources.map((source) => source.id))} disabled={!sources.length}>{selected.length === sources.length ? "Bỏ chọn" : "Chọn tất cả"}</button><button className="icon-button" title="Chọn nhiều video" onClick={() => void chooseVideos()} disabled={!isNativeRuntime()}><Icon name="upload" /></button></div></div><div className="url-row"><textarea value={urlText} onChange={(event) => setUrlText(event.target.value)} placeholder="Dán nhiều URL TikTok, MP4... mỗi dòng một video" rows={2} /><button className="button-quiet" type="button" onClick={addUrl}>Thêm URL</button></div>{!isNativeRuntime() && <p className="form-help">Đây là bản preview. Mở JACS Studio Desktop để lấy mã máy thật, lưu API key và chạy pipeline native.</p>}{pagedSources.map((source, index) => <button className={`media-row ${selected.includes(source.id) ? "is-selected" : ""}`} key={source.id} type="button" onClick={() => setSelected((current) => current.includes(source.id) ? current.filter((item) => item !== source.id) : [...current, source.id])}><span className="check-box">{selected.includes(source.id) && <Icon name="check" size={13} />}</span><span className={`media-art art-${(index % 4) + 1}`} /><span className="media-name"><strong>{source.name}</strong><small>{source.sourceType === "url" ? "URL online · sẽ tải một lần vào app-data" : "Local file · không upload"}</small></span><Icon name="arrow" size={15} /></button>)}{!sources.length && <div className="provider-empty"><Icon name="upload" size={20} /><div><strong>Chưa có nguồn video</strong><p>Chọn nhiều file hoặc thêm URL để bắt đầu.</p></div></div>}{sources.length > sourcePageSize && <div className="source-picker-pagination"><Pagination total={sources.length} page={sourcePage} pageSize={sourcePageSize} onPageChange={setSourcePage} /></div>}</section><section className="panel-card preset-panel"><p className="eyebrow">02 / PROCESSING PRESET</p><h3>Thiết lập xử lý</h3><label className="field-label">Execution mode<select value={mode} onChange={(event) => setMode(event.target.value as Job["mode"])}><option value="local-gpu">Local GPU · riêng tư & nhanh</option><option value="local-cpu">Local CPU · tương thích cao</option><option value="hybrid">Hybrid · AI cloud + render local</option><option value="cloud">Cloud AI · render local</option></select></label><label className="field-label">AI provider phân tích<select value={providerId} onChange={(event) => setProviderId(event.target.value)}><option value="">{["cloud", "hybrid"].includes(mode) ? "Tự động chọn provider analysis" : "Không dùng provider cho scene local"}</option>{analysisProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model}</option>)}</select></label><label className="field-label">Provider transcription (Groq Whisper)<select value={transcriptionProviderId} onChange={(event) => setTranscriptionProviderId(event.target.value)}><option value="">Dùng provider phân tích</option>{providers.filter((provider) => providerIsReady(provider, "transcription")).map((provider) => <option value={provider.id} key={provider.id}>{provider.name} · {provider.transcriptionModel || "whisper-large-v3"}</option>)}</select></label><label className="field-label">Tỷ lệ xuất<select value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as Job["aspectRatio"])}><option value="9:16">9:16 · Shorts/Reels/TikTok</option><option value="1:1">1:1 · Social square</option><option value="16:9">16:9 · YouTube</option><option value="original">Original · giữ kích thước</option></select></label><label className="preset-check"><input type="checkbox" checked={splitScenes} onChange={(event) => setSplitScenes(event.target.checked)} /><span><strong>Tách scene thành job riêng</strong><small>Phân tích trước, sau đó tạo clip theo từng mốc scene</small></span></label><label className="preset-check"><input type="checkbox" checked={highlightOnly} onChange={(event) => setHighlightOnly(event.target.checked)} /><span><strong>Cắt highlight tự động</strong><small>AI chọn hook/cao trào tốt nhất rồi chỉ render đoạn nổi bật</small></span></label>{highlightOnly && <label className="field-label compact-field">Độ dài highlight tối đa<select value={highlightMaxSeconds} onChange={(event) => setHighlightMaxSeconds(Number(event.target.value))}><option value="15">15 giây · hook nhanh</option><option value="30">30 giây · short tiêu chuẩn</option><option value="60">60 giây · nội dung đầy đủ</option></select></label>}<div className="preset-options"><div className="preset-option active"><span><Icon name="scan" size={17} /></span><strong>Phân tích ngữ cảnh & frame</strong><small>Scene, transcript, hook và preview frame</small></div><div className="preset-option active"><span><Icon name="spark" size={17} /></span><strong>Reframe {aspectRatio}</strong><small>Crop bằng FFmpeg/GPU trên thiết bị</small></div></div></section><section className="panel-card preset-panel audio-panel"><p className="eyebrow">03 / VOICE & AUDIO</p><h3>Giọng kể và âm thanh</h3><label className="preset-check"><input type="checkbox" checked={narratorEnabled} onChange={(event) => setNarratorEnabled(event.target.checked)} /><span><strong>Thêm giọng AI kể chuyện</strong><small>Ưu tiên voice pack local; nếu không có voice phù hợp sẽ dùng provider TTS đã chọn.</small></span></label>{narratorEnabled && <><div className="voice-grid"><label className="field-label">Giọng<select value={narratorGender} onChange={(event) => { const gender = event.target.value as "male" | "female"; setNarratorGender(gender); setNarratorVoice(defaultVoice(languages[0] || "vi", gender).id); }}><option value="female">Nữ · rõ và ấm</option><option value="male">Nam · trầm và chắc</option></select></label><label className="field-label">Voice pack local<select value={narratorVoice} onChange={(event) => setNarratorVoice(event.target.value)}>{availableVoices.map((voice) => <option value={voice.id} key={voice.id}>{voice.label}</option>)}</select></label></div><label className="field-label">Provider TTS dự phòng<select value={ttsProviderId} onChange={(event) => setTtsProviderId(event.target.value)}><option value="">Tự động chọn provider có TTS</option>{ttsProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name} · {provider.ttsModel || provider.model}</option>)}</select><small className="form-help">Dùng khi máy chưa cài voice locale; gateway cần hỗ trợ /audio/speech.</small></label></>}<div className="toggle-grid"><label className="preset-check"><input type="checkbox" checked={keepOriginalAudio} onChange={(event) => setKeepOriginalAudio(event.target.checked)} /><span><strong>Giữ tiếng gốc</strong><small>Tắt để loại bỏ audio nguồn</small></span></label><label className="preset-check"><input type="checkbox" checked={emphasizeHook} onChange={(event) => setEmphasizeHook(event.target.checked)} /><span><strong>Nhấn hook / cao trào</strong><small>Ưu tiên 3 giây đầu và scene nổi bật</small></span></label><label className="preset-check"><input type="checkbox" checked={backgroundMusic} onChange={(event) => setBackgroundMusic(event.target.checked)} /><span><strong>Nhạc nền</strong><small>{backgroundMusicPath ? backgroundMusicPath.split(/[\\/]/).pop() : "Chọn track nền để trộn khi render"}</small></span></label>{backgroundMusic && <button type="button" className="button-quiet audio-picker" onClick={() => void chooseMusic()}><Icon name="music" size={14} /> {backgroundMusicPath ? "Đổi nhạc nền" : "Chọn file nhạc nền"}</button>}</div>{backgroundMusic && <input aria-label="Âm lượng nhạc nền" className="volume-range" type="range" min="0" max="100" value={backgroundMusicVolume} onChange={(event) => setBackgroundMusicVolume(Number(event.target.value))} />}</section><section className="panel-card preset-panel language-panel"><p className="eyebrow">04 / LOCALIZATION</p><h3>Quốc gia & ngôn ngữ đầu ra</h3><p className="subtle">Chọn nhiều quốc gia; mỗi ngôn ngữ tạo một output riêng để voice và transcript không bị trộn.</p><div className="language-chips">{LANGUAGE_OPTIONS.map(([value, label]) => <button type="button" key={value} className={`language-chip ${languages.includes(value) ? "active" : ""}`} onClick={() => toggleLanguage(value)}>{languages.includes(value) && <Icon name="check" size={12} />}{label}</button>)}</div><div className="cost-note"><Icon name="clock" size={15} /><span>{selected.length || 0} video × {languages.length} ngôn ngữ = {estimatedJobs} job · {narratorEnabled ? `voice ${narratorGender === "female" ? "nữ" : "nam"}` : "không voice-over"}{highlightOnly ? ` · highlight ≤ ${highlightMaxSeconds}s` : ""}</span></div></section></div><section className="panel-card queue-panel"><div className="panel-head queue-panel-head"><div><p className="eyebrow">QUEUE / LIVE STATUS</p><h3>Jobs đã tạo</h3><span className="subtle">Chọn một job để mở inspector và xem frame/scene/output.</span></div><div className="queue-header-actions"><span className="queue-count">{activeJobs} đang xử lý · {processJobs.length} tổng</span><button type="button" className="text-button queue-select-all" onClick={toggleAllJobs} disabled={!processJobs.length}>{selectedJobIds.length === processJobs.length && processJobs.length ? "Bỏ chọn tất cả" : "Chọn tất cả"}</button><button type="button" className="button-quiet button-danger queue-delete-button" onClick={deleteSelectedJobs} disabled={!selectedJobIds.length || !onDeleteJobs}><Icon name="trash" size={14} /> Xoá{selectedJobIds.length ? ` (${selectedJobIds.length})` : ""}</button></div></div><div className="queue-board"><div><div className="job-card-list">{processJobs.length ? pagedGroups.map((group) => <section className="job-group" key={group.key}><header className="job-group-head"><div><span className="job-group-icon"><Icon name="folder" size={14} /></span><div><strong>{group.title}</strong><small title={group.source}>{group.source}</small></div></div><span className="job-group-count">{group.jobs.length} job · {group.jobs.filter((item) => item.status === "completed").length} xong</span></header><div className="job-group-items">{group.jobs.map((job) => <JobCard key={job.id} job={job} selected={selectedJob?.id === job.id} bulkSelected={selectedJobIds.includes(job.id)} onSelect={() => setSelectedJobId(job.id)} onToggleBulk={() => toggleJobSelection(job.id)} onCancel={onCancelJob ? () => onCancelJob(job.id) : undefined} onRetry={onRetryJob ? () => onRetryJob(job.id) : undefined} />)}</div></section>) : <div className="provider-empty"><Icon name="layers" size={20} /><div><strong>Chưa có job</strong><p>Chọn nguồn video và bấm Tạo job để bắt đầu.</p></div></div>}</div><div className="tw-mt-3"><Pagination total={jobGroups.length} page={queuePage} pageSize={queuePageSize} onPageChange={setQueuePage} /></div></div><JobInspector job={selectedJob} onRetry={onRetryJob} onOpenTimeline={onOpenTimeline} /></div></section></div>;
+
+  function toggleSelectSource(id: string) {
+    setSelectedSources((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  }
+
+  function toggleAllSources() {
+    setSelectedSources((current) =>
+      current.length === sources.length ? [] : sources.map((s) => s.id)
+    );
+  }
+
+  function toggleSelectJob(id: string) {
+    setSelectedJobIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  }
+
+  function toggleAllJobs() {
+    setSelectedJobIds((current) =>
+      current.length === processJobs.length ? [] : processJobs.map((j) => j.id)
+    );
+  }
+
+  function deleteSelectedJobs() {
+    if (!onDeleteJobs || !selectedJobIds.length) return;
+    if (!window.confirm(`Xoá ${selectedJobIds.length} job đã chọn khỏi queue?`)) return;
+    onDeleteJobs(selectedJobIds);
+    setSelectedJobIds([]);
+  }
+
+  function createBatch() {
+    const chosen = sources.filter((source) => selectedSources.includes(source.id));
+    if (!chosen.length) {
+      setMessage("Hãy tích chọn ít nhất 1 nguồn video để tạo job.");
+      return;
+    }
+    const stamp = Date.now();
+    let count = 0;
+    chosen.forEach((source, sIdx) => {
+      languages.forEach((lang, lIdx) => {
+        const langSuffix = languages.length > 1 ? ` · ${LANGUAGE_LABELS[lang] || lang}` : "";
+        const langVoice = narratorEnabled ? defaultVoice(lang, narratorGender).id : undefined;
+        onAddJob({
+          id: `job-${stamp}-${sIdx}-${lIdx}`,
+          name: `${source.name.replace(/\.[^.]+$/, "")}${langSuffix}`,
+          source: source.sourceType === "url" ? source.source : source.name,
+          sourceType: source.sourceType,
+          localPath: source.localPath,
+          mode,
+          splitScenes,
+          aspectRatio,
+          narratorEnabled,
+          narratorGender,
+          narratorVoice: langVoice,
+          languages: [lang],
+          keepOriginalAudio,
+          emphasizeHook,
+          highlightOnly,
+          backgroundMusic,
+          status: "queued",
+          stage: source.sourceType === "url" ? "downloading" : "queued",
+          progress: 0,
+          createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        });
+        count++;
+      });
+    });
+    setIsPresetModalOpen(false);
+    setMessage(`⚡ Đã tạo thành công ${count} job và đưa vào hàng đợi render.`);
+  }
+
+  return (
+    <div className="page-stack page-enter">
+      {/* Header */}
+      <div className="page-title">
+        <div>
+          <p className="eyebrow">BATCH PROCESSING / PIPELINE</p>
+          <h2>Tạo Job Hàng Loạt</h2>
+          <p>Nạp nhiều video hoặc URL, áp dụng preset xử lý và đưa vào hàng đợi render tự động.</p>
+        </div>
+        <div className="page-title-actions">
+          <button type="button" className="btn-secondary" onClick={() => void chooseVideos()}>
+            <Icon name="plus" size={13} /> + Thêm video máy
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setIsUrlModalOpen(true)}>
+            <Icon name="link" size={13} /> + Thêm Link URL
+          </button>
+          <button type="button" className="btn-secondary" onClick={() => setIsPresetModalOpen(true)}>
+            <Icon name="sliders" size={13} /> ⚙️ Cấu hình Preset
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={createBatch}
+            disabled={!selectedSources.length}
+          >
+            <Icon name="spark" size={14} /> Chạy {selectedSources.length * languages.length} Job
+          </button>
+        </div>
+      </div>
+
+      {message && <p className="form-help">{message}</p>}
+
+      {/* Section 1: Nguồn Video Đầu Vào (Table) */}
+      <section className="panel-card">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">INPUT SOURCES</p>
+            <h3>Danh sách nguồn video ({sources.length})</h3>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" className="btn-secondary" onClick={toggleAllSources}>
+              {selectedSources.length === sources.length ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+            </button>
+          </div>
+        </div>
+
+        <div className="jacs-table-wrapper">
+          <table className="jacs-table">
+            <thead>
+              <tr>
+                <th style={{ width: "40px" }}>
+                  <input
+                    type="checkbox"
+                    checked={sources.length > 0 && selectedSources.length === sources.length}
+                    onChange={toggleAllSources}
+                  />
+                </th>
+                <th>Tên Video / Nguồn</th>
+                <th>Loại Nguồn</th>
+                <th>Đường dẫn / URL</th>
+                <th style={{ textAlign: "right" }}>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedSources.length > 0 ? (
+                pagedSources.map((source) => {
+                  const isSelected = selectedSources.includes(source.id);
+                  return (
+                    <tr
+                      key={source.id}
+                      className={isSelected ? "is-selected" : ""}
+                      onClick={() => toggleSelectSource(source.id)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectSource(source.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td>
+                        <strong style={{ color: "#ffffff" }}>{source.name}</strong>
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            padding: "2px 7px",
+                            borderRadius: "4px",
+                            background: "rgba(255,255,255,0.06)",
+                            fontSize: "10.5px",
+                          }}
+                        >
+                          {source.sourceType === "url" ? "🌐 URL" : "📁 File"}
+                        </span>
+                      </td>
+                      <td>
+                        <small style={{ color: "#94a3b8" }}>{source.source}</small>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <span style={{ color: "#10b981", fontWeight: 700, fontSize: "11px" }}>
+                          Sẵn sàng
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>
+                    Chưa có nguồn video nào. Bấm <strong>"+ Thêm video máy"</strong> hoặc <strong>"+ Thêm Link URL"</strong> để bắt đầu.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {sources.length > sourcePageSize && (
+          <Pagination
+            total={sources.length}
+            pageSize={sourcePageSize}
+            page={sourcePage}
+            onPageChange={setSourcePage}
+          />
+        )}
+      </section>
+
+      {/* Section 2: Hàng đợi Render Hàng Loạt (Queue Table) */}
+      <section className="panel-card" style={{ marginTop: "14px" }}>
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">BATCH RENDER QUEUE</p>
+            <h3>Hàng đợi render ({processJobs.length})</h3>
+          </div>
+          {selectedJobIds.length > 0 && (
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {onCancelJob && selectedJobIds.some((id) => {
+                const j = jobs.find((item) => item.id === id);
+                return j?.status === "running" || j?.status === "queued";
+              }) && (
+                <button
+                  type="button"
+                  className="button-danger"
+                  style={{ background: "rgba(239, 68, 68, 0.2)", borderColor: "#ef4444", color: "#fca5a5" }}
+                  onClick={() => {
+                    const activeSelected = selectedJobIds.filter((id) => {
+                      const j = jobs.find((item) => item.id === id);
+                      return j?.status === "running" || j?.status === "queued";
+                    });
+                    if (!activeSelected.length) return;
+                    if (!window.confirm(`Hủy ${activeSelected.length} job đã chọn?`)) return;
+                    activeSelected.forEach((id) => onCancelJob(id));
+                  }}
+                >
+                  <Icon name="x" size={12} /> Hủy ({selectedJobIds.filter((id) => {
+                    const j = jobs.find((item) => item.id === id);
+                    return j?.status === "running" || j?.status === "queued";
+                  }).length}) job
+                </button>
+              )}
+
+              {onRetryJob && selectedJobIds.some((id) => {
+                const j = jobs.find((item) => item.id === id);
+                return j?.status === "failed" || j?.status === "cancelled";
+              }) && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ borderColor: "#38bdf8", color: "#38bdf8" }}
+                  onClick={() => {
+                    const retrySelected = selectedJobIds.filter((id) => {
+                      const j = jobs.find((item) => item.id === id);
+                      return j?.status === "failed" || j?.status === "cancelled";
+                    });
+                    retrySelected.forEach((id) => onRetryJob(id));
+                  }}
+                >
+                  <Icon name="refresh" size={12} /> Chạy lại ({selectedJobIds.filter((id) => {
+                    const j = jobs.find((item) => item.id === id);
+                    return j?.status === "failed" || j?.status === "cancelled";
+                  }).length}) job
+                </button>
+              )}
+
+              <button type="button" className="button-danger" onClick={deleteSelectedJobs}>
+                <Icon name="trash" size={12} /> Xóa {selectedJobIds.length} job
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="jacs-table-wrapper">
+          <table className="jacs-table">
+            <thead>
+              <tr>
+                <th style={{ width: "40px" }}>
+                  <input
+                    type="checkbox"
+                    checked={processJobs.length > 0 && selectedJobIds.length === processJobs.length}
+                    onChange={toggleAllJobs}
+                  />
+                </th>
+                <th>Tên Job</th>
+                <th>Trạng thái</th>
+                <th>Tiến trình</th>
+                <th>Ngôn ngữ</th>
+                <th>Thời gian</th>
+                <th style={{ textAlign: "right" }}>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedJobs.length > 0 ? (
+                pagedJobs.map((job) => (
+                  <tr key={job.id} className={selectedJobIds.includes(job.id) ? "is-selected" : ""}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedJobIds.includes(job.id)}
+                        onChange={() => toggleSelectJob(job.id)}
+                      />
+                    </td>
+                    <td>
+                      <strong style={{ color: "#ffffff" }}>{job.name}</strong>
+                    </td>
+                    <td>
+                      <StatusPill status={job.status} />
+                    </td>
+                    <td style={{ minWidth: "120px" }}>
+                      <div className="job-progress">
+                        <div className="progress-track">
+                          <i style={{ width: `${job.progress}%` }} />
+                        </div>
+                        <small>{job.progress}%</small>
+                      </div>
+                    </td>
+                    <td>{LANGUAGE_LABELS[job.languages?.[0] || ""] || "Tiếng Việt"}</td>
+                    <td>
+                      <small style={{ color: "#94a3b8" }}>{job.createdAt}</small>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {onOpenTimeline && (
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => onOpenTimeline(job.id)}
+                        >
+                          Dựng
+                        </button>
+                      )}
+                      {job.outputPath && (
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => void getRuntime().revealPath(job.outputPath!)}
+                        >
+                          Mở file
+                        </button>
+                      )}
+                      {(job.status === "failed" || job.status === "cancelled") && onRetryJob && (
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => onRetryJob(job.id)}
+                        >
+                          Chạy lại
+                        </button>
+                      )}
+                      {(job.status === "running" || job.status === "queued") && onCancelJob && (
+                        <button
+                          type="button"
+                          className="text-button"
+                          style={{ color: "#f87171" }}
+                          onClick={() => onCancelJob(job.id)}
+                        >
+                          Hủy
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "24px", color: "#64748b" }}>
+                    Chưa có job nào trong hàng đợi.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {processJobs.length > queuePageSize && (
+          <Pagination
+            total={processJobs.length}
+            pageSize={queuePageSize}
+            page={queuePage}
+            onPageChange={setQueuePage}
+          />
+        )}
+      </section>
+
+      {/* Modal Cấu hình Preset Hàng Loạt */}
+      <Modal
+        isOpen={isPresetModalOpen}
+        onClose={() => setIsPresetModalOpen(false)}
+        title="Cấu hình Preset Xử Lý Hàng Loạt"
+        eyebrow="BATCH PROCESSING PRESET"
+        maxWidth="600px"
+      >
+        <div className="field-pair">
+          <label className="field-label">
+            Engine Thực Thi
+            <select value={mode} onChange={(e) => setMode(e.target.value as Job["mode"])}>
+              <option value="local-gpu">GPU Local (NVIDIA / Apple)</option>
+              <option value="local-cpu">CPU Local Fallback</option>
+              <option value="hybrid">Hybrid (AI Cloud + Render Local)</option>
+            </select>
+          </label>
+
+          <label className="field-label">
+            Tỷ lệ Khung Hình
+            <select
+              value={aspectRatio}
+              onChange={(e) => setAspectRatio(e.target.value as Job["aspectRatio"])}
+            >
+              <option value="9:16">9:16 Shorts / TikTok / Reels</option>
+              <option value="16:9">16:9 YouTube Ngang</option>
+              <option value="1:1">1:1 Square</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="field-pair" style={{ marginTop: "12px" }}>
+          <label className="field-label">
+            Giới tính Giọng Đọc
+            <select
+              value={narratorGender}
+              onChange={(e) => setNarratorGender(e.target.value as "male" | "female")}
+            >
+              <option value="female">Nữ (Truyền cảm / Tự nhiên)</option>
+              <option value="male">Nam (Trầm ấm / Bản tin)</option>
+            </select>
+          </label>
+
+          <label className="field-label">
+            Ngôn ngữ Đầu Ra
+            <select
+              value={languages[0] || "vi"}
+              onChange={(e) => setLanguages([e.target.value])}
+            >
+              {LANGUAGE_OPTIONS.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div style={{ marginTop: "16px", display: "grid", gap: "10px" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#cbd5e1", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={narratorEnabled}
+              onChange={(e) => setNarratorEnabled(e.target.checked)}
+              style={{ width: "16px", height: "16px", accentColor: "#f95738" }}
+            />
+            Tự động tạo giọng đọc Voice AI theo ngữ cảnh kịch bản
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#cbd5e1", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={keepOriginalAudio}
+              onChange={(e) => setKeepOriginalAudio(e.target.checked)}
+              style={{ width: "16px", height: "16px", accentColor: "#f95738" }}
+            />
+            Giữ âm thanh nền gốc của video (Bilingual audio)
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "#cbd5e1", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={splitScenes}
+              onChange={(e) => setSplitScenes(e.target.checked)}
+              style={{ width: "16px", height: "16px", accentColor: "#f95738" }}
+            />
+            Tách phân cảnh thành từng job con độc lập
+          </label>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "22px" }}>
+          <button type="button" className="button-quiet" onClick={() => setIsPresetModalOpen(false)}>
+            Đóng
+          </button>
+          <button type="button" className="btn-primary" onClick={createBatch}>
+            Áp dụng & Tạo Job
+          </button>
+        </div>
+      </Modal>
+
+      {/* Modal Thêm URL */}
+      <Modal
+        isOpen={isUrlModalOpen}
+        onClose={() => setIsUrlModalOpen(false)}
+        title="Thêm Video Từ URL"
+        eyebrow="BATCH URL IMPORTER"
+        maxWidth="500px"
+      >
+        <label className="field-label">
+          Dán URL (TikTok, MP4, HLS... Mỗi URL một dòng)
+          <textarea
+            rows={5}
+            value={urlText}
+            onChange={(e) => setUrlText(e.target.value)}
+            placeholder="https://example.com/video1.mp4&#10;https://example.com/video2.mp4"
+          />
+        </label>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "18px" }}>
+          <button type="button" className="button-quiet" onClick={() => setIsUrlModalOpen(false)}>
+            Hủy
+          </button>
+          <button type="button" className="btn-primary" onClick={addUrl}>
+            Thêm vào danh sách
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
 }

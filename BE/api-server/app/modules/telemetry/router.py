@@ -47,13 +47,38 @@ async def ingest(request: Request, event: TelemetryEvent, telemetry_token: str |
 
 
 @router.get("/logs")
-async def list_logs(_: dict = Depends(require_auth), severity: Severity | None = None, limit: int = 100):
+async def list_logs(_: dict = Depends(require_auth), severity: Severity | None = None, limit: int = 200):
     limit = max(1, min(limit, 500))
-    records = store.list("telemetry")
+    telemetry_records = list(store.list("telemetry"))
+    audit_records = list(store.list("audit"))
+
+    combined = list(telemetry_records)
+    for a in audit_records:
+        action = str(a.get("action", "system.event"))
+        # Format human-readable event message
+        msg = a.get("notes") or a.get("reason")
+        if not msg:
+            cust = a.get("customer") or a.get("key_hint") or a.get("license_id", "Hệ thống")
+            actor = a.get("actor", "Admin")
+            msg = f"Sự kiện [{action.upper()}]: Thực hiện bởi {actor} (Khách: {cust})"
+
+        combined.append({
+            "id": a.get("id"),
+            "event_name": action,
+            "severity": "info",
+            "message": msg,
+            "app_version": a.get("app_version", "v0.3.42"),
+            "machine_id": str(a.get("license_id", "SERVER")),
+            "created_at": a.get("created_at"),
+            "actor": a.get("actor"),
+            "details": a,
+        })
+
     if severity:
-        records = [item for item in records if item.get("severity") == severity]
+        combined = [item for item in combined if item.get("severity") == severity]
+
     # Return newest first
-    sorted_records = sorted(records, key=lambda x: str(x.get("created_at", "")), reverse=True)
+    sorted_records = sorted(combined, key=lambda x: str(x.get("created_at", "")), reverse=True)
     return {"data": sorted_records[:limit]}
 
 
