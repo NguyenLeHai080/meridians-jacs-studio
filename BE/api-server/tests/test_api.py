@@ -456,3 +456,79 @@ def test_release_manifest_requires_sha512_hex_digest():
         "release_notes": "Digest không đủ độ dài",
     })
     assert response.status_code == 422
+
+
+def test_bank_config_and_renew_qr():
+    # 1. Get default bank config
+    cfg = client.get("/api/v1/billing/bank-config").json()
+    assert "bank_name" in cfg
+    assert "account_number" in cfg
+    assert "plans_pricing" in cfg
+
+    # 2. Update bank config
+    headers = auth_headers()
+    updated = client.put("/api/v1/billing/bank-config", headers=headers, json={
+        "bank_name": "Vietcombank",
+        "bank_bin": "970436",
+        "account_number": "123456789",
+        "account_name": "NGUYEN LE HAI",
+        "qr_template": "compact2",
+        "plans_pricing": {
+            "1_month": 500000.0,
+            "3_months": 1350000.0,
+            "6_months": 2500000.0,
+            "1_year": 4500000.0,
+        }
+    }).json()
+    assert updated["bank_name"] == "Vietcombank"
+    assert updated["account_number"] == "123456789"
+
+    # 3. Create a test license
+    hwid = "JACS-WIN-" + "A" * 32
+    created_lic = client.post("/api/v1/licenses", headers=headers, json={
+        "customer_name": "Khach Hang VietQR",
+        "customer_contact": "khach@example.com",
+        "hwid": hwid,
+        "max_jobs_per_day": 100,
+        "premium_ai": True,
+    }).json()
+    key = created_lic["key"]
+
+    # 4. Generate renew QR
+    qr_res = client.post("/api/v1/billing/renew-qr", json={
+        "license_key": key,
+        "plan_type": "3_months",
+    })
+    assert qr_res.status_code == 200
+    qr_data = qr_res.json()
+    assert "https://img.vietqr.io/image/970436-123456789-compact2.png" in qr_data["qr_url"]
+    assert qr_data["amount"] == 1350000.0
+    assert qr_data["duration_days"] == 90
+    assert qr_data["transfer_content"].startswith("JACS ")
+
+    # 5. Record income and refund
+    income = client.post("/api/v1/billing/transactions", headers=headers, json={
+        "customer_name": "Khach Hang VietQR",
+        "amount": 1350000.0,
+        "plan_type": "3_months",
+        "payment_method": "bank_transfer",
+        "transaction_type": "income",
+        "notes": "Nạp tiền gia hạn 3 tháng",
+    }).json()
+    assert income["amount"] == 1350000.0
+
+    refund = client.post("/api/v1/billing/transactions", headers=headers, json={
+        "customer_name": "Khach Hang VietQR",
+        "amount": 350000.0,
+        "plan_type": "3_months",
+        "payment_method": "bank_transfer",
+        "transaction_type": "refund",
+        "notes": "Hoàn tiền một phần",
+    }).json()
+    assert refund["amount"] == -350000.0
+
+    summary = client.get("/api/v1/billing/summary", headers=headers).json()
+    assert summary["total_deposits"] >= 1350000.0
+    assert summary["total_refunds"] >= 350000.0
+    assert summary["net_revenue"] == summary["total_revenue"]
+

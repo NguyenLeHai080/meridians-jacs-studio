@@ -1185,6 +1185,115 @@
         }
       }
     },
+    "/api/v1/billing/bank-config": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Bank Config",
+        "description": "Public & client endpoint to get current banking information and pricing.",
+        "operationId": "get_bank_config_api_v1_billing_bank_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Bank Config",
+        "description": "Admin endpoint to update bank details and plan pricing.",
+        "operationId": "update_bank_config_api_v1_billing_bank_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBankConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/renew-qr": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Generate Renew Qr",
+        "description": "Client endpoint to generate a dynamic VietQR payment request for key renewal.",
+        "operationId": "generate_renew_qr_api_v1_billing_renew_qr_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenewQrRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenewQrResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/transactions": {
       "get": {
         "tags": [
@@ -1288,7 +1397,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Transaction Api V1 Billing Transactions  Transaction Id  Delete"
+                }
               }
             }
           },
@@ -2764,6 +2877,65 @@
   },
   "components": {
     "schemas": {
+      "BankConfigResponse": {
+        "properties": {
+          "bank_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Bank Name",
+            "default": "MB Bank"
+          },
+          "bank_bin": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Bank Bin",
+            "default": "970422"
+          },
+          "account_number": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Account Number",
+            "default": "0988888888"
+          },
+          "account_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Account Name",
+            "default": "JACS STUDIO ADMIN"
+          },
+          "qr_template": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Qr Template",
+            "default": "compact2"
+          },
+          "plans_pricing": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Plans Pricing"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "title": "BankConfigResponse"
+      },
       "BillingSummaryResponse": {
         "properties": {
           "total_revenue": {
@@ -2773,6 +2945,18 @@
           "this_month_revenue": {
             "type": "number",
             "title": "This Month Revenue"
+          },
+          "total_deposits": {
+            "type": "number",
+            "title": "Total Deposits"
+          },
+          "total_refunds": {
+            "type": "number",
+            "title": "Total Refunds"
+          },
+          "net_revenue": {
+            "type": "number",
+            "title": "Net Revenue"
           },
           "total_transactions": {
             "type": "integer",
@@ -2797,6 +2981,9 @@
         "required": [
           "total_revenue",
           "this_month_revenue",
+          "total_deposits",
+          "total_refunds",
+          "net_revenue",
           "total_transactions",
           "revenue_by_plan",
           "revenue_by_method"
@@ -2824,7 +3011,6 @@
           },
           "amount": {
             "type": "number",
-            "minimum": 0.0,
             "title": "Amount"
           },
           "currency": {
@@ -2849,7 +3035,7 @@
             "type": "string",
             "maxLength": 64,
             "title": "Transaction Type",
-            "default": "renewal"
+            "default": "income"
           },
           "notes": {
             "anyOf": [
@@ -3029,7 +3215,6 @@
           },
           "amount": {
             "type": "number",
-            "minimum": 0.0,
             "title": "Amount"
           },
           "currency": {
@@ -3054,7 +3239,7 @@
             "type": "string",
             "maxLength": 64,
             "title": "Transaction Type",
-            "default": "renewal"
+            "default": "income"
           },
           "notes": {
             "anyOf": [
@@ -5229,6 +5414,112 @@
         ],
         "title": "ReleaseResponse"
       },
+      "RenewQrRequest": {
+        "properties": {
+          "license_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "License Key"
+          },
+          "plan_type": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Plan Type",
+            "default": "1_month"
+          }
+        },
+        "type": "object",
+        "required": [
+          "license_key"
+        ],
+        "title": "RenewQrRequest"
+      },
+      "RenewQrResponse": {
+        "properties": {
+          "license_key": {
+            "type": "string",
+            "title": "License Key"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "current_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Expires At"
+          },
+          "plan_type": {
+            "type": "string",
+            "title": "Plan Type"
+          },
+          "plan_name": {
+            "type": "string",
+            "title": "Plan Name"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "duration_days": {
+            "type": "integer",
+            "title": "Duration Days"
+          },
+          "bank_name": {
+            "type": "string",
+            "title": "Bank Name"
+          },
+          "bank_bin": {
+            "type": "string",
+            "title": "Bank Bin"
+          },
+          "account_number": {
+            "type": "string",
+            "title": "Account Number"
+          },
+          "account_name": {
+            "type": "string",
+            "title": "Account Name"
+          },
+          "transfer_content": {
+            "type": "string",
+            "title": "Transfer Content"
+          },
+          "qr_url": {
+            "type": "string",
+            "title": "Qr Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "license_key",
+          "plan_type",
+          "plan_name",
+          "amount",
+          "duration_days",
+          "bank_name",
+          "bank_bin",
+          "account_number",
+          "account_name",
+          "transfer_content",
+          "qr_url"
+        ],
+        "title": "RenewQrResponse"
+      },
       "Severity": {
         "type": "string",
         "enum": [
@@ -5410,6 +5701,53 @@
           "expires_in"
         ],
         "title": "TokenResponse"
+      },
+      "UpdateBankConfigRequest": {
+        "properties": {
+          "bank_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Bank Name",
+            "default": "MB Bank"
+          },
+          "bank_bin": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Bank Bin",
+            "default": "970422"
+          },
+          "account_number": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Account Number",
+            "default": "0988888888"
+          },
+          "account_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Account Name",
+            "default": "JACS STUDIO ADMIN"
+          },
+          "qr_template": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Qr Template",
+            "default": "compact2"
+          },
+          "plans_pricing": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Plans Pricing"
+          }
+        },
+        "type": "object",
+        "title": "UpdateBankConfigRequest"
       },
       "UserResponse": {
         "properties": {
