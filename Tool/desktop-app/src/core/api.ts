@@ -57,3 +57,27 @@ export async function getClientMetrics(key: string, deviceId: string): Promise<C
 export async function sendClientTelemetry(key: string, deviceId: string, event: { event_name: string; severity: "warning" | "error" | "fatal"; app_version: string; fingerprint: string; message: string }) {
   return request<{ accepted: boolean; event_id: string }>("/api/v1/telemetry/logs", { method: "POST", body: JSON.stringify({ ...event, hwid_hash: normalizeDeviceId(deviceId) }) }, { "X-License-Key": normalizeLicenseKey(key), "X-Device-Id": normalizeDeviceId(deviceId) });
 }
+
+export type RenewQrResponse = {
+  qr_url: string;
+  bank_name: string;
+  bank_bin: string;
+  account_number: string;
+  account_name: string;
+  amount: number;
+  transfer_content: string;
+  plan_type: string;
+  months: number;
+  notes?: string | null;
+};
+
+export async function getRenewQr(licenseKey: string, planType: string = "1_month") {
+  return request<RenewQrResponse>("/api/v1/billing/renew-qr", {
+    method: "POST",
+    body: JSON.stringify({
+      license_key: normalizeLicenseKey(licenseKey),
+      plan_type: planType,
+    }),
+  });
+}
+
