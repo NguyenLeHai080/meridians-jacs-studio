@@ -3,6 +3,7 @@ import { ApiRequestError, getApiBaseUrl, validateLicense } from "../../core/api"
 import { getRuntime } from "../../core/runtime";
 import type { MachineInfo } from "../../core/types";
 import { Icon } from "../../shared/Icon";
+import { LicenseRenewalModal } from "../renewal/LicenseRenewalModal";
 
 export function ActivationGate({
   onActivated,
@@ -16,6 +17,7 @@ export function ActivationGate({
   const [isError, setIsError] = useState(false);
   const [copiedHwid, setCopiedHwid] = useState(false);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  const [showRenewalModal, setShowRenewalModal] = useState(false);
 
   useEffect(() => {
     // 1. Read real Machine info
@@ -182,7 +184,41 @@ export function ActivationGate({
               </>
             )}
           </button>
+
+          <div style={{ marginTop: "0.85rem", textAlign: "center" }}>
+            <button
+              type="button"
+              onClick={() => setShowRenewalModal(true)}
+              style={{
+                background: "transparent",
+                border: "1px dashed rgba(249, 115, 22, 0.6)",
+                color: "#f97316",
+                padding: "0.55rem 1rem",
+                borderRadius: "8px",
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+              }}
+            >
+              <Icon name="zap" size={15} />
+              Gia hạn bản quyền / Nâng cấp gói (Quét mã VietQR)
+            </button>
+          </div>
         </form>
+
+        <LicenseRenewalModal
+          isOpen={showRenewalModal}
+          onClose={() => setShowRenewalModal(false)}
+          currentKey={key}
+          onSuccess={() => {
+            if (key) {
+              void handleActivate({ preventDefault: () => {} } as React.FormEvent);
+            }
+          }}
+        />
 
         <div className="gate-footer">
           <div className="gate-meta-row">
