@@ -33,6 +33,8 @@ import {
   Download,
   Upload,
   Shield,
+  ShieldCheck,
+  Scale,
   Activity,
   Menu,
   User,
@@ -41,13 +43,14 @@ import {
   QrCode,
   Building2,
   RotateCcw,
-  TrendingUp,
   ArrowDownLeft,
+  Palette,
 } from "lucide-react";
 import { ApiRequestError, apiRequest } from "../../core/api";
 import { clearToken, getToken, setToken } from "../../core/session";
 import { useI18n } from "../../core/i18n";
 import { ReleasesPage, type Release } from "../releases/ReleasesPage";
+import { ToolConfigPage } from "../tool-config/ToolConfigPage";
 import { DatePicker } from "../../components/common/DatePicker";
 import { Pagination } from "../../components/common/Pagination";
 
@@ -121,6 +124,7 @@ export type BillingTransaction = {
   currency?: string;
   payment_method: string;
   transaction_type: string;
+  reference_code?: string | null;
   notes?: string | null;
   created_at: string;
   actor?: string;
@@ -144,6 +148,8 @@ export type BankConfig = {
   account_number: string;
   account_name: string;
   qr_template: string;
+  custom_qr_url?: string;
+  sepay_api_key?: string;
   plans_pricing: Record<string, number>;
   updated_at?: string | null;
 };
@@ -186,25 +192,38 @@ export type SystemInfo = {
   timestamp: string;
 };
 
-type MenuKey = "overview" | "licenses" | "sessions" | "billing" | "providers" | "telemetry" | "releases" | "settings";
+export type LegalTerms = {
+  title: string;
+  disclaimer: string;
+  ai_usage: string;
+  license_rights: string;
+  dispute_resolution: string;
+  updated_at?: string;
+};
+
+type MenuKey = "overview" | "licenses" | "sessions" | "billing" | "plans" | "renewals" | "providers" | "telemetry" | "releases" | "terms" | "tool_branding" | "settings";
 
 const VALID_MENUS: MenuKey[] = [
   "overview",
   "licenses",
   "sessions",
   "billing",
+  "plans",
+  "renewals",
   "providers",
   "telemetry",
   "releases",
+  "terms",
+  "tool_branding",
   "settings",
 ];
 
 function getInitialMenu(): MenuKey {
   if (typeof window === "undefined") return "overview";
-  const hash = window.location.hash.replace(/^#\/?/, "").toLowerCase() as MenuKey;
-  if (VALID_MENUS.includes(hash)) return hash;
+  const saved = (localStorage.getItem("jacs.admin.activeMenu") || "").toLowerCase() as MenuKey;
+  if (VALID_MENUS.includes(saved)) return saved;
   const params = new URLSearchParams(window.location.search);
-  const tab = params.get("tab") as MenuKey;
+  const tab = (params.get("tab") || "").toLowerCase() as MenuKey;
   if (VALID_MENUS.includes(tab)) return tab;
   return "overview";
 }
@@ -236,24 +255,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const setActiveMenu = (menu: MenuKey) => {
     setActiveMenuState(menu);
     if (typeof window !== "undefined") {
-      window.location.hash = `/${menu}`;
+      localStorage.setItem("jacs.admin.activeMenu", menu);
+      if (window.location.hash) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
     }
   };
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const nextMenu = getInitialMenu();
-      setActiveMenuState(nextMenu);
-    };
-    window.addEventListener("hashchange", handleHashChange);
-    window.addEventListener("popstate", handleHashChange);
-    if (typeof window !== "undefined" && !window.location.hash) {
-      window.history.replaceState(null, "", `#/${getInitialMenu()}`);
+    if (typeof window !== "undefined" && window.location.hash) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
     }
-    return () => {
-      window.removeEventListener("hashchange", handleHashChange);
-      window.removeEventListener("popstate", handleHashChange);
-    };
   }, []);
   
   // Popover menus state
@@ -361,6 +373,55 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [refundCustomerName, setRefundCustomerName] = useState("");
   const [refundAmount, setRefundAmount] = useState("350000");
   const [refundReason, setRefundReason] = useState("Khách yêu cầu hoàn tiền dịch vụ");
+
+  // Plans Management State
+  const [plansList, setPlansList] = useState([
+    { id: "1_month", name: "Gói 1 Tháng (Standard)", days: 30, price: 500000, badge: "Gói chuẩn", discount: "", max_jobs_per_day: 200, active: true },
+    { id: "3_months", name: "Gói 3 Tháng (Tiết kiệm 10%)", days: 90, price: 1350000, badge: "Tiết kiệm", discount: "Tiết kiệm 10%", max_jobs_per_day: 300, active: true },
+    { id: "6_months", name: "Gói 6 Tháng (Tiết kiệm 17%)", days: 180, price: 2500000, badge: "Phổ biến", discount: "Tiết kiệm 17%", max_jobs_per_day: 500, active: true },
+    { id: "1_year", name: "Gói 1 Năm (Tiết kiệm 25%)", days: 365, price: 4500000, badge: "VIP Studio", discount: "Tiết kiệm 25%", max_jobs_per_day: 1000, active: true },
+    { id: "lifetime", name: "Gói Vĩnh Viễn (VIP Lifetime)", days: 36500, price: 10000000, badge: "Trọn Đời", discount: "VIP Vĩnh Viễn", max_jobs_per_day: 2000, active: true },
+  ]);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<any | null>(null);
+  const [planForm, setPlanForm] = useState({
+    id: "1_month",
+    name: "",
+    days: 30,
+    price: 500000,
+    badge: "",
+    discount: "",
+    max_jobs_per_day: 200,
+    active: true,
+  });
+  const [plansSearch, setPlansSearch] = useState("");
+  const [plansStatusFilter, setPlansStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [plansPage, setPlansPage] = useState(1);
+  const [plansPageSize, setPlansPageSize] = useState(10);
+
+  // Renewal Management State
+  const [renewalSubTab, setRenewalSubTab] = useState<"keys" | "transactions">("keys");
+  const [renewalStatusFilter, setRenewalStatusFilter] = useState<"all" | "completed" | "pending" | "cancelled">("all");
+  const [renewalsSearch, setRenewalsSearch] = useState("");
+  const [renewalsPage, setRenewalsPage] = useState(1);
+  const [renewalsPageSize, setRenewalsPageSize] = useState(10);
+  const [showManualRenewalModal, setShowManualRenewalModal] = useState(false);
+  const [renewLicenseId, setRenewLicenseId] = useState("");
+  const [renewPlanKey, setRenewPlanKey] = useState("1_month");
+  const [renewCustomDays, setRenewCustomDays] = useState("30");
+  const [renewCustomAmount, setRenewCustomAmount] = useState("500000");
+  const [renewReason, setRenewReason] = useState("Khách chuyển khoản ngân hàng");
+  const [isProcessingRenewal, setIsProcessingRenewal] = useState(false);
+
+  // Legal Terms & Disclaimer State
+  const [termsData, setTermsData] = useState<LegalTerms>({
+    title: "Điều Khoản Sử Dụng & Miễn Trừ Trách Nhiệm Pháp Lý JACS Studio",
+    disclaimer: `1. BẢN QUYỀN VÀ MIỄN TRỪ TRÁCH NHIỆM NỘI DUNG\n- JACS Studio là bộ công cụ hỗ trợ biên tập, dựng video, trích xuất cảnh và tổng hợp giọng đọc AI tự động.\n- Người dùng chịu trách nhiệm pháp lý 100% đối với toàn bộ video nguồn, hình ảnh, âm thanh và văn bản do chính người dùng nhập vào hoặc xử lý qua phần mềm.\n- Nhà phát triển JACS Studio không sở hữu, không lưu trữ và không chịu bất kỳ trách nhiệm pháp lý nào về tranh chấp quyền tác giả, bản quyền thương hiệu, quyền hình ảnh hoặc các khiếu nại liên quan đến nội dung do người dùng tạo ra.`,
+    ai_usage: `2. QUY ĐỊNH SỬ DỤNG AI & DỊCH VỤ BÊN THỨ BA\n- Người dùng tự cấu hình và sử dụng API Key (OpenAI, Gemini, ElevenLabs, Claude...) theo đúng chính sách điều khoản của từng nhà cung cấp dịch vụ tương ứng.\n- JACS Studio không chịu trách nhiệm đối với bất kỳ chi phí phát sinh, việc khóa tài khoản API hoặc tính chính xác của nội dung do mô hình AI của bên thứ ba sinh ra.`,
+    license_rights: `3. QUYỀN SỬ DỤNG BẢN QUYỀN & THIẾT BỊ\n- Mỗi License Key được cấp quyền kích hoạt sử dụng trên số lượng thiết bị phần cứng (HWID) đã đăng ký theo gói dịch vụ.\n- Nghiêm cấm mọi hành vi đảo ngược mã nguồn (Reverse Engineering), bẻ khóa (Crack), chia sẻ trái phép hoặc bán lại license khi chưa có sự đồng ý bằng văn bản của JACS Studio.\n- Vi phạm điều khoản sẽ dẫn đến việc thu hồi và khóa vĩnh viễn License Key mà không được hoàn tiền.`,
+    dispute_resolution: `4. GIẢI QUYẾT TRANH CHẤP & LIÊN HỆ\n- Mọi thắc mắc, yêu cầu khiếu nại hoặc hỗ trợ kỹ thuật xin vui lòng liên hệ trực tiếp với bộ phận chăm sóc khách hàng của JACS Studio qua kênh hỗ trợ chính thức.\n- Trong trường hợp xảy ra tranh chấp pháp lý, các bên cam kết ưu tiên thương lượng trên tinh thần tôn trọng quyền sở hữu trí tuệ và quy định pháp luật hiện hành.`,
+  });
+  const [savingTerms, setSavingTerms] = useState(false);
 
   // AI Provider Modals
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
@@ -470,7 +531,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     setLoading(true);
     setError("");
     try {
-      const [lics, provs, tlogs, txs, bsum, sess, sysSet, sysInf, rels, bcfg] = await Promise.all([
+      const [lics, provs, tlogs, txs, bsum, sess, sysSet, sysInf, rels, bcfg, termsRes] = await Promise.all([
         apiRequest<License[]>("/api/v1/licenses", {}, token),
         apiRequest<Provider[]>("/api/v1/ai-providers", {}, token),
         apiRequest<TelemetryLog[]>("/api/v1/telemetry/logs", {}, token),
@@ -481,6 +542,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         apiRequest<SystemInfo>("/api/v1/system/info", {}, token).catch(() => null as unknown as SystemInfo),
         apiRequest<Release[]>("/api/v1/releases", {}, token).catch(() => []),
         apiRequest<BankConfig>("/api/v1/billing/bank-config", {}, token).catch(() => null),
+        apiRequest<LegalTerms>("/api/v1/system/terms", {}, token).catch(() => null),
       ]);
       setLicenses(lics);
       setProviders(provs);
@@ -491,6 +553,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       setReleases(rels || []);
       if (bcfg) {
         setBankConfig(bcfg);
+      }
+      if (termsRes) {
+        const unwrappedTerms = (termsRes && typeof termsRes === "object" && "data" in termsRes && (termsRes as any).data !== termsRes ? (termsRes as any).data : termsRes) as LegalTerms;
+        if (unwrappedTerms && unwrappedTerms.title) setTermsData(unwrappedTerms);
       }
       if (sysSet) {
         const unwrapped = (sysSet && typeof sysSet === "object" && "data" in sysSet && (sysSet as any).data !== sysSet ? (sysSet as any).data : sysSet) as SystemSettings;
@@ -540,6 +606,24 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     } catch (reason) {
       if (handleRequestError(reason)) return;
       setError(reason instanceof Error ? reason.message : "Không đổi được mật khẩu");
+    }
+  }
+
+  async function handleSaveTerms(event: FormEvent) {
+    event.preventDefault();
+    setSavingTerms(true);
+    setError("");
+    try {
+      await apiRequest("/api/v1/system/terms", {
+        method: "PUT",
+        body: JSON.stringify(termsData),
+      }, token);
+      setMessage(language === "vi" ? "✓ Đã cập nhật & xuất bản Điều khoản & Miễn trừ trách nhiệm thành công!" : "Terms and Disclaimer updated successfully!");
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Lỗi khi lưu điều khoản");
+    } finally {
+      setSavingTerms(false);
     }
   }
 
@@ -850,6 +934,87 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function handleSavePlan(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      const nextPricing = { ...bankConfig.plans_pricing, [planForm.id]: planForm.price };
+      const updatedConfig = { ...bankConfig, plans_pricing: nextPricing };
+      
+      const existingIdx = plansList.findIndex(p => p.id === planForm.id);
+      let nextList = [...plansList];
+      if (existingIdx >= 0) {
+        nextList[existingIdx] = { ...planForm };
+      } else {
+        nextList.push({ ...planForm });
+      }
+      setPlansList(nextList);
+
+      await apiRequest<BankConfig>("/api/v1/billing/bank-config", {
+        method: "PUT",
+        body: JSON.stringify(updatedConfig),
+      }, token);
+      setBankConfig(updatedConfig);
+      setShowPlanModal(false);
+      setMessage(`Đã lưu cấu hình gói ${planForm.name} thành công!`);
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không lưu được gói cước");
+    }
+  }
+
+  async function handleDeletePlan(planId: string) {
+    const nextList = plansList.filter(p => p.id !== planId);
+    setPlansList(nextList);
+    const nextPricing = { ...bankConfig.plans_pricing };
+    delete nextPricing[planId];
+    const updatedConfig = { ...bankConfig, plans_pricing: nextPricing };
+    try {
+      await apiRequest<BankConfig>("/api/v1/billing/bank-config", {
+        method: "PUT",
+        body: JSON.stringify(updatedConfig),
+      }, token);
+      setBankConfig(updatedConfig);
+      setMessage("Đã xóa gói cước khỏi hệ thống");
+    } catch {
+      // Ignored
+    }
+  }
+
+  async function handleExecuteManualRenewal(event: FormEvent) {
+    event.preventDefault();
+    if (!renewLicenseId) {
+      setError("Vui lòng chọn License Key cần gia hạn");
+      return;
+    }
+    setIsProcessingRenewal(true);
+    setError("");
+    try {
+      const selectedPlan = plansList.find(p => p.id === renewPlanKey);
+      const days = selectedPlan ? selectedPlan.days : (parseInt(renewCustomDays) || 30);
+      const amount = selectedPlan ? (bankConfig.plans_pricing?.[selectedPlan.id] || selectedPlan.price) : (parseFloat(renewCustomAmount) || 500000);
+
+      await apiRequest(`/api/v1/licenses/${renewLicenseId}/renew`, {
+        method: "POST",
+        body: JSON.stringify({
+          days,
+          amount,
+          plan_type: selectedPlan?.name || "Manual Renewal",
+          reason: renewReason.trim() || "Gia hạn qua chuyển khoản ngân hàng",
+        }),
+      }, token);
+
+      setShowManualRenewalModal(false);
+      setMessage("✓ Đã gia hạn bản quyền thành công cho khách hàng!");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Lỗi khi xử lý gia hạn");
+    } finally {
+      setIsProcessingRenewal(false);
+    }
+  }
+
   /* -------------------------------------------------------------------------- */
   /* AI PROVIDER CRUD HANDLERS                                                 */
   /* -------------------------------------------------------------------------- */
@@ -1128,7 +1293,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-header">
           <a href="#" className="brand-logo" onClick={(e) => { e.preventDefault(); setActiveMenu("overview"); setMobileMenuOpen(false); }}>
-            <div className="brand-logo-icon">MI</div>
+            <div className="brand-logo-icon">JS</div>
             <div className="brand-title-box">
               <span className="brand-title">{t("appName")}</span>
               <span className="brand-badge-sub">{t("appSuite")}</span>
@@ -1186,7 +1351,27 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           >
             <span className="menu-icon"><CreditCard size={18} /></span>
             <span className="menu-label">{t("menuBilling")}</span>
-            <span className="menu-badge badge-warning">{transactions.length}</span>
+            <span className="menu-badge badge-warning">{billingSummary?.total_revenue ? `${(billingSummary.total_revenue / 1000000).toFixed(1)}M` : `${transactions.length} GD`}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "plans" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("plans"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><Zap size={18} /></span>
+            <span className="menu-label">{t("menuPlans")}</span>
+            <span className="menu-badge badge-primary">{plansList.length}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "renewals" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("renewals"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><RotateCcw size={18} /></span>
+            <span className="menu-label">{t("menuRenewals")}</span>
+            <span className="menu-badge badge-primary">{transactions.length > 0 ? transactions.length : licenses.length}</span>
           </button>
 
           <div className="menu-heading">{t("serviceSection")}</div>
@@ -1221,6 +1406,24 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             <span className="menu-icon"><Rocket size={18} /></span>
             <span className="menu-label">{t("menuReleases")}</span>
             <span className="menu-badge badge-primary">{releases.filter((r) => r.status === "published").length}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "terms" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("terms"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><ShieldCheck size={18} /></span>
+            <span className="menu-label">{language === "vi" ? "Luật & Miễn trừ trách nhiệm" : "Terms & Disclaimer"}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "tool_branding" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("tool_branding"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><Palette size={18} /></span>
+            <span className="menu-label">{language === "vi" ? "Cấu hình Tool & Menu" : "Tool Branding & Menus"}</span>
           </button>
 
           <button
@@ -1565,9 +1768,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 {activeMenu === "licenses" && t("licensesTitle")}
                 {activeMenu === "sessions" && t("sessionsTitle")}
                 {activeMenu === "billing" && t("billingTitle")}
+                {activeMenu === "plans" && (language === "vi" ? "Quản lý Gói cước & Bảng giá ⚡" : "Pricing Plans & Tier Management ⚡")}
+                {activeMenu === "renewals" && (language === "vi" ? "Quản lý Gia hạn & Đăng ký Bản quyền 🔄" : "License Renewals & Subscriptions 🔄")}
                 {activeMenu === "providers" && t("providersTitle")}
                 {activeMenu === "telemetry" && t("telemetryTitle")}
                 {activeMenu === "releases" && (language === "vi" ? "Quản lý Bản phát hành & Cập nhật OTA 🚀" : "Releases & OTA Updates 🚀")}
+                {activeMenu === "tool_branding" && (language === "vi" ? "Cấu hình Thương hiệu & Khoá Menu Tool 🎨" : "Tool Branding & Feature Locks 🎨")}
                 {activeMenu === "settings" && t("settingsTitle")}
               </h1>
               <p>
@@ -1575,9 +1781,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 {activeMenu === "licenses" && t("licensesSubtitle")}
                 {activeMenu === "sessions" && t("sessionsSubtitle")}
                 {activeMenu === "billing" && t("billingSubtitle")}
+                {activeMenu === "plans" && (language === "vi" ? "Thiết lập cấu hình thời hạn, giá tiền, số lượng render và chiết khấu cho từng gói." : "Configure duration, pricing, daily limits and discount badges.")}
+                {activeMenu === "renewals" && (language === "vi" ? "Kiểm tra yêu cầu gia hạn, xác nhận thanh toán chuyển khoản và tự động cộng hạn dùng cho khách." : "Review renewal requests, verify bank transfers and extend license periods automatically.")}
                 {activeMenu === "providers" && t("providersSubtitle")}
                 {activeMenu === "telemetry" && t("telemetrySubtitle")}
                 {activeMenu === "releases" && (language === "vi" ? "Cung cấp bản cập nhật mới trực tiếp cho khách hàng. Người dùng chỉ cần 1 click để tải và áp dụng bản mới mà không cần cài lại tool." : "Broadcast updates to desktop clients with 1-click in-place update.")}
+                {activeMenu === "tool_branding" && (language === "vi" ? "Tự động đổi tên phần mềm, logo và bật/tắt quyền truy cập tính năng đang phát triển lên toàn bộ thiết bị khách." : "Customize tool name, logo and lock under-development features.")}
                 {activeMenu === "settings" && t("settingsSubtitle")}
               </p>
             </div>
@@ -1826,13 +2035,26 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     <h3>{t("licensesTitle")} ({filteredLicenses.length})</h3>
                     <p>{t("licensesSubtitle")}</p>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-primary-orange"
-                    onClick={() => setShowCreateModal(true)}
-                  >
-                    <Plus size={16} /> {t("createLicense")}
-                  </button>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="btn-white-outline"
+                      onClick={() => {
+                        setActiveMenu("billing");
+                        setBillingTab("bank_config");
+                      }}
+                      title="Cấu hình tài khoản và mã QR để khách quét gia hạn"
+                    >
+                      <QrCode size={15} color="var(--primary)" /> {language === "vi" ? "Cấu Hình QR Bank" : "Bank QR Config"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary-orange"
+                      onClick={() => setShowCreateModal(true)}
+                    >
+                      <Plus size={16} /> {t("createLicense")}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Search & Filter Bar */}
@@ -1953,47 +2175,42 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                             </span>
                           </td>
                           <td style={{ textAlign: "right" }}>
-                            <div style={{ display: "inline-flex", gap: "0.3rem" }}>
+                            <div className="table-actions-row">
                               <button
                                 type="button"
-                                className="btn-white-outline"
-                                style={{ padding: "0.3rem 0.6rem" }}
+                                className="btn-table-action btn-action-edit"
                                 onClick={() => openEditModal(lic)}
                                 title={t("edit")}
                               >
-                                <Pencil size={13} /> {t("edit")}
+                                <Pencil size={13} /> <span>{t("edit")}</span>
                               </button>
                               <button
                                 type="button"
-                                className="btn-white-outline"
-                                style={{ padding: "0.3rem 0.6rem" }}
+                                className="btn-table-action btn-action-renew"
                                 onClick={() => openRenewModal(lic)}
                                 title={t("renew")}
                               >
-                                <Clock size={13} /> {t("renew")}
+                                <Clock size={13} /> <span>{t("renew")}</span>
                               </button>
                               <button
                                 type="button"
-                                className="btn-white-outline"
-                                style={{ padding: "0.3rem 0.6rem" }}
+                                className="btn-table-action btn-action-hwid"
                                 onClick={() => openResetHwidModal(lic)}
                                 title={t("resetHwid")}
                               >
-                                <RotateCw size={13} /> {t("resetHwid")}
+                                <RotateCw size={13} /> <span>{t("resetHwid")}</span>
                               </button>
                               <button
                                 type="button"
-                                className="btn-white-outline"
-                                style={{ padding: "0.3rem 0.6rem" }}
+                                className="btn-table-action"
                                 onClick={() => void toggleLicense(lic)}
-                                title={lic.status === "active" ? "Khóa" : "Mở khóa"}
+                                title={lic.status === "active" ? "Khóa key" : "Mở khóa key"}
                               >
-                                {lic.status === "active" ? <Lock size={13} /> : <Unlock size={13} />}
+                                {lic.status === "active" ? <Lock size={13} color="#ea580c" /> : <Unlock size={13} color="#16a34a" />}
                               </button>
                               <button
                                 type="button"
-                                className="btn-white-outline"
-                                style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
+                                className="btn-table-action btn-action-danger"
                                 onClick={() => setDeletingLicense(lic)}
                                 title={t("delete")}
                               >
@@ -2400,6 +2617,71 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         </select>
                       </div>
 
+                      <div className="form-group-mf">
+                        <label className="form-label-mf">{language === "vi" ? "Mã QR / Ảnh Ngân Hàng Tùy Chỉnh" : "Custom Bank QR / Logo Image"}</label>
+                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                          <input
+                            type="url"
+                            className="form-input-mf"
+                            placeholder="https://... hoặc nạp file ảnh từ máy"
+                            value={bankConfig.custom_qr_url || ""}
+                            onChange={(e) => setBankConfig({ ...bankConfig, custom_qr_url: e.target.value.trim() || undefined })}
+                            style={{ flex: 1 }}
+                          />
+                          <label className="btn-white-outline" style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.3rem", padding: "0.5rem 0.85rem", fontSize: "0.8rem", whiteSpace: "nowrap" }}>
+                            <Upload size={14} /> {language === "vi" ? "Chọn Ảnh QR" : "Upload Image"}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onload = (evt) => {
+                                    if (evt.target?.result) {
+                                      setBankConfig({ ...bankConfig, custom_qr_url: String(evt.target.result) });
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+                          {bankConfig.custom_qr_url && (
+                            <button
+                              type="button"
+                              className="btn-white-outline"
+                              style={{ color: "var(--danger)", padding: "0.5rem" }}
+                              onClick={() => setBankConfig({ ...bankConfig, custom_qr_url: undefined })}
+                              title="Xóa ảnh tùy chỉnh, dùng VietQR tự động"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
+                          Nạp ảnh mã QR hoặc logo ngân hàng riêng từ máy để hiển thị trên bản Desktop khi khách quét gia hạn.
+                        </span>
+                      </div>
+
+                      <div className="form-group-mf" style={{ background: "#f0fdf4", padding: "0.85rem", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+                        <label className="form-label-mf" style={{ color: "#166534", fontWeight: 700 }}>
+                          🔐 {language === "vi" ? "Mã Xác Thực SePay API Key (Bảo Mật Webhook)" : "SePay API Key Authorization"}
+                        </label>
+                        <input
+                          type="text"
+                          className="form-input-mf"
+                          placeholder="Nhập API Key SePay của bạn (VD: SEPAY_API_KEY_...)"
+                          value={bankConfig.sepay_api_key || ""}
+                          onChange={(e) => setBankConfig({ ...bankConfig, sepay_api_key: e.target.value.trim() || undefined })}
+                          style={{ background: "#ffffff" }}
+                        />
+                        <span style={{ fontSize: "0.72rem", color: "#15803d", marginTop: "4px", display: "block" }}>
+                          SePay sẽ gửi kèm header <code>Authorization: Apikey &lt;API_KEY&gt;</code>. Khi bạn điền mã này vào đây, server sẽ kiểm tra chính xác 100% request phải đến từ SePay trước khi gia hạn.
+                        </span>
+                      </div>
+
                       <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "1rem", marginTop: "0.5rem" }}>
                         <h4 style={{ fontSize: "0.92rem", color: "var(--text-dark)", marginBottom: "0.75rem" }}>
                           💵 {language === "vi" ? "Bảng Giá Các Gói Bản Quyền (VNĐ)" : "Plan Pricing Configuration (VND)"}
@@ -2471,36 +2753,781 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     </form>
                   </div>
 
-                  {/* Live VietQR Preview */}
-                  <div className="mf-card-panel" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "1.75rem" }}>
-                    <div style={{ width: "100%", maxWidth: "340px" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginBottom: "1rem" }}>
-                        <QrCode size={20} color="var(--primary)" />
-                        <strong style={{ fontSize: "1rem", color: "var(--text-dark)" }}>Live VietQR Preview</strong>
+                  {/* Live VietQR Preview & SePay Webhook Card */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                    {/* Live VietQR Preview */}
+                    <div className="mf-card-panel" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "1.5rem" }}>
+                      <div style={{ width: "100%", maxWidth: "340px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                          <QrCode size={18} color="var(--primary)" />
+                          <strong style={{ fontSize: "0.95rem", color: "var(--text-dark)" }}>
+                            {bankConfig.custom_qr_url ? "Live Custom QR Preview" : "Live VietQR Preview"}
+                          </strong>
+                        </div>
+
+                        <div style={{ background: "#f8fafc", padding: "1rem", borderRadius: "12px", border: "1px solid var(--border-light)", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
+                          {bankConfig.custom_qr_url ? (
+                            <img
+                              src={bankConfig.custom_qr_url}
+                              alt="Custom Bank QR"
+                              style={{ width: "100%", height: "auto", borderRadius: "8px", objectFit: "contain", maxHeight: "260px" }}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = "none";
+                              }}
+                            />
+                          ) : bankConfig.bank_bin && bankConfig.account_number ? (
+                            <img
+                              src={`https://img.vietqr.io/image/${bankConfig.bank_bin}-${bankConfig.account_number}-${bankConfig.qr_template || "compact2"}.png?amount=${bankConfig.plans_pricing?.["1_month"] || 500000}&addInfo=JACS%20DEMO&accountName=${encodeURIComponent(bankConfig.account_name)}`}
+                              alt="VietQR Live Preview"
+                              style={{ width: "100%", height: "auto", borderRadius: "8px" }}
+                            />
+                          ) : (
+                            <div style={{ padding: "3rem 1rem", color: "var(--text-muted)" }}>
+                              Vui lòng chọn ngân hàng và nhập số tài khoản
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ marginTop: "0.75rem", textAlign: "left", fontSize: "0.78rem", color: "var(--text-muted)", background: "#fff1ec", padding: "0.65rem 0.85rem", borderRadius: "8px", border: "1px solid #fed7aa" }}>
+                          <div style={{ color: "var(--primary)", fontWeight: 700, marginBottom: "0.2rem" }}>💡 Hướng dẫn hoạt động:</div>
+                          <div>Khi người dùng Desktop bấm <strong>"Gia hạn bản quyền"</strong> trên tool, hệ thống sẽ tự động hiển thị mã QR trên kèm số tiền và cú pháp <code>JACS &lt;KEY&gt;</code> để khách quét chuyển khoản.</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SePay Webhook Automated Integration Box */}
+                    <div className="mf-card-panel" style={{ borderLeft: "4px solid #10b981" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <span className="squircle-badge squircle-green" style={{ width: "28px", height: "28px", borderRadius: "6px", display: "grid", placeItems: "center" }}>
+                            <Zap size={15} />
+                          </span>
+                          <strong style={{ fontSize: "0.95rem", color: "var(--text-dark)" }}>Tích Hợp Webhook SePay (Tự Động 100%)</strong>
+                        </div>
+                        <span className="pill-status pill-online" style={{ fontSize: "0.72rem" }}>Webhook Ready</span>
                       </div>
 
-                      <div style={{ background: "#f8fafc", padding: "1.25rem", borderRadius: "12px", border: "1px solid var(--border-light)", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
-                        {bankConfig.bank_bin && bankConfig.account_number ? (
-                          <img
-                            src={`https://img.vietqr.io/image/${bankConfig.bank_bin}-${bankConfig.account_number}-${bankConfig.qr_template || "compact2"}.png?amount=${bankConfig.plans_pricing?.["1_month"] || 500000}&addInfo=JACS%20DEMO&accountName=${encodeURIComponent(bankConfig.account_name)}`}
-                            alt="VietQR Live Preview"
-                            style={{ width: "100%", height: "auto", borderRadius: "8px" }}
+                      <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", margin: "0 0 0.75rem 0", lineHeight: 1.4 }}>
+                        Hệ thống đã xây dựng sẵn Webhook chuẩn SePay. Khi tiền về tài khoản ngân hàng, SePay sẽ bắn thông báo về đường link bên dưới để tự động gia hạn và mở khóa tool cho khách trong 3 giây:
+                      </p>
+
+                      <div className="form-group-mf" style={{ marginBottom: "0.75rem" }}>
+                        <label className="form-label-mf">URL Webhook Nhận Dữ Liệu SePay (Copy vào my.sepay.vn):</label>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <input
+                            type="text"
+                            className="form-input-mf"
+                            readOnly
+                            value="https://jacs-studio.nexoratech.com.vn/api/webhook/sepay"
+                            style={{ background: "#f1f5f9", fontWeight: 600, color: "var(--primary)", fontSize: "0.82rem" }}
                           />
-                        ) : (
-                          <div style={{ padding: "3rem 1rem", color: "var(--text-muted)" }}>
-                            Vui lòng chọn ngân hàng và nhập số tài khoản
-                          </div>
-                        )}
+                          <button
+                            type="button"
+                            className="btn-primary-orange"
+                            style={{ whiteSpace: "nowrap", padding: "0.45rem 0.85rem", fontSize: "0.8rem" }}
+                            onClick={() => {
+                              navigator.clipboard.writeText("https://jacs-studio.nexoratech.com.vn/api/webhook/sepay");
+                              setMessage("✓ Đã copy link Webhook SePay!");
+                            }}
+                          >
+                            <Copy size={13} /> Copy Link
+                          </button>
+                        </div>
                       </div>
 
-                      <div style={{ marginTop: "1rem", textAlign: "left", fontSize: "0.78rem", color: "var(--text-muted)", background: "#fff1ec", padding: "0.75rem", borderRadius: "8px", border: "1px solid #fed7aa" }}>
-                        <div style={{ color: "var(--primary)", fontWeight: 700, marginBottom: "0.25rem" }}>💡 Hướng dẫn hoạt động:</div>
-                        <div>Khi người dùng Desktop bấm <strong>"Gia hạn bản quyền"</strong> trên tool, hệ thống sẽ tự động hiển thị mã QR trên kèm số tiền và cú pháp <code>JACS &lt;KEY&gt;</code> để khách quét chuyển khoản.</div>
+                      <div style={{ background: "#f8fafc", padding: "0.75rem", borderRadius: "8px", border: "1px solid var(--border-light)", fontSize: "0.76rem", color: "var(--text-body)" }}>
+                        <strong>📌 Các bước tạo Webhook trên SePay:</strong>
+                        <ol style={{ margin: "0.35rem 0 0 1rem", padding: 0, lineHeight: 1.5 }}>
+                          <li>Đăng nhập vào <strong><a href="https://my.sepay.vn" target="_blank" rel="noreferrer" style={{ color: "var(--primary)" }}>my.sepay.vn</a></strong>.</li>
+                          <li>Vào menu <strong>Cấu hình tích hợp (Webhooks)</strong> ➔ Bấm <strong>Tạo Webhook mới</strong>.</li>
+                          <li>Dán URL: <code>https://jacs-studio.nexoratech.com.vn/api/webhook/sepay</code>.</li>
+                          <li>Chọn phương thức: <strong>POST</strong>, Kiểu dữ liệu: <strong>JSON</strong>.</li>
+                          <li>Bấm <strong>Lưu lại</strong>. Khách quét VietQR chuyển khoản sẽ được tự động cộng ngày ngay lập tức!</li>
+                        </ol>
                       </div>
                     </div>
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* VIEW: PLANS & PRICING MANAGEMENT */}
+          {/* ========================================================================= */}
+          {activeMenu === "plans" && (() => {
+            const filteredPlans = plansList.filter(p => {
+              const matchesSearch = !plansSearch || p.name.toLowerCase().includes(plansSearch.toLowerCase()) || p.id.toLowerCase().includes(plansSearch.toLowerCase());
+              const matchesStatus = plansStatusFilter === "all" || (plansStatusFilter === "active" ? p.active !== false : p.active === false);
+              return matchesSearch && matchesStatus;
+            });
+
+            const totalPlansPages = Math.ceil(filteredPlans.length / plansPageSize) || 1;
+            const pagedPlans = filteredPlans.slice((plansPage - 1) * plansPageSize, plansPage * plansPageSize);
+
+            return (
+              <div className="mf-card-panel">
+                <div className="mf-card-header">
+                  <div className="mf-card-title-group">
+                    <h3>{language === "vi" ? "Quản Lý Gói Cước & Bảng Giá" : "Pricing Plans & Tier Management"} ({filteredPlans.length})</h3>
+                    <p>{language === "vi" ? "Cấu hình giá tiền, thời hạn sử dụng, giới hạn render và ưu đãi chiết khấu cho phần mềm JACS Studio" : "Configure subscription plans, duration, render limits and discount badges"}</p>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="btn-primary-orange"
+                      onClick={() => {
+                        setEditingPlan(null);
+                        setPlanForm({
+                          id: `plan_${Date.now()}`,
+                          name: "",
+                          days: 30,
+                          price: 500000,
+                          badge: "Gói mới",
+                          discount: "",
+                          max_jobs_per_day: 200,
+                          active: true,
+                        });
+                        setShowPlanModal(true);
+                      }}
+                    >
+                      <Plus size={15} /> {language === "vi" ? "Thêm Gói Mới" : "Add Plan"}
+                    </button>
+                    <button type="button" className="btn-white-outline" onClick={() => void refresh()}>
+                      <RotateCw size={15} /> {t("refresh")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search & Filter Bar */}
+                <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem", flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="Tìm kiếm gói cước theo tên hoặc mã key..."
+                    value={plansSearch}
+                    onChange={(e) => { setPlansSearch(e.target.value); setPlansPage(1); }}
+                    style={{ flex: 1, minWidth: "240px" }}
+                  />
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className={`btn-filter-pill ${plansStatusFilter === "all" ? "active" : ""}`}
+                      onClick={() => { setPlansStatusFilter("all"); setPlansPage(1); }}
+                    >
+                      Tất cả ({plansList.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn-filter-pill ${plansStatusFilter === "active" ? "active" : ""}`}
+                      onClick={() => { setPlansStatusFilter("active"); setPlansPage(1); }}
+                    >
+                      Đang kích hoạt ({plansList.filter(p => p.active !== false).length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn-filter-pill ${plansStatusFilter === "inactive" ? "active" : ""}`}
+                      onClick={() => { setPlansStatusFilter("inactive"); setPlansPage(1); }}
+                    >
+                      Tạm ẩn ({plansList.filter(p => p.active === false).length})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="table-responsive">
+                  <table className="mf-table">
+                    <thead>
+                      <tr>
+                        <th>{language === "vi" ? "Gói Dịch Vụ" : "Plan Name"}</th>
+                        <th>{language === "vi" ? "Mã Key Gói" : "Plan Key"}</th>
+                        <th>{language === "vi" ? "Thời Hạn" : "Duration"}</th>
+                        <th>{language === "vi" ? "Giá Tiền (VNĐ)" : "Price (VND)"}</th>
+                        <th>{language === "vi" ? "Giới Hạn Render" : "Daily Limit"}</th>
+                        <th>{language === "vi" ? "Huy Hiệu / Ưu Đãi" : "Badge"}</th>
+                        <th>{language === "vi" ? "Trạng Thái" : "Status"}</th>
+                        <th style={{ textAlign: "right" }}>{t("thActions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedPlans.map((plan) => (
+                        <tr key={plan.id}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                              <div className="squircle-badge squircle-orange" style={{ width: "32px", height: "32px", borderRadius: "8px", display: "grid", placeItems: "center" }}>
+                                <Zap size={16} />
+                              </div>
+                              <div>
+                                <strong style={{ color: "var(--text-dark)", fontSize: "0.88rem", display: "block" }}>{plan.name}</strong>
+                                {plan.discount && <small style={{ color: "var(--success)", fontWeight: 600 }}>{plan.discount}</small>}
+                              </div>
+                            </div>
+                          </td>
+                          <td><code className="code-chip">{plan.id}</code></td>
+                          <td><strong>{plan.days >= 3650 ? "Vĩnh viễn" : `${plan.days} ngày`}</strong></td>
+                          <td><strong style={{ color: "var(--primary)", fontSize: "0.92rem" }}>{formatCurrency(bankConfig.plans_pricing?.[plan.id] ?? plan.price)}</strong></td>
+                          <td>{plan.max_jobs_per_day} jobs/ngày</td>
+                          <td>
+                            {plan.badge ? (
+                              <span className="pill-status pill-info" style={{ fontSize: "0.72rem" }}>{plan.badge}</span>
+                            ) : "--"}
+                          </td>
+                          <td>
+                            <span className={`pill-status ${plan.active !== false ? "pill-online" : "pill-offline"}`}>
+                              {plan.active !== false ? "Kích hoạt" : "Tạm ẩn"}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <div className="table-actions-row">
+                              <button
+                                type="button"
+                                className="btn-table-action btn-action-edit"
+                                title="Chỉnh sửa gói"
+                                onClick={() => {
+                                  setEditingPlan(plan);
+                                  setPlanForm({
+                                    id: plan.id,
+                                    name: plan.name,
+                                    days: plan.days,
+                                    price: bankConfig.plans_pricing?.[plan.id] ?? plan.price,
+                                    badge: plan.badge,
+                                    discount: plan.discount,
+                                    max_jobs_per_day: plan.max_jobs_per_day,
+                                    active: plan.active !== false,
+                                  });
+                                  setShowPlanModal(true);
+                                }}
+                              >
+                                <Pencil size={13} /> Sửa
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-table-action btn-action-danger"
+                                title="Xóa gói"
+                                onClick={() => handleDeletePlan(plan.id)}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredPlans.length === 0 && (
+                        <tr>
+                          <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                            Không tìm thấy gói cước nào phù hợp.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <Pagination
+                  currentPage={plansPage}
+                  totalPages={totalPlansPages}
+                  onPageChange={setPlansPage}
+                  totalItems={filteredPlans.length}
+                  pageSize={plansPageSize}
+                  pageSizeOptions={[5, 10, 20]}
+                  onPageSizeChange={(size) => {
+                    setPlansPageSize(size);
+                    setPlansPage(1);
+                  }}
+                />
+              </div>
+            );
+          })()}
+
+          {/* ========================================================================= */}
+          {/* VIEW: SUBSCRIPTIONS & RENEWALS MANAGEMENT */}
+          {/* ========================================================================= */}
+          {activeMenu === "renewals" && (() => {
+            const renewalTx = (transactions || []).filter(t => t && (t.transaction_type === "renewal" || t.transaction_type === "new_key" || t.transaction_type === "income" || t.plan_type || t.notes?.includes("gia hạn") || t.notes?.includes("SePay") || t.notes?.includes("Tạo key")));
+            const filteredRenewals = renewalTx.filter(t => {
+              if (!t) return false;
+              const matchesSearch = !renewalsSearch ||
+                (t.customer_name && t.customer_name.toLowerCase().includes(renewalsSearch.toLowerCase())) ||
+                (t.reference_code && t.reference_code.toLowerCase().includes(renewalsSearch.toLowerCase())) ||
+                (t.notes && t.notes.toLowerCase().includes(renewalsSearch.toLowerCase())) ||
+                (t.license_id && t.license_id.toLowerCase().includes(renewalsSearch.toLowerCase()));
+              
+              if (!matchesSearch) return false;
+              if (renewalStatusFilter === "all") return true;
+              if (renewalStatusFilter === "completed") return t.transaction_type === "renewal" || t.transaction_type === "income" || t.transaction_type === "new_key";
+              if (renewalStatusFilter === "pending") return t.transaction_type === "pending";
+              if (renewalStatusFilter === "cancelled") return t.transaction_type === "cancelled";
+              return true;
+            });
+
+            const totalRenewalsPages = Math.ceil(filteredRenewals.length / renewalsPageSize) || 1;
+            const pagedRenewals = filteredRenewals.slice((renewalsPage - 1) * renewalsPageSize, renewalsPage * renewalsPageSize);
+
+            return (
+              <div className="mf-card-panel">
+                <div className="mf-card-header">
+                  <div className="mf-card-title-group">
+                    <h3>{language === "vi" ? "Quản Lý Gia Hạn & Đăng Ký Bản Quyền 🔄" : "License Renewals & Subscriptions"}</h3>
+                    <p>{language === "vi" ? "Theo dõi hạn dùng bản quyền của khách hàng, xử lý yêu cầu gia hạn từ Tool Desktop & Webhook SePay VietQR" : "Monitor customer license expiries, process renewal requests from Desktop app & SePay VietQR"}</p>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="btn-primary-orange"
+                      onClick={() => setShowManualRenewalModal(true)}
+                    >
+                      <Plus size={15} /> {language === "vi" ? "Gia Hạn Nhanh Cho Khách" : "Manual Renewal"}
+                    </button>
+                    <button type="button" className="btn-white-outline" onClick={() => void refresh()}>
+                      <RotateCw size={15} /> {t("refresh")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Subtabs Selector */}
+                <div style={{ display: "flex", gap: "0.5rem", borderBottom: "1px solid var(--border-light)", paddingBottom: "0.75rem", marginBottom: "1.25rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => { setRenewalSubTab("keys"); setRenewalsPage(1); }}
+                    className={`btn-white-outline ${renewalSubTab === "keys" ? "active" : ""}`}
+                    style={{
+                      background: renewalSubTab === "keys" ? "var(--primary)" : "transparent",
+                      color: renewalSubTab === "keys" ? "#fff" : "var(--text-dark)",
+                      borderColor: renewalSubTab === "keys" ? "var(--primary)" : "var(--border-light)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <Key size={15} /> {language === "vi" ? `🔑 Khách Hàng & Hạn Bản Quyền (${licenses.length})` : `🔑 Active Licenses (${licenses.length})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRenewalSubTab("transactions"); setRenewalsPage(1); }}
+                    className={`btn-white-outline ${renewalSubTab === "transactions" ? "active" : ""}`}
+                    style={{
+                      background: renewalSubTab === "transactions" ? "var(--primary)" : "transparent",
+                      color: renewalSubTab === "transactions" ? "#fff" : "var(--text-dark)",
+                      borderColor: renewalSubTab === "transactions" ? "var(--primary)" : "var(--border-light)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    <CreditCard size={15} /> {language === "vi" ? `💳 Lịch Sử Giao Dịch & SePay (${renewalTx.length})` : `💳 Transactions (${renewalTx.length})`}
+                  </button>
+                </div>
+
+                {/* SePay Webhook Alert Banner */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "0.75rem 1rem", marginBottom: "1.25rem", fontSize: "0.82rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <Zap size={16} color="#10b981" />
+                    <span>
+                      <strong>Tự động kích hoạt qua SePay:</strong> Khi khách quét VietQR, Webhook SePay <code>https://jacs-studio.nexoratech.com.vn/api/webhook/sepay</code> sẽ tự động cộng hạn và mở khóa ngay.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-white-outline"
+                    style={{ fontSize: "0.75rem", padding: "0.25rem 0.6rem", whiteSpace: "nowrap" }}
+                    onClick={() => {
+                      navigator.clipboard.writeText("https://jacs-studio.nexoratech.com.vn/api/webhook/sepay");
+                      setMessage("✓ Đã copy URL Webhook SePay!");
+                    }}
+                  >
+                    <Copy size={12} /> Copy Webhook URL
+                  </button>
+                </div>
+
+                {/* SUBTAB 1: LICENSES EXPIRY & FAST RENEWAL */}
+                {renewalSubTab === "keys" && (() => {
+                  const filteredLicList = licenses.filter(l => {
+                    if (!renewalsSearch) return true;
+                    return (
+                      (l.customer_name && l.customer_name.toLowerCase().includes(renewalsSearch.toLowerCase())) ||
+                      (l.key_hint && l.key_hint.toLowerCase().includes(renewalsSearch.toLowerCase())) ||
+                      (l.hwid && l.hwid.toLowerCase().includes(renewalsSearch.toLowerCase()))
+                    );
+                  });
+                  const totalLicPages = Math.ceil(filteredLicList.length / renewalsPageSize) || 1;
+                  const pagedLicList = filteredLicList.slice((renewalsPage - 1) * renewalsPageSize, renewalsPage * renewalsPageSize);
+
+                  return (
+                    <>
+                      <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem", alignItems: "center" }}>
+                        <input
+                          type="text"
+                          className="form-input-mf"
+                          placeholder="Tìm theo tên khách hàng, mã key, mã máy HWID..."
+                          value={renewalsSearch}
+                          onChange={(e) => { setRenewalsSearch(e.target.value); setRenewalsPage(1); }}
+                          style={{ flex: 1, minWidth: "240px" }}
+                        />
+                      </div>
+
+                      <div className="table-responsive">
+                        <table className="mf-table">
+                          <thead>
+                            <tr>
+                              <th>{language === "vi" ? "Khách Hàng" : "Customer"}</th>
+                              <th>{language === "vi" ? "License Key Hint" : "License Key"}</th>
+                              <th>{language === "vi" ? "Hạn Sử Dụng Hiện Tại" : "Current Expiration"}</th>
+                              <th>{language === "vi" ? "Số Ngày Còn Lại" : "Days Left"}</th>
+                              <th>{language === "vi" ? "Giới Hạn / Ngày" : "Job Limit"}</th>
+                              <th>{language === "vi" ? "Trạng Thái" : "Status"}</th>
+                              <th style={{ textAlign: "right" }}>{t("thActions")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedLicList.map((lic) => {
+                              const expDate = lic.expires_at ? new Date(lic.expires_at) : null;
+                              const now = new Date();
+                              const daysRemaining = expDate ? Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : 9999;
+                              const isExp = expDate ? daysRemaining <= 0 : false;
+
+                              return (
+                                <tr key={lic.id}>
+                                  <td>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                                      <div className="squircle-badge squircle-blue" style={{ width: "32px", height: "32px", borderRadius: "6px", display: "grid", placeItems: "center" }}>
+                                        <Key size={15} />
+                                      </div>
+                                      <div>
+                                        <strong style={{ color: "var(--text-dark)", fontSize: "0.9rem", display: "block" }}>{lic.customer_name}</strong>
+                                        <small style={{ color: "var(--text-dim)", fontSize: "0.72rem" }}>HWID: {lic.hwid?.slice(0, 18)}...</small>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <code className="code-chip" style={{ fontWeight: 700 }}>{lic.key_hint}</code>
+                                  </td>
+                                  <td>
+                                    {expDate ? (
+                                      <strong style={{ color: isExp ? "var(--danger)" : "var(--text-dark)", fontSize: "0.85rem" }}>
+                                        {expDate.toLocaleDateString("vi-VN")}
+                                      </strong>
+                                    ) : (
+                                      <span className="pill-status pill-lifetime">Vĩnh Viễn</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    {expDate ? (
+                                      <span className={`pill-status ${isExp ? "pill-danger" : daysRemaining <= 7 ? "pill-warning" : "pill-online"}`}>
+                                        {isExp ? "Đã Hết Hạn" : `Còn ${daysRemaining} ngày`}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Không giới hạn</span>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <span style={{ fontSize: "0.82rem", color: "var(--text-body)" }}>{lic.max_jobs_per_day || 100} video/ngày</span>
+                                  </td>
+                                  <td>
+                                    <span className={`pill-status ${lic.status === "active" ? "pill-online" : lic.status === "expired" ? "pill-danger" : "pill-warning"}`}>
+                                      {lic.status === "active" ? "● Đang Kích Hoạt" : lic.status === "expired" ? "Hết Hạn" : "Đã Khóa"}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: "right" }}>
+                                    <button
+                                      type="button"
+                                      className="btn-primary-orange"
+                                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.78rem" }}
+                                      onClick={() => {
+                                        setRenewLicenseId(lic.id);
+                                        setShowManualRenewalModal(true);
+                                      }}
+                                    >
+                                      <RotateCcw size={13} /> {language === "vi" ? "Gia Hạn Nhanh" : "Extend"}
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {filteredLicList.length === 0 && (
+                              <tr>
+                                <td colSpan={7} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                                  {language === "vi" ? "Chưa có license nào." : "No licenses found."}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <Pagination
+                        currentPage={renewalsPage}
+                        totalPages={totalLicPages}
+                        onPageChange={setRenewalsPage}
+                        totalItems={filteredLicList.length}
+                        pageSize={renewalsPageSize}
+                        pageSizeOptions={[5, 10, 20]}
+                        onPageSizeChange={(size) => {
+                          setRenewalsPageSize(size);
+                          setRenewalsPage(1);
+                        }}
+                      />
+                    </>
+                  );
+                })()}
+
+                {/* SUBTAB 2: TRANSACTIONS & SEPAY WEBHOOK HISTORY */}
+                {renewalSubTab === "transactions" && (
+                  <>
+                    <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem", flexWrap: "wrap", alignItems: "center" }}>
+                      <input
+                        type="text"
+                        className="form-input-mf"
+                        placeholder="Tìm theo tên khách hàng, mã key, mã tham chiếu SePay..."
+                        value={renewalsSearch}
+                        onChange={(e) => { setRenewalsSearch(e.target.value); setRenewalsPage(1); }}
+                        style={{ flex: 1, minWidth: "240px" }}
+                      />
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <button
+                          type="button"
+                          className={`btn-filter-pill ${renewalStatusFilter === "all" ? "active" : ""}`}
+                          onClick={() => { setRenewalStatusFilter("all"); setRenewalsPage(1); }}
+                        >
+                          Tất cả ({renewalTx.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn-filter-pill ${renewalStatusFilter === "completed" ? "active" : ""}`}
+                          onClick={() => { setRenewalStatusFilter("completed"); setRenewalsPage(1); }}
+                        >
+                          Đã thanh toán ({renewalTx.filter(t => t.transaction_type !== "cancelled" && t.transaction_type !== "pending").length})
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="table-responsive">
+                      <table className="mf-table">
+                        <thead>
+                          <tr>
+                            <th>{language === "vi" ? "Khách Hàng" : "Customer"}</th>
+                            <th>{language === "vi" ? "License Key / Mã" : "License Key"}</th>
+                            <th>{language === "vi" ? "Gói Gia Hạn" : "Plan"}</th>
+                            <th>{language === "vi" ? "Số Tiền" : "Amount"}</th>
+                            <th>{language === "vi" ? "Phương Thức" : "Method"}</th>
+                            <th>{language === "vi" ? "Ghi Chú / Mã GD" : "Notes"}</th>
+                            <th>{language === "vi" ? "Thời Gian" : "Date"}</th>
+                            <th>{language === "vi" ? "Trạng Thái" : "Status"}</th>
+                            <th style={{ textAlign: "right" }}>{t("thActions")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedRenewals.map((tx) => {
+                            const matchingLic = licenses.find(l => l.id === tx.license_id || l.customer_name === tx.customer_name);
+                            return (
+                              <tr key={tx.id}>
+                                <td>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                    <div className="squircle-badge squircle-blue" style={{ width: "30px", height: "30px", borderRadius: "6px", display: "grid", placeItems: "center" }}>
+                                      <Key size={14} />
+                                    </div>
+                                    <div>
+                                      <strong style={{ color: "var(--text-dark)", fontSize: "0.88rem", display: "block" }}>{tx.customer_name}</strong>
+                                      {matchingLic && <small style={{ color: "var(--text-muted)" }}>Hạn hiện tại: {matchingLic.expires_at ? new Date(matchingLic.expires_at).toLocaleDateString("vi-VN") : "Vĩnh viễn"}</small>}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td>
+                                  <code className="code-chip">
+                                    {matchingLic?.key_hint || tx.license_id?.slice(0, 8) || "JACS-KEY"}
+                                  </code>
+                                </td>
+                                <td>
+                                  <span className="badge-primary menu-badge" style={{ textTransform: "capitalize" }}>
+                                    {tx.plan_type || tx.plan_name || "Gói gia hạn"}
+                                  </span>
+                                </td>
+                                <td><strong style={{ color: "var(--primary)", fontSize: "0.92rem" }}>+{formatCurrency(tx.amount)}</strong></td>
+                                <td>
+                                  <span style={{ fontSize: "0.8rem", color: "var(--text-body)" }}>
+                                    {tx.payment_method?.includes("sepay") ? "⚡ SePay VietQR (Tự động)" : tx.payment_method === "bank_transfer" ? "Chuyển khoản VietQR" : tx.payment_method}
+                                  </span>
+                                </td>
+                                <td>
+                                  <small style={{ color: "var(--text-muted)", maxWidth: "160px", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={tx.notes || ""}>
+                                    {tx.notes || tx.reference_code || "--"}
+                                  </small>
+                                </td>
+                                <td><small style={{ color: "var(--text-muted)", fontSize: "0.78rem" }}>{new Date(tx.created_at).toLocaleString("vi-VN")}</small></td>
+                                <td>
+                                  <span className="pill-status pill-online">
+                                    Đã Gia Hạn
+                                  </span>
+                                </td>
+                                <td style={{ textAlign: "right" }}>
+                                  <div className="table-actions-row">
+                                    {matchingLic && (
+                                      <button
+                                        type="button"
+                                        className="btn-table-action btn-action-renew"
+                                        title="Gia hạn thêm cho khách này"
+                                        onClick={() => {
+                                          setRenewLicenseId(matchingLic.id);
+                                          setShowManualRenewalModal(true);
+                                        }}
+                                      >
+                                        <RotateCcw size={13} /> Gia Hạn
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className="btn-table-action btn-action-danger"
+                                      title="Xóa giao dịch"
+                                      onClick={() => setDeletingTransaction(tx)}
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {filteredRenewals.length === 0 && (
+                            <tr>
+                              <td colSpan={9} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                                Chưa có lịch sử giao dịch nào.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <Pagination
+                      currentPage={renewalsPage}
+                      totalPages={totalRenewalsPages}
+                      onPageChange={setRenewalsPage}
+                      totalItems={filteredRenewals.length}
+                      pageSize={renewalsPageSize}
+                      pageSizeOptions={[5, 10, 20]}
+                      onPageSizeChange={(size) => {
+                        setRenewalsPageSize(size);
+                        setRenewalsPage(1);
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ========================================================================= */}
+          {/* VIEW: LEGAL TERMS & DISCLAIMER MANAGEMENT */}
+          {/* ========================================================================= */}
+          {activeMenu === "terms" && (
+            <div className="mf-card-panel">
+              <div className="mf-card-header">
+                <div className="mf-card-title-group">
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                    <span className="squircle-badge squircle-blue" style={{ width: "34px", height: "34px", borderRadius: "8px", display: "grid", placeItems: "center" }}>
+                      <Scale size={18} />
+                    </span>
+                    <div>
+                      <h3>{language === "vi" ? "Luật Miễn Trừ Trách Nhiệm & Quyền Sử Dụng Tool" : "Terms, License Rights & Disclaimer"}</h3>
+                      <p>{language === "vi" ? "Quản lý và cập nhật nội dung điều khoản pháp lý, miễn trừ tranh chấp bản quyền và quyền hạn cho phần mềm JACS Studio" : "Manage legal terms, copyright disclaimers, fair use policies and dispute resolution terms"}</p>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button type="button" className="btn-white-outline" onClick={() => void refresh()}>
+                    <RotateCw size={15} /> {t("refresh")}
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveTerms} style={{ marginTop: "1.25rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Tiêu Đề Văn Bản Pháp Lý *</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={termsData.title}
+                    onChange={(e) => setTermsData({ ...termsData, title: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                    <label className="form-label-mf" style={{ margin: 0, fontWeight: 700, color: "var(--text-dark)" }}>
+                      1. Luật Miễn Trừ Trách Nhiệm Bản Quyền Nội Dung (Copyright Disclaimer) *
+                    </label>
+                    <span className="badge-primary menu-badge">Pháp Lý Cốt Lõi</span>
+                  </div>
+                  <textarea
+                    className="form-input-mf"
+                    rows={6}
+                    value={termsData.disclaimer}
+                    onChange={(e) => setTermsData({ ...termsData, disclaimer: e.target.value })}
+                    style={{ lineHeight: 1.5, fontFamily: "inherit" }}
+                    required
+                  />
+                  <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
+                    Quy định rõ người dùng chịu 100% trách nhiệm về video nguồn, hình ảnh, âm thanh nạp vào tool và nhà phát triển được miễn trừ mọi tranh chấp bản quyền.
+                  </span>
+                </div>
+
+                <div className="form-group-mf">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                    <label className="form-label-mf" style={{ margin: 0, fontWeight: 700, color: "var(--text-dark)" }}>
+                      2. Quy Định Sử Dụng Dịch Vụ AI & API Key Bên Thứ Ba *
+                    </label>
+                    <span className="badge-primary menu-badge">AI Gateway</span>
+                  </div>
+                  <textarea
+                    className="form-input-mf"
+                    rows={4}
+                    value={termsData.ai_usage}
+                    onChange={(e) => setTermsData({ ...termsData, ai_usage: e.target.value })}
+                    style={{ lineHeight: 1.5, fontFamily: "inherit" }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                    <label className="form-label-mf" style={{ margin: 0, fontWeight: 700, color: "var(--text-dark)" }}>
+                      3. Quyền Hạn Sử Dụng License & Giới Hạn Thiết Bị *
+                    </label>
+                    <span className="badge-primary menu-badge">Bản Quyền Phần Mềm</span>
+                  </div>
+                  <textarea
+                    className="form-input-mf"
+                    rows={4}
+                    value={termsData.license_rights}
+                    onChange={(e) => setTermsData({ ...termsData, license_rights: e.target.value })}
+                    style={{ lineHeight: 1.5, fontFamily: "inherit" }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                    <label className="form-label-mf" style={{ margin: 0, fontWeight: 700, color: "var(--text-dark)" }}>
+                      4. Giải Quyết Khiếu Nại & Tranh Chấp Sở Hữu Trí Tuệ *
+                    </label>
+                    <span className="badge-primary menu-badge">Thương Lượng & Pháp Lý</span>
+                  </div>
+                  <textarea
+                    className="form-input-mf"
+                    rows={4}
+                    value={termsData.dispute_resolution}
+                    onChange={(e) => setTermsData({ ...termsData, dispute_resolution: e.target.value })}
+                    style={{ lineHeight: 1.5, fontFamily: "inherit" }}
+                    required
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", borderTop: "1px solid var(--border-light)", paddingTop: "1rem" }}>
+                  <button
+                    type="submit"
+                    className="btn-primary-orange"
+                    disabled={savingTerms}
+                    style={{ padding: "0.6rem 1.5rem", fontSize: "0.88rem" }}
+                  >
+                    <Check size={16} /> {savingTerms ? "Đang lưu..." : (language === "vi" ? "Lưu & Xuất Bản Điều Khoản Lên Tool" : "Save & Publish Terms")}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 
@@ -2978,15 +4005,26 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                   <p style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.8)", margin: "0.5rem 0 1rem" }}>
                     {language === "vi" ? "Truy cập tài liệu đặc tả API Swagger UI để kiểm thử trực tiếp các endpoint của hệ thống." : "Access interactive Swagger UI documentation to test server endpoints."}
                   </p>
-                  <a
-                    href="http://localhost:8000/docs"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-primary-orange"
-                    style={{ textDecoration: "none", display: "inline-flex", width: "100%", justifyContent: "center" }}
-                  >
-                    <ArrowUpRight size={15} /> Mở Swagger API Docs (/docs)
-                  </a>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <a
+                      href="/docs"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-primary-orange"
+                      style={{ textDecoration: "none", display: "inline-flex", flex: 1, justifyContent: "center" }}
+                    >
+                      <ArrowUpRight size={15} /> Swagger UI (/docs)
+                    </a>
+                    <a
+                      href="/redoc"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-white-outline"
+                      style={{ textDecoration: "none", display: "inline-flex", flex: 1, justifyContent: "center", color: "#fff" }}
+                    >
+                      <ArrowUpRight size={15} /> ReDoc (/redoc)
+                    </a>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3000,6 +4038,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
               onRefresh={refresh}
               setMessage={setMessage}
               setError={setError}
+            />
+          )}
+
+          {/* TAB: TOOL BRANDING & MENU LOCKS */}
+          {activeMenu === "tool_branding" && (
+            <ToolConfigPage
+              token={token}
+              language={language}
             />
           )}
         </main>
@@ -3290,10 +4336,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* MODAL: RENEW LICENSE */}
       {renewingLicense && (
         <div className="modal-backdrop">
-          <div className="modal-dialog-box">
+          <div className="modal-dialog-box" style={{ maxWidth: "540px", overflow: "visible" }}>
             <div className="modal-header-mf">
               <div>
                 <h3>{t("modalRenewLicenseTitle")}</h3>
+                <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                  Gia hạn thời hạn sử dụng cho key <code className="code-chip">{renewingLicense.key_hint}</code>
+                </p>
               </div>
               <button type="button" className="btn-close-modal" onClick={() => setRenewingLicense(null)}>
                 <X size={18} />
@@ -3301,18 +4350,28 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             </div>
 
             <form onSubmit={handleRenewLicense}>
-              <div className="modal-body-mf">
+              <div className="modal-body-mf" style={{ overflow: "visible", gap: "1rem" }}>
                 <div className="form-group-mf">
                   <label className="form-label-mf">{t("fieldCustomerName")}</label>
-                  <input type="text" className="form-input-mf" value={renewingLicense.customer_name} disabled />
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={renewingLicense.customer_name}
+                    disabled
+                    style={{ background: "#f8fafc", color: "#475569", fontWeight: 600 }}
+                  />
                 </div>
-                <DatePicker
-                  label={language === "vi" ? "Hạn Sử Dụng Mới Sau Khi Gia Hạn" : "New Expiry Date"}
-                  value={renewExpiresAt || null}
-                  onChange={(iso) => setRenewExpiresAt(iso || "")}
-                  allowLifetime={false}
-                />
-                <div className="form-group-mf" style={{ marginTop: "0.85rem" }}>
+
+                <div className="form-group-mf" style={{ position: "relative", zIndex: 10 }}>
+                  <DatePicker
+                    label={language === "vi" ? "Hạn Sử Dụng Mới Sau Khi Gia Hạn" : "New Expiry Date"}
+                    value={renewExpiresAt || null}
+                    onChange={(iso) => setRenewExpiresAt(iso || "")}
+                    allowLifetime={false}
+                  />
+                </div>
+
+                <div className="form-group-mf">
                   <label className="form-label-mf">{t("fieldBillAmount")}</label>
                   <input
                     type="number"
@@ -3320,11 +4379,15 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     value={renewAmount}
                     onChange={(e) => setRenewAmount(e.target.value)}
                     required
+                    placeholder="500000"
                   />
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    Số tiền này sẽ được ghi nhận vào Báo Cáo Dòng Tiền & Doanh Thu
+                  </span>
                 </div>
               </div>
 
-              <div className="modal-footer-mf">
+              <div className="modal-footer-mf" style={{ marginTop: "0.5rem" }}>
                 <button type="button" className="btn-white-outline" onClick={() => setRenewingLicense(null)}>
                   {t("cancel")}
                 </button>
@@ -3887,6 +4950,230 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 {t("clearLogs")}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD / EDIT PRICING PLAN */}
+      {showPlanModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3>{editingPlan ? "Chỉnh Sửa Gói Cước" : "Thêm Gói Cước Mới"}</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setShowPlanModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlan}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Tên Gói Cước *</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="VD: Gói 1 Tháng (Standard)"
+                    value={planForm.name}
+                    onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Mã Key Gói *</label>
+                    <input
+                      type="text"
+                      className="form-input-mf"
+                      placeholder="1_month / vip_lifetime"
+                      value={planForm.id}
+                      onChange={(e) => setPlanForm({ ...planForm, id: e.target.value.toLowerCase().replace(/\s+/g, "_") })}
+                      disabled={Boolean(editingPlan)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Thời Hạn (Số Ngày) *</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={planForm.days}
+                      onChange={(e) => setPlanForm({ ...planForm, days: parseInt(e.target.value) || 30 })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Giá Tiền (VNĐ) *</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={planForm.price}
+                      onChange={(e) => setPlanForm({ ...planForm, price: parseFloat(e.target.value) || 0 })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Giới Hạn Render Jobs/Ngày</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={planForm.max_jobs_per_day}
+                      onChange={(e) => setPlanForm({ ...planForm, max_jobs_per_day: parseInt(e.target.value) || 200 })}
+                    />
+                  </div>
+                </div>
+
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Huy Hiệu (Badge)</label>
+                    <input
+                      type="text"
+                      className="form-input-mf"
+                      placeholder="Gói chuẩn / VIP Studio"
+                      value={planForm.badge}
+                      onChange={(e) => setPlanForm({ ...planForm, badge: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Ghi Chú Chiết Khấu</label>
+                    <input
+                      type="text"
+                      className="form-input-mf"
+                      placeholder="Tiết kiệm 25%"
+                      value={planForm.discount}
+                      onChange={(e) => setPlanForm({ ...planForm, discount: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group-mf" style={{ marginTop: "0.5rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={planForm.active}
+                      onChange={(e) => setPlanForm({ ...planForm, active: e.target.checked })}
+                    />
+                    <strong style={{ fontSize: "0.88rem", color: "var(--text-dark)" }}>Kích hoạt gói này cho khách chọn</strong>
+                  </label>
+                </div>
+              </div>
+
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setShowPlanModal(false)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" className="btn-primary-orange">
+                  <Check size={16} /> Lưu Gói Cước
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: MANUAL RENEWAL FOR CUSTOMER */}
+      {showManualRenewalModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3>Gia Hạn Bản Quyền Thủ Công Cho Khách</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setShowManualRenewalModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteManualRenewal}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Chọn License Key Khách Hàng *</label>
+                  <select
+                    className="form-input-mf"
+                    value={renewLicenseId}
+                    onChange={(e) => setRenewLicenseId(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Chọn khách hàng cần gia hạn --</option>
+                    {licenses.map((lic) => (
+                      <option key={lic.id} value={lic.id}>
+                        {lic.customer_name} ({lic.key_hint}) - {lic.expires_at ? `Hạn: ${new Date(lic.expires_at).toLocaleDateString("vi-VN")}` : "Vĩnh viễn"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Chọn Gói Gia Hạn</label>
+                  <select
+                    className="form-input-mf"
+                    value={renewPlanKey}
+                    onChange={(e) => {
+                      setRenewPlanKey(e.target.value);
+                      const p = plansList.find(item => item.id === e.target.value);
+                      if (p) {
+                        setRenewCustomDays(String(p.days));
+                        setRenewCustomAmount(String(bankConfig.plans_pricing?.[p.id] || p.price));
+                      }
+                    }}
+                  >
+                    {plansList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} - {p.days} ngày ({formatCurrency(bankConfig.plans_pricing?.[p.id] || p.price)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Số Ngày Cộng Thêm</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={renewCustomDays}
+                      onChange={(e) => setRenewCustomDays(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">Số Tiền Thu (VNĐ)</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={renewCustomAmount}
+                      onChange={(e) => setRenewCustomAmount(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Lý Do / Ghi Chú Giao Dịch</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={renewReason}
+                    onChange={(e) => setRenewReason(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setShowManualRenewalModal(false)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" className="btn-primary-orange" disabled={isProcessingRenewal}>
+                  {isProcessingRenewal ? <RotateCw size={16} className="animate-spin" /> : <Check size={16} />}
+                  Xác Nhận Gia Hạn Ngay
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -1,30 +1,463 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Job } from "../../core/types";
+import type { Job, NavKey } from "../../core/types";
 import { getRuntime } from "../../core/runtime";
 import { Icon } from "../../shared/Icon";
 import { StatusPill } from "../../shared/StatusPill";
 import { Pagination } from "../../shared/Pagination";
+import { WorkflowStepper } from "../../shared/WorkflowStepper";
+import { Modal } from "../../shared/Modal";
 
-export function RenderPage({ jobs }: { jobs: Job[] }) {
-  const [selectedId, setSelectedId] = useState("");
-  const [folder, setFolder] = useState("");
+export function RenderPage({
+  jobs,
+  onNavigate,
+  onUpdateJob,
+  onRetryJob,
+  onCancelJob,
+  onDeleteJobs,
+}: {
+  jobs: Job[];
+  onNavigate?: (key: NavKey) => void;
+  onUpdateJob?: (jobId: string, values: Partial<Job>) => void;
+  onRetryJob?: (jobId: string) => void;
+  onCancelJob?: (jobId: string) => void;
+  onDeleteJobs?: (jobIds: string[]) => void;
+}) {
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
+  const [outputFolder, setOutputFolder] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const renderJobs = useMemo(() => jobs.filter((job) => !job.sourceOnly), [jobs]);
-  const selected = useMemo(() => renderJobs.find((job) => job.id === selectedId) || renderJobs.find((job) => job.status === "running") || renderJobs[0], [renderJobs, selectedId]);
-  const pageJobs = useMemo(() => renderJobs.slice((page - 1) * pageSize, page * pageSize), [renderJobs, page, pageSize]);
-  useEffect(() => { setPage((current) => Math.min(current, Math.max(1, Math.ceil(renderJobs.length / pageSize)))); }, [renderJobs.length, pageSize]);
-  useEffect(() => { void getRuntime().getPreferences().then((value) => setFolder(value.outputPath)); }, []);
+  const [pageSize, setPageSize] = useState(8);
+  const [activeFilter, setActiveFilter] = useState<"all" | "running" | "completed" | "failed">("all");
+  const [previewJob, setPreviewJob] = useState<Job | null>(null);
+
+  const renderJobs = useMemo(
+    () => jobs.filter((job) => !job.sourceOnly),
+    [jobs]
+  );
+
+  const filteredJobs = useMemo(() => {
+    if (activeFilter === "running")
+      return renderJobs.filter((j) => j.status === "running" || j.status === "queued");
+    if (activeFilter === "completed")
+      return renderJobs.filter((j) => j.status === "completed");
+    if (activeFilter === "failed")
+      return renderJobs.filter((j) => j.status === "failed" || j.status === "cancelled");
+    return renderJobs;
+  }, [renderJobs, activeFilter]);
+
+  const pagedJobs = useMemo(
+    () => filteredJobs.slice((page - 1) * pageSize, page * pageSize),
+    [filteredJobs, page, pageSize]
+  );
+
+  useEffect(() => {
+    setPage((current) =>
+      Math.min(current, Math.max(1, Math.ceil(filteredJobs.length / pageSize)))
+    );
+  }, [filteredJobs.length, pageSize]);
+
+  useEffect(() => {
+    void getRuntime()
+      .getPreferences()
+      .then((pref) => setOutputFolder(pref.outputPath));
+  }, []);
+
   async function chooseFolder() {
     const value = await getRuntime().pickOutputFolder?.();
     if (!value) return;
-    setFolder(value);
-    const preferences = await getRuntime().getPreferences();
-    await getRuntime().savePreferences({ ...preferences, outputPath: value });
+    setOutputFolder(value);
+    const pref = await getRuntime().getPreferences();
+    await getRuntime().savePreferences({ ...pref, outputPath: value });
   }
-  return <div className="page-stack page-enter">
-    <div className="page-title"><div><p className="eyebrow">MEDIA ENGINE / OUTPUT</p><h2>Render & xuất bản</h2><p>Theo dõi tiến trình thật của queue và mở file output sau khi hoàn tất.</p></div><button onClick={() => void chooseFolder()}><Icon name="folder" size={16} /> Chọn thư mục output</button></div>
-    <section className="panel-card render-hero"><div className="render-art"><div className="render-frame"><span>JACS</span><strong>{selected ? selected.name.slice(0, 18).toUpperCase() : "NO JOB"}</strong><small>{selected?.status === "completed" ? "OUTPUT READY" : "RENDER QUEUE"}</small></div><div className="render-wave" /></div><div className="render-details"><p className="eyebrow">CURRENT OUTPUT</p><h3>{selected?.name || "Chưa có job"}</h3><p className="subtle">{selected?.source || "Tạo batch job để bắt đầu render"}</p>{selected?.clipEndSeconds !== undefined && <p className="form-help">Clip scene: {selected.clipStartSeconds?.toFixed(1) || "0.0"}s → {selected.clipEndSeconds.toFixed(1)}s · {selected.aspectRatio || "original"}</p>}<div className="render-progress"><div className="progress-label"><span>{selected?.stage || "queued"}</span><strong>{selected?.progress || 0}%</strong></div><div className="progress-track large"><i style={{ width: `${selected?.progress || 0}%` }} /></div></div><div className="render-specs"><span><small>Output folder</small><strong>{folder || "JACS Studio/Outputs"}</strong></span><span><small>Token</small><strong>{selected?.tokensUsed || 0}</strong></span><span><small>Credit</small><strong>{selected?.creditsUsed || 0}</strong></span><span><small>Ngôn ngữ</small><strong>{selected?.languages?.join(", ") || "vi"}</strong></span></div>{selected?.analysis?.summary && <p className="form-help">AI context: {selected.analysis.summary}</p>}{selected?.analysis?.previewFrames?.length ? <div className="job-detail-frames">{selected.analysis.previewFrames.map((frame) => <figure key={frame.timestampSeconds}><img src={frame.imageDataUrl} alt={`Frame ${frame.timestampSeconds}s`} /><figcaption>{Math.round(frame.timestampSeconds)}s</figcaption></figure>)}</div> : null}{selected?.analysis?.scenes?.length ? <div className="job-detail-scenes"><strong>Scene timeline</strong>{selected.analysis.scenes.map((scene) => <div key={`${scene.start}-${scene.title}`}><span>{scene.start}{scene.end ? ` → ${scene.end}` : ""}</span><b>{scene.title}</b><small>{scene.detail}</small></div>)}</div> : null}{selected?.passthrough && <p className="form-help">FFmpeg chưa được tìm thấy; output giữ nguyên container nguồn. Cài FFmpeg để encode H.264/GPU.</p>}{selected?.error && <p className="form-error">{selected.error}</p>}<div className="render-actions">{selected?.subtitlesPath && <button className="button-quiet" onClick={() => void getRuntime().revealPath(selected.subtitlesPath!)}><Icon name="captions" size={15} /> Mở SRT</button>}{selected?.outputPath && <button className="button-quiet" onClick={() => void getRuntime().revealPath(selected.outputPath!)}><Icon name="external" size={15} /> Mở output</button>}<StatusPill status={selected?.status || "queued"} /></div></div></section>
-    <section className="panel-card queue-panel"><div className="panel-head"><div><p className="eyebrow">OUTPUT QUEUE</p><h3>Jobs đã tạo</h3><span className="subtle">{renderJobs.length} job trong lịch sử render</span></div><label className="queue-page-size">Hiển thị <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> dòng</label></div><div className="queue-table"><div className="queue-header"><span>JOB</span><span>ENGINE</span><span>STATUS</span><span>PROGRESS</span></div>{pageJobs.map((job) => <button className={`queue-row render-queue-row ${selected?.id === job.id ? "is-selected" : ""}`} key={job.id} onClick={() => setSelectedId(job.id)}><strong>{job.name}<small>{job.source}</small></strong><span>{job.mode}</span><StatusPill status={job.status} /><div className="queue-progress"><div className="progress-track"><i style={{ width: `${job.progress}%` }} /></div><small>{job.progress}%</small></div></button>)}{!pageJobs.length && <p className="queue-empty">Chưa có job render. Hãy tạo job từ Nguồn video hoặc Phân tích AI.</p>}</div><div className="queue-pagination"><Pagination total={renderJobs.length} page={page} pageSize={pageSize} onPageChange={setPage} /></div></section>
-  </div>;
+
+  function toggleSelectJob(id: string) {
+    setSelectedJobIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  }
+
+  function toggleAll() {
+    setSelectedJobIds((current) =>
+      current.length === filteredJobs.length ? [] : filteredJobs.map((j) => j.id)
+    );
+  }
+
+  function deleteSelected() {
+    if (!onDeleteJobs || !selectedJobIds.length) return;
+    if (!window.confirm(`Xóa ${selectedJobIds.length} job đã chọn khỏi hàng đợi?`)) return;
+    onDeleteJobs(selectedJobIds);
+    setSelectedJobIds([]);
+  }
+
+  return (
+    <div className="page-stack page-enter">
+      {/* Page Title & Top Actions */}
+      <div className="page-title">
+        <div>
+          <p className="eyebrow">WORKFLOW / BƯỚC 6 · RENDER & EXPORT</p>
+          <h2>6. Render & Xuất bản Video</h2>
+          <p>
+            Quản lý hàng đợi xuất bản video FFmpeg GPU/CPU, kiểm soát tiến trình thời gian thực và mở file output.
+          </p>
+        </div>
+        <div className="page-title-actions">
+          <button type="button" className="btn-secondary" onClick={() => void chooseFolder()}>
+            <Icon name="folder" size={13} /> Thư mục Output
+          </button>
+          {onNavigate && (
+            <button type="button" className="btn-primary" onClick={() => onNavigate("batch")}>
+              <Icon name="plus" size={13} /> + Tạo Job Render Mới
+            </button>
+          )}
+        </div>
+      </div>
+
+      {onNavigate && <WorkflowStepper activeStep="render" onNavigate={onNavigate} />}
+
+      {/* Output Directory Banner */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 14px",
+          background: "rgba(255, 255, 255, 0.03)",
+          border: "1px solid var(--line)",
+          borderRadius: "10px",
+          fontSize: "12px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          <Icon name="folder" size={14} />
+          <span style={{ color: "#94a3b8" }}>Nơi lưu video hoàn tất:</span>
+          <strong
+            style={{
+              color: "#38bdf8",
+              fontFamily: "'DM Mono', monospace",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {outputFolder || "Chưa cấu hình"}
+          </strong>
+        </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ padding: "4px 10px", fontSize: "11px" }}
+          onClick={() => void chooseFolder()}
+        >
+          Đổi thư mục
+        </button>
+      </div>
+
+      {/* Render Queue Table */}
+      <section className="panel-card" style={{ padding: "20px" }}>
+        <div className="panel-head">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div>
+              <p className="eyebrow">RENDER QUEUE</p>
+              <h3>Hàng đợi xuất bản ({filteredJobs.length})</h3>
+            </div>
+            {/* Filter Tabs */}
+            <div style={{ display: "flex", gap: "4px", marginLeft: "16px" }}>
+              <button
+                type="button"
+                className={`btn-secondary ${activeFilter === "all" ? "active" : ""}`}
+                style={{
+                  padding: "4px 9px",
+                  fontSize: "11px",
+                  background: activeFilter === "all" ? "rgba(249,87,56,0.2)" : undefined,
+                  borderColor: activeFilter === "all" ? "var(--orange)" : undefined,
+                }}
+                onClick={() => setActiveFilter("all")}
+              >
+                Tất cả ({renderJobs.length})
+              </button>
+              <button
+                type="button"
+                className={`btn-secondary ${activeFilter === "running" ? "active" : ""}`}
+                style={{
+                  padding: "4px 9px",
+                  fontSize: "11px",
+                  background: activeFilter === "running" ? "rgba(249,87,56,0.2)" : undefined,
+                  borderColor: activeFilter === "running" ? "var(--orange)" : undefined,
+                }}
+                onClick={() => setActiveFilter("running")}
+              >
+                Đang chạy ({renderJobs.filter((j) => j.status === "running" || j.status === "queued").length})
+              </button>
+              <button
+                type="button"
+                className={`btn-secondary ${activeFilter === "completed" ? "active" : ""}`}
+                style={{
+                  padding: "4px 9px",
+                  fontSize: "11px",
+                  background: activeFilter === "completed" ? "rgba(249,87,56,0.2)" : undefined,
+                  borderColor: activeFilter === "completed" ? "var(--orange)" : undefined,
+                }}
+                onClick={() => setActiveFilter("completed")}
+              >
+                Hoàn tất ({renderJobs.filter((j) => j.status === "completed").length})
+              </button>
+              <button
+                type="button"
+                className={`btn-secondary ${activeFilter === "failed" ? "active" : ""}`}
+                style={{
+                  padding: "4px 9px",
+                  fontSize: "11px",
+                  background: activeFilter === "failed" ? "rgba(249,87,56,0.2)" : undefined,
+                  borderColor: activeFilter === "failed" ? "var(--orange)" : undefined,
+                }}
+                onClick={() => setActiveFilter("failed")}
+              >
+                Lỗi ({renderJobs.filter((j) => j.status === "failed" || j.status === "cancelled").length})
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {selectedJobIds.length > 0 && (
+              <>
+                {onCancelJob && selectedJobIds.some((id) => {
+                  const j = jobs.find((item) => item.id === id);
+                  return j?.status === "running" || j?.status === "queued";
+                }) && (
+                  <button
+                    type="button"
+                    className="button-danger"
+                    style={{ background: "rgba(239, 68, 68, 0.2)", borderColor: "#ef4444", color: "#fca5a5" }}
+                    onClick={() => {
+                      const activeSelected = selectedJobIds.filter((id) => {
+                        const j = jobs.find((item) => item.id === id);
+                        return j?.status === "running" || j?.status === "queued";
+                      });
+                      if (!activeSelected.length) return;
+                      if (!window.confirm(`Hủy ${activeSelected.length} job đang chạy / chờ render đã chọn?`)) return;
+                      activeSelected.forEach((id) => onCancelJob(id));
+                    }}
+                  >
+                    <Icon name="x" size={12} /> Hủy ({selectedJobIds.filter((id) => {
+                      const j = jobs.find((item) => item.id === id);
+                      return j?.status === "running" || j?.status === "queued";
+                    }).length}) job
+                  </button>
+                )}
+
+                {onRetryJob && selectedJobIds.some((id) => {
+                  const j = jobs.find((item) => item.id === id);
+                  return j?.status === "failed" || j?.status === "cancelled";
+                }) && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ borderColor: "#38bdf8", color: "#38bdf8" }}
+                    onClick={() => {
+                      const retrySelected = selectedJobIds.filter((id) => {
+                        const j = jobs.find((item) => item.id === id);
+                        return j?.status === "failed" || j?.status === "cancelled";
+                      });
+                      retrySelected.forEach((id) => onRetryJob(id));
+                    }}
+                  >
+                    <Icon name="refresh" size={12} /> Chạy lại ({selectedJobIds.filter((id) => {
+                      const j = jobs.find((item) => item.id === id);
+                      return j?.status === "failed" || j?.status === "cancelled";
+                    }).length}) job
+                  </button>
+                )}
+
+                <button type="button" className="button-danger" onClick={deleteSelected}>
+                  <Icon name="trash" size={12} /> Xóa {selectedJobIds.length} job đã chọn
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Data Table */}
+        <div className="jacs-table-wrapper">
+          <table className="jacs-table">
+            <thead>
+              <tr>
+                <th style={{ width: "40px" }}>
+                  <input
+                    type="checkbox"
+                    checked={filteredJobs.length > 0 && selectedJobIds.length === filteredJobs.length}
+                    onChange={toggleAll}
+                  />
+                </th>
+                <th>Tên Video / Job</th>
+                <th>Tỷ lệ & Định dạng</th>
+                <th>Tiến trình Render</th>
+                <th>Trạng thái</th>
+                <th>Thời gian</th>
+                <th style={{ textAlign: "right", minWidth: "160px" }}>Cột Thao Tác (Actions)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedJobs.length > 0 ? (
+                pagedJobs.map((job) => {
+                  const isSelected = selectedJobIds.includes(job.id);
+                  return (
+                    <tr key={job.id} className={isSelected ? "is-selected" : ""}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectJob(job.id)}
+                        />
+                      </td>
+                      <td>
+                        <strong style={{ color: "#ffffff", display: "block" }}>{job.name}</strong>
+                        <small style={{ color: "#64748b" }}>{job.source}</small>
+                        {job.error && (
+                          <div
+                            style={{
+                              color: "#f87171",
+                              fontSize: "11px",
+                              marginTop: "4px",
+                              background: "rgba(239, 68, 68, 0.12)",
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid rgba(239, 68, 68, 0.3)",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <Icon name="alert" size={11} />
+                            <span><strong>Lỗi:</strong> {job.error}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            background: "rgba(255, 255, 255, 0.06)",
+                            fontSize: "10.5px",
+                            fontFamily: "'DM Mono', monospace",
+                          }}
+                        >
+                          {job.aspectRatio || "9:16"}
+                        </span>
+                        {job.narratorEnabled && (
+                          <span
+                            style={{
+                              marginLeft: "4px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(16, 185, 129, 0.15)",
+                              color: "#10b981",
+                              fontSize: "10.5px",
+                            }}
+                          >
+                            Voice AI
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ minWidth: "120px" }}>
+                        <div className="job-progress">
+                          <div className="progress-track">
+                            <i style={{ width: `${job.progress}%` }} />
+                          </div>
+                          <small>{job.progress}%</small>
+                        </div>
+                      </td>
+                      <td>
+                        <StatusPill status={job.status} />
+                      </td>
+                      <td>
+                        <small style={{ color: "#94a3b8" }}>{job.createdAt}</small>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                          {job.outputPath && (
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              style={{ padding: "4px 8px", fontSize: "11px" }}
+                              onClick={() => void getRuntime().revealPath(job.outputPath!)}
+                            >
+                              <Icon name="folder" size={11} /> Mở file MP4
+                            </button>
+                          )}
+
+                          {onNavigate && (
+                            <button
+                              type="button"
+                              className="text-button"
+                              onClick={() => onNavigate("timeline")}
+                            >
+                              Dựng
+                            </button>
+                          )}
+
+                          {(job.status === "failed" || job.status === "cancelled") && (
+                            <>
+                              {onRetryJob && (
+                                <button
+                                  type="button"
+                                  className="text-button"
+                                  style={{ color: "#38bdf8" }}
+                                  onClick={() => onRetryJob(job.id)}
+                                >
+                                  Chạy lại
+                                </button>
+                              )}
+                              {onNavigate && (
+                                <button
+                                  type="button"
+                                  className="text-button"
+                                  style={{ color: "#fbbf24" }}
+                                  onClick={() => onNavigate("logs")}
+                                >
+                                  Xem Log
+                                </button>
+                              )}
+                            </>
+                          )}
+
+                          {(job.status === "running" || job.status === "queued") && onCancelJob && (
+                            <button
+                              type="button"
+                              className="text-button"
+                              style={{ color: "#f87171" }}
+                              onClick={() => onCancelJob(job.id)}
+                            >
+                              <Icon name="x" size={11} /> Hủy
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
+                    Không có job nào trong danh mục này.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {filteredJobs.length > pageSize && (
+          <div style={{ marginTop: "14px" }}>
+            <Pagination
+              total={filteredJobs.length}
+              pageSize={pageSize}
+              page={page}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }

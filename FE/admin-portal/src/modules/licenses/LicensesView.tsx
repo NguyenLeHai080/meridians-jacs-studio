@@ -443,46 +443,46 @@ export function LicensesView({
                     </td>
                     <td>
                       <div className="table-actions-row">
-                        <Button
-                          variant="ghost"
-                          size="sm"
+                        <button
+                          type="button"
+                          className="btn-table-action btn-action-edit"
+                          onClick={() => handleOpenEdit(lic)}
+                          title="Sửa thông tin / Logo"
+                        >
+                          ✏️ <span>Sửa</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-table-action btn-action-renew"
+                          onClick={() => handleOpenRenew(lic)}
+                          title="Gia hạn thời gian key"
+                        >
+                          📅 <span>Gia hạn</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-table-action btn-action-hwid"
+                          onClick={() => handleOpenResetHwid(lic)}
+                          title="Gán mã máy mới"
+                        >
+                          🔄 <span>Đổi máy</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-table-action"
                           onClick={() => onToggleStatus(lic)}
                           title={lic.status === "active" ? "Khóa key này" : "Mở khóa key này"}
                         >
                           {lic.status === "active" ? "🔒 Khóa" : "🔓 Mở"}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleOpenRenew(lic)}
-                          title="Gia hạn thời gian key"
-                        >
-                          📅 Gia hạn
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleOpenResetHwid(lic)}
-                          title="Gán mã máy mới"
-                        >
-                          🔄 Đổi máy
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleOpenEdit(lic)}
-                          title="Sửa thông tin / Logo"
-                        >
-                          ✏️ Sửa
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-table-action btn-action-danger"
                           onClick={() => setDeletingLicense(lic)}
                           title="Xóa key"
                         >
                           🗑️
-                        </Button>
+                        </button>
                       </div>
                     </td>
                   </tr>

@@ -20,11 +20,17 @@ class ReleaseCreate(BaseModel):
     sha512: str = Field(pattern=r"^[a-fA-F0-9]{128}$")
     release_notes: str = Field(min_length=1, max_length=10000)
     force_update: bool = False
-    signature: str | None = Field(default=None, min_length=32, max_length=4096)
-    rollout_percent: int = Field(default=100, ge=1, le=100)
-    min_app_version: str | None = Field(default=None, pattern=r"^v\d+\.\d+\.\d+$")
-
-
-class ReleaseResponse(ReleaseCreate):
+class ReleaseResponse(BaseModel):
     id: UUID
-    status: str
+    version: str
+    platform: str
+    channel: str = "stable"
+    download_url: str
+    sha512: str
+    release_notes: str = ""
+    force_update: bool = False
+    signature: str | None = None
+    rollout_percent: int = 100
+    min_app_version: str | None = None
+    status: str = "published"
+    created_at: str | None = None
