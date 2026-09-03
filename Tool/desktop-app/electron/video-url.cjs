@@ -57,4 +57,27 @@ function extractResolverVideoUrls(payload) {
   return [...new Set(candidates)];
 }
 
-module.exports = { decodeEmbeddedUrl, normalizeVideoUrl, extractTikTokVideoUrls, extractResolverVideoUrls, isTikTokHost };
+/** Extract common direct video URLs from public HTML pages (OpenGraph/player metadata). */
+function extractPageVideoUrls(html) {
+  const source = String(html || "");
+  const candidates = [];
+  for (const tag of source.matchAll(/<meta\b[^>]*>/gi)) {
+    const attributes = {};
+    for (const match of tag[0].matchAll(/([\w:-]+)\s*=\s*["']([^"']*)["']/gi)) attributes[match[1].toLowerCase()] = match[2];
+    const property = String(attributes.property || attributes.name || "").toLowerCase();
+    if (!/^(?:og:video(?::secure_url)?|twitter:player:stream)$/.test(property)) continue;
+    const candidate = decodeEmbeddedUrl(attributes.content || "");
+    if (/^https?:\/\//i.test(candidate)) candidates.push(candidate);
+  }
+  for (const match of source.matchAll(/<source\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi)) {
+    const candidate = decodeEmbeddedUrl(match[1]);
+    if (/^https?:\/\//i.test(candidate)) candidates.push(candidate);
+  }
+  for (const match of source.matchAll(/["'](?:contentUrl|videoUrl|video_url|playAddr|downloadAddr|play_url|download_url)["']\s*:\s*["']([^"']+)["']/gi)) {
+    const candidate = decodeEmbeddedUrl(match[1]);
+    if (/^https?:\/\//i.test(candidate)) candidates.push(candidate);
+  }
+  return [...new Set(candidates)];
+}
+
+module.exports = { decodeEmbeddedUrl, normalizeVideoUrl, extractTikTokVideoUrls, extractResolverVideoUrls, extractPageVideoUrls, isTikTokHost };

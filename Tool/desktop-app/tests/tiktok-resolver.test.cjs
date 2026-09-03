@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { decodeEmbeddedUrl, extractResolverVideoUrls, extractTikTokVideoUrls, isTikTokHost, normalizeVideoUrl } = require("../electron/video-url.cjs");
+const { decodeEmbeddedUrl, extractPageVideoUrls, extractResolverVideoUrls, extractTikTokVideoUrls, isTikTokHost, normalizeVideoUrl } = require("../electron/video-url.cjs");
 
 test("recognizes TikTok hosts without accepting lookalike domains", () => {
   assert.equal(isTikTokHost("www.tiktok.com"), true);
@@ -38,4 +38,13 @@ test("normalizes URLs copied with Markdown escape characters", () => {
     normalizeVideoUrl("<https://cdn.example/video.mp4>"),
     "https://cdn.example/video.mp4",
   );
+});
+
+test("extracts direct video URLs from common page metadata", () => {
+  const html = String.raw`<meta property="og:video:secure_url" content="https:\u002F\u002Fcdn.example\u002Fclip.mp4"><video><source src="https://cdn.example/second.webm"></video><script>window.x={"contentUrl":"https://cdn.example/third.mp4"}</script>`;
+  assert.deepEqual(extractPageVideoUrls(html), [
+    "https://cdn.example/clip.mp4",
+    "https://cdn.example/second.webm",
+    "https://cdn.example/third.mp4",
+  ]);
 });

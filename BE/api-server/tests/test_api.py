@@ -25,9 +25,12 @@ def setup_function():
 
 
 def auth_headers():
-    login = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "test-password"})
+    from app.core.config import get_settings
+    pwd = get_settings().admin_password
+    login = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": pwd})
     assert login.status_code == 200
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
 
 
 def test_live_health():
@@ -295,17 +298,29 @@ def test_desktop_job_requires_license_and_is_idempotent():
         "customer_name": "Desktop", "customer_contact": "desktop@example.com", "hwid": HWID_WIN, "max_jobs_per_day": 1,
     }).json()
     client_headers = {"X-License-Key": created["key"], "X-Device-Id": HWID_WIN}
-    payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu", "provider_id": "customer-local-provider-1", "tts_provider_id": "customer-tts-provider-1"}
+    payload = {"client_job_id": "desktop-job-001", "name": "Render clip", "source_name": "clip.mp4", "execution_mode": "local-gpu", "provider_id": "customer-local-provider-1", "tts_provider_id": "customer-tts-provider-1", "parent_job_id": "project-001", "timeline_clips": [{"sceneId": "scene-1", "order": 0, "trimIn": 1.5, "trimOut": 8.0}], "subtitles_enabled": True, "subtitle_style": "center", "subtitle_text": "Nội dung đã duyệt", "logo_position": "top-left", "logo_opacity": 0.6}
     first = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
     assert first.status_code == 202
     assert first.json()["provider_id"] == "customer-local-provider-1"
     assert first.json()["tts_provider_id"] == "customer-tts-provider-1"
+    assert first.json()["subtitle_style"] == "center"
+    assert first.json()["logo_position"] == "top-left"
+    assert first.json()["logo_opacity"] == 0.6
+    assert first.json()["parent_job_id"] == "project-001"
+    assert first.json()["timeline_clips"][0]["trimIn"] == 1.5
     second = client.post("/api/v1/client/jobs", headers=client_headers, json=payload)
     assert second.status_code == 202
     assert second.json()["id"] == first.json()["id"]
     listed = client.get("/api/v1/client/jobs", headers=client_headers)
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+    updated = client.patch("/api/v1/client/jobs/desktop-job-001", headers=client_headers, json={"subtitle_text": "Bản cập nhật", "timeline_clips": [{"sceneId": "scene-1", "order": 0, "trimIn": 2.0, "trimOut": 7.5}]})
+    assert updated.status_code == 200
+    assert updated.json()["subtitle_text"] == "Bản cập nhật"
+    assert updated.json()["timeline_clips"][0]["trimOut"] == 7.5
+    removed = client.delete("/api/v1/client/jobs/desktop-job-001", headers=client_headers)
+    assert removed.status_code == 204
+    assert client.get("/api/v1/client/jobs", headers=client_headers).json() == []
 
 
 def test_desktop_job_progress_update_and_metrics():

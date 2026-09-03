@@ -10,12 +10,14 @@ from app.core.errors import AppError, app_error_handler
 from app.core.http import request_context_middleware
 from app.modules.ai_providers.router import router as ai_provider_router
 from app.modules.auth.router import router as auth_router
+from app.modules.billing.router import router as billing_router
 from app.modules.client.router import router as client_router
 from app.modules.health.router import router as health_router
 from app.modules.jobs.router import router as jobs_router
 from app.modules.licensing.router import router as licensing_router
 from app.modules.projects.router import router as projects_router
 from app.modules.releases.router import router as releases_router
+from app.modules.sessions.router import router as sessions_router
 from app.modules.telemetry.router import router as telemetry_router
 
 settings = get_settings()
@@ -51,8 +53,11 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(client_router)
 app.include_router(licensing_router)
+app.include_router(billing_router)
+app.include_router(sessions_router)
 app.include_router(releases_router)
 app.include_router(projects_router)
 app.include_router(ai_provider_router)
 app.include_router(jobs_router)
 app.include_router(telemetry_router)
+

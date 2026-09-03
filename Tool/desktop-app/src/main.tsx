@@ -1,70 +1,566 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DEFAULT_PREFERENCES, NAV_ITEMS, type ClientMetrics, type Job, type NavKey, type ToolPreferences } from "./core/types";
-import { ApiRequestError, heartbeatLicense, createClientJob, getClientMetrics, listClientJobs, sendClientTelemetry, updateClientJob } from "./core/api";
+import {
+  DEFAULT_PREFERENCES,
+  NAV_ITEMS,
+  type ClientMetrics,
+  type Job,
+  type NavKey,
+  type ToolPreferences,
+} from "./core/types";
+import {
+  ApiRequestError,
+  heartbeatLicense,
+  createClientJob,
+  deleteClientJob,
+  getClientMetrics,
+  listClientJobs,
+  sendClientTelemetry,
+  updateClientJob,
+} from "./core/api";
 import { getRuntime, isNativeRuntime } from "./core/runtime";
-import { highlightRange, resolveReadyProvider, timestampSeconds } from "./core/job-utils";
+import {
+  hasUnreviewedSceneMatches,
+  highlightRange,
+  resolveReadyProvider,
+  shouldResumeJob,
+  timestampSeconds,
+} from "./core/job-utils";
+import { buildNarrationText } from "./core/narration";
+import { runRenderPreflight } from "./core/render-preflight";
 import { Icon } from "./shared/Icon";
+import { ActivationGate } from "./modules/activation/ActivationGate";
 import { ActivationPage } from "./modules/activation/ActivationPage";
 import { VideoAnalysisPage } from "./modules/analysis/VideoAnalysisPage";
 import { BatchJobsPage } from "./modules/jobs/BatchJobsPage";
+import { EditorWorkspace } from "./modules/editor/EditorWorkspace";
 import { OverviewPage } from "./modules/overview/OverviewPage";
 import { RenderPage } from "./modules/render/RenderPage";
 import { SettingsPage } from "./modules/settings/SettingsPage";
+import { StoryPage } from "./modules/story/StoryPage";
+import { BrandPage } from "./modules/brand/BrandPage";
+import { SourcesPage } from "./modules/sources/SourcesPage";
 import "./styles.css";
 
-type PageProps = { jobs: Job[]; metrics: ClientMetrics | null; navigate: (key: NavKey) => void; addJob: (job: Job) => void; cancelJob: (jobId: string) => void; retryJob: (jobId: string) => void; onActivated: (value: boolean) => void; preferences: ToolPreferences; onPreferencesChanged: (value: ToolPreferences) => void };
+type PageProps = {
+  jobs: Job[];
+  metrics: ClientMetrics | null;
+  navigate: (key: NavKey) => void;
+  onOpenTimeline: (jobId?: string) => void;
+  timelineSourceId?: string;
+  addJob: (job: Job) => void;
+  updateJob: (jobId: string, values: Partial<Job>) => void;
+  cancelJob: (jobId: string) => void;
+  retryJob: (jobId: string) => void;
+  deleteJobs: (jobIds: string[]) => void;
+  deleteSources: (sourceIds: string[]) => void;
+  onActivated: (value: boolean) => void;
+  preferences: ToolPreferences;
+  onPreferencesChanged: (value: ToolPreferences) => void;
+  onAnalyzeSource: (job: Job) => void;
+  analysisSource?: Job;
+};
+
+function renderQualityChecks(
+  job: Job,
+  analysis: Job["analysis"],
+  clip: { startSeconds?: number; endSeconds?: number },
+  narrationText: string | undefined,
+  outputPath: string | undefined,
+  sourceDuration: number,
+  outputProbe?: { durationSeconds?: number; hasAudio?: boolean },
+  renderResult?: {
+    subtitlesBurned?: boolean;
+    narrationGenerated?: boolean;
+    narrationDurationSeconds?: number;
+    subtitleCueCount?: number;
+  }
+) {
+  const subtitleSegments = subtitleSegmentsForClip(
+    job,
+    analysis,
+    clip,
+    narrationText,
+    sourceDuration
+  );
+  const preflight = runRenderPreflight({
+    job,
+    sourcePath: job.localPath,
+    sourceDuration,
+    startSeconds: clip.startSeconds,
+    endSeconds: clip.endSeconds,
+    narrationText,
+    subtitleSegments,
+    outputPath,
+  });
+  const expectedDuration =
+    (clip.endSeconds || 0) > (clip.startSeconds || 0)
+      ? (clip.endSeconds || 0) - (clip.startSeconds || 0)
+      : sourceDuration;
+  const subtitlesRequested = job.subtitlesEnabled !== false;
+  const subtitleContent = Boolean(
+    subtitleSegments.length || job.subtitleText?.trim() || narrationText?.trim()
+  );
+  const checks = [
+    ...preflight.checks,
+    {
+      id: "scene-map",
+      passed:
+        !job.narratorEnabled ||
+        Boolean(analysis?.sceneMatches?.length || analysis?.scenes?.length),
+      detail: "Có scene map để kiểm tra",
+    },
+    {
+      id: "output-probe",
+      passed:
+        Boolean(outputPath) &&
+        (!outputProbe || Number(outputProbe.durationSeconds || 0) > 0),
+      detail: "Output có thể probe và có thời lượng hợp lệ",
+    },
+    {
+      id: "output-checksum",
+      passed:
+        !renderResult ||
+        Boolean((renderResult as { outputChecksum?: string }).outputChecksum),
+      detail: "Output có checksum SHA-256 và manifest",
+    },
+    {
+      id: "output-duration",
+      passed:
+        !outputProbe ||
+        !expectedDuration ||
+        Math.abs(Number(outputProbe.durationSeconds || 0) - expectedDuration) <=
+          Math.max(1.5, expectedDuration * 0.2),
+      detail: "Thời lượng output khớp khoảng dựng",
+    },
+    {
+      id: "output-audio",
+      passed:
+        !job.narratorEnabled ||
+        !outputProbe ||
+        outputProbe.hasAudio === true,
+      detail: "Output có audio stream cho voice-over",
+    },
+    {
+      id: "output-voice",
+      passed:
+        !job.narratorEnabled ||
+        !renderResult ||
+        renderResult.narrationGenerated === true,
+      detail: "Đã tạo voice-over theo scene",
+    },
+    {
+      id: "voice-duration",
+      passed:
+        !job.narratorEnabled ||
+        !renderResult ||
+        Number(renderResult.narrationDurationSeconds || 0) > 0,
+      detail: "Đã đo thời lượng audio voice-over thực tế",
+    },
+    {
+      id: "subtitle-cues",
+      passed:
+        !subtitlesRequested ||
+        !subtitleContent ||
+        !renderResult ||
+        Number(renderResult.subtitleCueCount || 0) > 0,
+      detail: "Đã tạo cue phụ đề theo lời đọc",
+    },
+    {
+      id: "output-subtitles",
+      passed:
+        !subtitlesRequested ||
+        !subtitleContent ||
+        !renderResult ||
+        renderResult.subtitlesBurned === true,
+      detail: subtitlesRequested
+        ? "Đã burn phụ đề vào video"
+        : "Đã tắt phụ đề",
+    },
+  ];
+  return { passed: checks.every((check) => check.passed), checks };
+}
+
+function subtitleSegmentsForClip(
+  job: Job,
+  analysis: Job["analysis"],
+  clip: { startSeconds?: number; endSeconds?: number },
+  fallback?: string,
+  sourceDuration = 0
+) {
+  const start = Number(clip.startSeconds || 0);
+  const end = Number(clip.endSeconds || 0);
+  const total = Math.max(
+    sourceDuration,
+    Number(job.durationSeconds || 0),
+    end,
+    start + 1
+  );
+  const selectedText = String(job.subtitleText || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (selectedText && (job.parentJobId || job.sceneId)) {
+    return [{ start, end: end || total, text: selectedText }];
+  }
+
+  const scenes = analysis?.scenes || [];
+  const rawTranscriptSegments = [...(analysis?.transcriptSegments || [])]
+    .map((item) => ({
+      start: Math.max(0, Number(item.start) || 0),
+      end: Number(item.end),
+      text: String(item.text || "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    }))
+    .filter((item) => item.text)
+    .sort((left, right) => left.start - right.start);
+  const transcriptSegments = rawTranscriptSegments.map((item, index) => {
+    const nextStart = rawTranscriptSegments[index + 1]?.start;
+    const explicitEnd =
+      Number.isFinite(item.end) && item.end > item.start ? item.end : undefined;
+    const inferredEnd = nextStart && nextStart > item.start ? nextStart : total;
+    return {
+      ...item,
+      end: Math.min(total, Math.max(item.start + 0.25, explicitEnd || inferredEnd)),
+    };
+  });
+  const sceneSegments = scenes.map((item, index) => {
+    const sceneId = item.id || `scene-${index + 1}`;
+    const sceneStart = timestampSeconds(item.start);
+    const sceneEnd = Math.max(
+      sceneStart + 0.25,
+      timestampSeconds(
+        item.end,
+        timestampSeconds(scenes[index + 1]?.start, total)
+      )
+    );
+    const localizedText = String(item.voiceover || item.translation || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const timedText = transcriptSegments
+      .filter((segment) => segment.end > sceneStart && segment.start < sceneEnd)
+      .map((segment) => segment.text)
+      .join(" ")
+      .trim();
+    return {
+      sceneId,
+      start: sceneStart,
+      end: sceneEnd,
+      text:
+        localizedText ||
+        timedText ||
+        String(item.detail || "")
+          .replace(/\s+/g, " ")
+          .trim(),
+    };
+  });
+  const matches = sceneSegments
+    .filter(
+      (item) =>
+        (!job.sceneId || item.sceneId === job.sceneId) &&
+        item.text &&
+        (!end || item.end > start) &&
+        (!end || item.start < end)
+    )
+    .map((item) => ({
+      start: Math.max(0, item.start),
+      end: Math.min(total, item.end || (end || start + 1)),
+      text: item.text,
+    }));
+  if (matches.length) return matches;
+
+  const timed = transcriptSegments
+    .filter((item) => (!end || item.end > start) && (!end || item.start < end))
+    .map((item) => ({
+      start: Math.max(0, item.start),
+      end: Math.min(total, item.end || (end || start + 1)),
+      text: item.text,
+    }));
+  if (timed.length) return timed;
+  const text =
+    selectedText ||
+    String(fallback || analysis?.voiceScript || analysis?.transcript || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  return text ? [{ start, end: end || total, text }] : [];
+}
+
+function sceneSlug(value: string, fallback: string) {
+  const slug = String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return slug.slice(0, 64) || fallback;
+}
+
 const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
-  overview: ({ jobs, metrics, navigate }) => <OverviewPage jobs={jobs} metrics={metrics} onNavigate={navigate} />,
-  batch: ({ jobs, addJob, cancelJob, retryJob }) => <BatchJobsPage jobs={jobs} onAddJob={addJob} onCancelJob={cancelJob} onRetryJob={retryJob} />,
-  analysis: ({ addJob }) => <VideoAnalysisPage onAddJob={addJob} />,
+  overview: ({ jobs, metrics, navigate }) => (
+    <OverviewPage jobs={jobs} metrics={metrics} onNavigate={navigate} />
+  ),
+  sources: ({ jobs, navigate, addJob, updateJob, onAnalyzeSource, deleteSources }) => (
+    <SourcesPage
+      jobs={jobs}
+      onNavigate={navigate}
+      onAddJob={addJob}
+      onAnalyze={onAnalyzeSource}
+      onUpdateJob={updateJob}
+      onDeleteSources={deleteSources}
+    />
+  ),
+  batch: ({ jobs, addJob, cancelJob, retryJob, deleteJobs, onOpenTimeline }) => (
+    <BatchJobsPage
+      jobs={jobs}
+      onAddJob={addJob}
+      onCancelJob={cancelJob}
+      onRetryJob={retryJob}
+      onDeleteJobs={deleteJobs}
+      onOpenTimeline={onOpenTimeline}
+    />
+  ),
+  analysis: ({ addJob, updateJob, analysisSource }) => (
+    <VideoAnalysisPage
+      onAddJob={addJob}
+      onUpdateJob={updateJob}
+      initialSource={analysisSource}
+    />
+  ),
+  story: ({ jobs, navigate, updateJob, addJob }) => (
+    <StoryPage
+      jobs={jobs}
+      onNavigate={navigate}
+      onUpdateJob={updateJob}
+      onAddJob={addJob}
+    />
+  ),
+  timeline: ({ jobs, navigate, addJob, updateJob, timelineSourceId }) => (
+    <EditorWorkspace
+      jobs={jobs}
+      onNavigate={navigate}
+      onAddJob={addJob}
+      onUpdateJob={updateJob}
+      sourceJobId={timelineSourceId}
+    />
+  ),
+  brand: ({ jobs, navigate, updateJob, addJob }) => (
+    <BrandPage
+      jobs={jobs}
+      onNavigate={navigate}
+      onUpdateJob={updateJob}
+      onAddJob={addJob}
+    />
+  ),
   render: ({ jobs }) => <RenderPage jobs={jobs} />,
   activation: ({ onActivated }) => <ActivationPage onActivated={onActivated} />,
-  settings: ({ preferences, onPreferencesChanged }) => <SettingsPage preferences={preferences} onPreferencesChanged={onPreferencesChanged} />,
+  settings: ({ preferences, onPreferencesChanged }) => (
+    <SettingsPage
+      preferences={preferences}
+      onPreferencesChanged={onPreferencesChanged}
+    />
+  ),
 };
 
 function App() {
-  const [active, setActive] = useState<NavKey>("activation");
+  const [active, setActive] = useState<NavKey>("overview");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [metrics, setMetrics] = useState<ClientMetrics | null>(null);
   const [preferences, setPreferences] = useState<ToolPreferences>(DEFAULT_PREFERENCES);
   const [activated, setActivated] = useState<boolean | null>(null);
+  const [analysisSourceId, setAnalysisSourceId] = useState<string | undefined>();
+  const [timelineSourceId, setTimelineSourceId] = useState<string | undefined>();
   const processingJob = useRef("");
   const syncingJobs = useRef(new Set<string>());
-  const persistJobs = (value: Job[]) => { void getRuntime().saveJobs?.(value); };
-  const replaceJob = (jobId: string, values: Partial<Job>) => setJobs((current) => { const next = current.map((job) => job.id === jobId ? { ...job, ...values } : job); persistJobs(next); return next; });
+
+  const persistJobs = (value: Job[]) => {
+    void getRuntime().saveJobs?.(value);
+  };
+
+  const replaceJob = (jobId: string, values: Partial<Job>) =>
+    setJobs((current) => {
+      const next = current.map((job) => (job.id === jobId ? { ...job, ...values } : job));
+      persistJobs(next);
+      return next;
+    });
+
+  const updateJob = (jobId: string, values: Partial<Job>) => {
+    replaceJob(jobId, values);
+    const syncedFields = [
+      "subtitlesEnabled",
+      "subtitleStyle",
+      "subtitleText",
+      "logoPosition",
+      "logoOpacity",
+      "timelineClips",
+      "parentJobId",
+      "sceneId",
+      "splitScenes",
+      "analysisOnly",
+      "clipStartSeconds",
+      "clipEndSeconds",
+      "outputFileName",
+    ];
+    const shouldSync = syncedFields.some((key) =>
+      Object.prototype.hasOwnProperty.call(values, key)
+    );
+    if (!activated || !shouldSync) return;
+    void (async () => {
+      const runtime = getRuntime();
+      const key = await runtime.readLicense();
+      if (!key) return;
+      const machine = await runtime.getMachineInfo();
+      await updateClientJob(key, machine.machineId, jobId, {
+        subtitles_enabled: values.subtitlesEnabled,
+        subtitle_style: values.subtitleStyle,
+        subtitle_text: values.subtitleText,
+        logo_position: values.logoPosition,
+        logo_opacity: values.logoOpacity,
+        timeline_clips: values.timelineClips,
+        parent_job_id: values.parentJobId,
+        scene_id: values.sceneId,
+        split_scenes: values.splitScenes,
+        analysis_only: values.analysisOnly,
+        clip_start_seconds: values.clipStartSeconds,
+        clip_end_seconds: values.clipEndSeconds,
+        output_file_name: values.outputFileName,
+      }).catch(() => undefined);
+    })();
+  };
+
+  // Initial License Validation
   useEffect(() => {
     void (async () => {
       const runtime = getRuntime();
-      setPreferences(await runtime.getPreferences().catch(() => DEFAULT_PREFERENCES));
-      const value = await runtime.readLicense();
-      if (!value) { setActivated(false); setActive("activation"); return; }
-      const local = await runtime.readJobs?.().catch(() => []) || [];
-      const recovered = local.map((job) => job.status === "running" ? { ...job, status: "queued" as const, stage: job.sourceType === "url" && !job.localPath ? "downloading" as const : "queued" as const, progress: 0 } : job);
+      const prefs = await runtime.getPreferences().catch(() => DEFAULT_PREFERENCES);
+      setPreferences(prefs);
+
+      const savedKey = await runtime.readLicense();
+      if (!savedKey) {
+        setActivated(false);
+        return;
+      }
+
+      const local = (await runtime.readJobs?.().catch(() => [])) || [];
+      const recovered = local.map((job) =>
+        job.status === "running"
+          ? {
+              ...job,
+              status: "queued" as const,
+              stage:
+                job.sourceType === "url" && !job.localPath
+                  ? ("downloading" as const)
+                  : ("queued" as const),
+              progress: 0,
+            }
+          : job
+      );
       setJobs(recovered);
       if (recovered.some((job, index) => job !== local[index])) persistJobs(recovered);
+
       try {
         const machine = await runtime.getMachineInfo();
-        await heartbeatLicense(value, machine.machineId, machine.appVersion, machine.platform);
-        setActivated(true); setActive("overview");
-        const remote = await listClientJobs(value, machine.machineId).catch(() => []);
-        const remoteMetrics = await getClientMetrics(value, machine.machineId).catch(() => null);
+        const hbResult = await heartbeatLicense(
+          savedKey,
+          machine.machineId,
+          machine.appVersion,
+          machine.platform
+        );
+        setActivated(true);
+
+        if (hbResult.logo_url) {
+          setPreferences((prev) => ({
+            ...prev,
+            logoPath: hbResult.logo_url || undefined,
+            brandKitLogo: hbResult.logo_url || undefined,
+          }));
+        }
+
+        const remote = await listClientJobs(savedKey, machine.machineId).catch(() => []);
+        const remoteMetrics = await getClientMetrics(savedKey, machine.machineId).catch(
+          () => null
+        );
         setMetrics(remoteMetrics);
-        if (remote.length) setJobs((current) => {
-          const merged: Job[] = remote.map((item) => {
-            const existing = current.find((job) => job.id === item.client_job_id);
-            return { ...existing, id: item.client_job_id, name: item.name, source: item.source_name, sourceType: item.source_type || existing?.sourceType || "file", localPath: existing?.localPath, outputFolder: existing?.outputFolder, mode: item.execution_mode as Job["mode"], providerId: item.provider_id || existing?.providerId, ttsProviderId: item.tts_provider_id || existing?.ttsProviderId, status: item.status as Job["status"], stage: item.stage as Job["stage"], progress: item.progress, error: item.error, outputPath: item.output_path || existing?.outputPath, passthrough: existing?.passthrough, tokensUsed: item.tokens_used, creditsUsed: item.credits_used, narratorEnabled: item.narrator_enabled ?? existing?.narratorEnabled, narratorVoice: item.narrator_voice || existing?.narratorVoice, narratorGender: item.narrator_gender || existing?.narratorGender, languages: item.languages || existing?.languages, keepOriginalAudio: item.keep_original_audio ?? existing?.keepOriginalAudio, emphasizeHook: item.emphasize_hook ?? existing?.emphasizeHook, highlightOnly: item.highlight_only ?? existing?.highlightOnly, highlightMaxSeconds: item.highlight_max_seconds ?? existing?.highlightMaxSeconds, backgroundMusic: item.background_music ?? existing?.backgroundMusic, backgroundMusicVolume: item.background_music_volume ?? existing?.backgroundMusicVolume, createdAt: existing?.createdAt || "Đã đồng bộ", synced: true };
+
+        if (remote.length) {
+          setJobs((current) => {
+            const merged: Job[] = remote.map((item) => {
+              const existing = current.find((job) => job.id === item.client_job_id);
+              return {
+                ...existing,
+                id: item.client_job_id,
+                name: item.name,
+                source: item.source_name,
+                sourceType: item.source_type || existing?.sourceType || "file",
+                localPath: existing?.localPath,
+                sourcePaths: existing?.sourcePaths,
+                outputFolder: existing?.outputFolder,
+                mode: item.execution_mode as Job["mode"],
+                providerId: item.provider_id || existing?.providerId,
+                transcriptionProviderId: existing?.transcriptionProviderId,
+                ttsProviderId: item.tts_provider_id || existing?.ttsProviderId,
+                parentJobId: item.parent_job_id || existing?.parentJobId,
+                sceneId: item.scene_id || existing?.sceneId,
+                splitScenes: item.split_scenes ?? existing?.splitScenes,
+                analysisOnly: item.analysis_only ?? existing?.analysisOnly,
+                clipStartSeconds: item.clip_start_seconds ?? existing?.clipStartSeconds,
+                clipEndSeconds: item.clip_end_seconds ?? existing?.clipEndSeconds,
+                outputFileName: item.output_file_name || existing?.outputFileName,
+                timelineClips: item.timeline_clips || existing?.timelineClips,
+                status: item.status as Job["status"],
+                stage: item.stage as Job["stage"],
+                progress: item.progress,
+                error: item.error,
+                outputPath: item.output_path || existing?.outputPath,
+                subtitlesPath: existing?.subtitlesPath,
+                passthrough: existing?.passthrough,
+                narrationGenerated: existing?.narrationGenerated,
+                subtitleCueCount: existing?.subtitleCueCount,
+                voiceEngine: existing?.voiceEngine,
+                subtitlesBurned: existing?.subtitlesBurned,
+                tokensUsed: item.tokens_used,
+                creditsUsed: item.credits_used,
+                narratorEnabled: item.narrator_enabled ?? existing?.narratorEnabled,
+                narratorVoice: item.narrator_voice || existing?.narratorVoice,
+                narratorGender: item.narrator_gender || existing?.narratorGender,
+                languages: item.languages || existing?.languages,
+                keepOriginalAudio: item.keep_original_audio ?? existing?.keepOriginalAudio,
+                emphasizeHook: item.emphasize_hook ?? existing?.emphasizeHook,
+                highlightOnly: item.highlight_only ?? existing?.highlightOnly,
+                highlightMaxSeconds:
+                  item.highlight_max_seconds ?? existing?.highlightMaxSeconds,
+                backgroundMusic: item.background_music ?? existing?.backgroundMusic,
+                backgroundMusicVolume:
+                  item.background_music_volume ?? existing?.backgroundMusicVolume,
+                subtitlesEnabled: item.subtitles_enabled ?? existing?.subtitlesEnabled,
+                subtitleStyle: item.subtitle_style || existing?.subtitleStyle,
+                subtitleText: item.subtitle_text ?? existing?.subtitleText,
+                logoPath: existing?.logoPath,
+                logoPosition: item.logo_position || existing?.logoPosition,
+                logoOpacity: item.logo_opacity ?? existing?.logoOpacity,
+                createdAt: existing?.createdAt || "Đã đồng bộ",
+                synced: true,
+              };
+            });
+            const next = [
+              ...merged,
+              ...current.filter((job) => !merged.some((item) => item.id === job.id)),
+            ];
+            persistJobs(next);
+            return next;
           });
-          const next = [...merged, ...current.filter((job) => !merged.some((item) => item.id === job.id))];
-          persistJobs(next);
-          return next;
-        });
+        }
       } catch (error) {
-        if (error instanceof ApiRequestError && [401, 403, 422].includes(error.status)) { await runtime.clearLicense(); setActivated(false); setActive("activation"); }
-        else { setActivated(true); setActive("overview"); }
+        if (error instanceof ApiRequestError && [401, 403, 422].includes(error.status)) {
+          await runtime.clearLicense();
+          setActivated(false);
+        } else {
+          setActivated(true);
+        }
       }
     })();
   }, []);
+
+  // Periodic Heartbeat
   useEffect(() => {
     if (!activated) return;
     let timer: number | undefined;
@@ -74,16 +570,41 @@ function App() {
       if (!key) return;
       const machine = await runtime.getMachineInfo();
       const check = async () => {
-        try { await heartbeatLicense(key, machine.machineId, machine.appVersion, machine.platform); }
-        catch (error) { if (error instanceof ApiRequestError && [401, 403, 422].includes(error.status)) { await runtime.clearLicense(); setActivated(false); setActive("activation"); } }
+        try {
+          const res = await heartbeatLicense(
+            key,
+            machine.machineId,
+            machine.appVersion,
+            machine.platform
+          );
+          if (res.logo_url) {
+            setPreferences((prev) => ({
+              ...prev,
+              logoPath: res.logo_url || undefined,
+              brandKitLogo: res.logo_url || undefined,
+            }));
+          }
+        } catch (error) {
+          if (error instanceof ApiRequestError && [401, 403, 422].includes(error.status)) {
+            await runtime.clearLicense();
+            setActivated(false);
+          }
+        }
       };
       await check();
-      timer = window.setInterval(() => void check(), 5 * 60 * 1000);
+      timer = window.setInterval(() => void check(), 3 * 60 * 1000);
     })();
-    return () => { if (timer) window.clearInterval(timer); };
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
   }, [activated]);
+
+  // Periodic Metrics Refresh
   useEffect(() => {
-    if (!activated) { setMetrics(null); return; }
+    if (!activated) {
+      setMetrics(null);
+      return;
+    }
     let timer: number | undefined;
     const refresh = async () => {
       const runtime = getRuntime();
@@ -95,122 +616,12 @@ function App() {
     };
     void refresh();
     timer = window.setInterval(() => void refresh(), 30_000);
-    return () => { if (timer) window.clearInterval(timer); };
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
   }, [activated, jobs.length]);
-  useEffect(() => {
-    // The browser renderer is intentionally read-only for media jobs. File
-    // access, TikTok resolution, FFmpeg and secure provider keys all belong to
-    // the Electron main process; leaving queued jobs untouched here avoids the
-    // misleading "1% / failed" state when someone opens the preview in Vite.
-    if (!activated || !isNativeRuntime() || processingJob.current) return;
-    const job = jobs.find((item) => (item.status === "queued" || item.stage === "downloading") && (item.localPath || item.sourceType === "url"));
-    if (!job) return;
-    processingJob.current = job.id;
-    void (async () => {
-      const runtime = getRuntime();
-      let unsubscribeDownload: (() => void) | undefined;
-      let unsubscribeAnalysis: (() => void) | undefined;
-      let unsubscribeRender: (() => void) | undefined;
-      try {
-        let localPath = job.localPath;
-        if (!localPath && job.sourceType === "url") {
-          if (!runtime.downloadVideo) throw new Error("Tải URL video cần chạy bản Electron đã cài đặt.");
-          unsubscribeDownload = runtime.onDownloadProgress?.((event) => { if (event.operationId && event.operationId !== job.id) return; replaceJob(job.id, { status: "running", stage: event.stage as Job["stage"], progress: event.progress }); });
-          replaceJob(job.id, { status: "running", stage: "downloading", progress: 1, error: undefined });
-          localPath = await runtime.downloadVideo(job.source, job.id);
-          replaceJob(job.id, { localPath, stage: "analyzing", progress: 5 });
-        }
-        if (!localPath) throw new Error("Không tìm thấy file video để xử lý");
-        replaceJob(job.id, { status: "running", stage: "analyzing", progress: 5, error: undefined });
-        const probe = await runtime.probeVideo?.(localPath);
-        // An empty provider id explicitly requests local scene analysis. This
-        // prevents local CPU/GPU jobs from falling back to a customer's cloud
-        // provider merely because one is configured in Settings.
-        const needsCloudAnalysis = ["cloud", "hybrid"].includes(job.mode);
-        const profiles = needsCloudAnalysis || job.narratorEnabled ? await runtime.getProviderProfiles() : [];
-        let analysisProviderId = needsCloudAnalysis ? job.providerId : "";
-        if (needsCloudAnalysis) {
-          const configured = resolveReadyProvider(profiles, analysisProviderId, "analysis");
-          if (!configured) {
-            throw new Error("Job Cloud/Hybrid cần provider analysis đang bật và có API key. Mở Cài đặt tool, lưu key rồi bấm Chạy lại.");
-          }
-          analysisProviderId = configured.id;
-          if (analysisProviderId !== job.providerId) replaceJob(job.id, { providerId: analysisProviderId });
-        }
-        const ttsProvider = job.narratorEnabled
-          ? resolveReadyProvider(profiles, job.ttsProviderId || job.providerId, "tts", ["openai", "openai-compatible"])
-          : undefined;
-        if (job.narratorEnabled && !ttsProvider) {
-          throw new Error("Giọng AI cần provider OpenAI/OpenAI-compatible đang bật capability tts và có API key. Mở Cài đặt tool rồi bấm Chạy lại.");
-        }
-        if (ttsProvider && ttsProvider.id !== job.ttsProviderId) replaceJob(job.id, { ttsProviderId: ttsProvider.id });
-        unsubscribeAnalysis = runtime.onAnalysisProgress?.((event) => { if (event.operationId && event.operationId !== job.id) return; replaceJob(job.id, { status: "running", stage: "analyzing", progress: Math.max(5, Math.min(35, Math.round(5 + event.progress * 0.3))) }); });
-        const analysis = job.analysis || await runtime.analyzeVideo?.(localPath, analysisProviderId, job.id, job);
-        const tokensUsed = job.analysis ? job.tokensUsed || 0 : analysis?.tokensUsed || 0;
-        const creditsUsed = job.analysis ? job.creditsUsed || 0 : analysis?.creditsUsed || 0;
-        if (job.splitScenes && analysis?.scenes.length) {
-          const duration = probe?.durationSeconds || job.durationSeconds || 0;
-          const children: Job[] = analysis.scenes.map((scene, index) => {
-            const start = timestampSeconds(scene.start);
-            const nextStart = index + 1 < analysis.scenes.length ? timestampSeconds(analysis.scenes[index + 1].start, duration) : duration;
-            const end = Math.max(start + 0.25, Math.min(duration || nextStart, timestampSeconds(scene.end, nextStart)));
-            return { id: `${job.id}-scene-${index + 1}`, parentJobId: job.id, name: `${job.name} · ${scene.title}`, source: job.source, sourceType: job.sourceType, localPath, outputFolder: job.outputFolder, mode: job.mode, providerId: job.providerId, ttsProviderId: job.ttsProviderId, clipStartSeconds: start, clipEndSeconds: end, aspectRatio: job.aspectRatio, narratorEnabled: job.narratorEnabled, narratorVoice: job.narratorVoice, narratorGender: job.narratorGender, languages: job.languages, keepOriginalAudio: job.keepOriginalAudio, emphasizeHook: job.emphasizeHook, highlightOnly: false, highlightMaxSeconds: job.highlightMaxSeconds, backgroundMusic: job.backgroundMusic, backgroundMusicVolume: job.backgroundMusicVolume, backgroundMusicPath: job.backgroundMusicPath, analysis, status: "queued", stage: "queued", progress: 0, tokensUsed: 0, creditsUsed: 0, createdAt: new Date().toLocaleString("vi-VN") };
-          });
-          setJobs((current) => {
-            const completedParent = current.map((item) => item.id === job.id ? { ...item, status: "completed" as const, stage: "completed" as const, progress: 100, durationSeconds: duration, tokensUsed, creditsUsed, analysis } : item);
-            const next = [...children, ...completedParent];
-            persistJobs(next);
-            return next;
-          });
-          const key = await runtime.readLicense(); const machine = await runtime.getMachineInfo();
-          if (key) {
-            const parentSynced = await updateClientJob(key, machine.machineId, job.id, { status: "completed", stage: "completed", progress: 100, tokens_used: tokensUsed, credits_used: creditsUsed }).then(() => true).catch(() => false);
-            if (parentSynced) replaceJob(job.id, { synced: true });
-            await Promise.all(children.map(async (child) => {
-              try {
-                await createClientJob(key, machine.machineId, child);
-                setJobs((current) => { const next = current.map((item) => item.id === child.id ? { ...item, synced: true } : item); persistJobs(next); return next; });
-              } catch { /* Keep the child local and retry on the next run. */ }
-            }));
-          }
-          return;
-        }
-        const preferences = await runtime.getPreferences();
-        const clip = highlightRange(job, analysis, probe?.durationSeconds || job.durationSeconds || 0);
-        replaceJob(job.id, { stage: "rendering", progress: 35, durationSeconds: probe?.durationSeconds, clipStartSeconds: clip.startSeconds, clipEndSeconds: clip.endSeconds, tokensUsed, creditsUsed, analysis });
-        unsubscribeRender = runtime.onRenderProgress?.((event) => { if (event.operationId && event.operationId !== job.id) return; replaceJob(job.id, { status: event.stage === "completed" ? "completed" : "running", stage: event.stage as Job["stage"], progress: Math.max(35, Math.min(100, Math.round(35 + event.progress * 0.65))), outputPath: event.outputPath }); });
-        const narrationText = job.narratorEnabled
-          ? [analysis?.summary, ...(analysis?.scenes || []).map((scene) => `${scene.title}. ${scene.detail}`)].filter(Boolean).join(" ")
-          : undefined;
-        const rendered = await runtime.renderVideo?.(localPath, job.outputFolder || preferences.outputPath, { mode: job.mode, preferredEngine: preferences.preferredEngine, startSeconds: clip.startSeconds, endSeconds: clip.endSeconds, aspectRatio: job.aspectRatio, keepOriginalAudio: job.keepOriginalAudio, backgroundMusic: job.backgroundMusic, backgroundMusicVolume: job.backgroundMusicVolume, backgroundMusicPath: job.backgroundMusicPath, narratorEnabled: job.narratorEnabled, narratorVoice: job.narratorVoice, providerId: ttsProvider?.id, narrationText }, job.id);
-        const completed = { status: "completed" as const, stage: "completed" as const, progress: 100, outputPath: rendered?.outputPath, passthrough: rendered?.passthrough, durationSeconds: rendered?.durationSeconds || probe?.durationSeconds, tokensUsed, creditsUsed, analysis, error: rendered?.warnings?.join(" ") };
-        replaceJob(job.id, completed);
-        const key = await runtime.readLicense(); const machine = await runtime.getMachineInfo();
-        if (key) {
-          const synced = await updateClientJob(key, machine.machineId, job.id, { status: "completed", stage: "completed", progress: 100, output_path: completed.outputPath, tokens_used: completed.tokensUsed, credits_used: completed.creditsUsed }).then(() => true).catch(() => false);
-          if (synced) replaceJob(job.id, { synced: true });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Không thể xử lý video";
-        const cancelled = error instanceof Error && (error as Error & { code?: string }).code === "JACS_OPERATION_CANCELLED";
-        replaceJob(job.id, cancelled ? { status: "cancelled", stage: "cancelled", progress: 0, error: "Đã hủy theo yêu cầu." } : { status: "failed", stage: "failed", error: message });
-        const key = await runtime.readLicense(); const machine = await runtime.getMachineInfo();
-        if (key) {
-          const synced = await updateClientJob(key, machine.machineId, job.id, { status: cancelled ? "cancelled" : "failed", stage: cancelled ? "cancelled" : "failed", error: cancelled ? "Đã hủy theo yêu cầu." : message }).then(() => true).catch(() => false);
-          if (synced) replaceJob(job.id, { synced: true });
-        }
-        if (!cancelled) await reportClientTelemetry(job, message, "error");
-      } finally {
-        unsubscribeDownload?.();
-        unsubscribeAnalysis?.();
-        unsubscribeRender?.();
-        processingJob.current = "";
-        // Wake the queue after a job finishes so the next queued video starts
-        // without requiring the user to revisit the Batch screen.
-        setJobs((current) => [...current]);
-      }
-    })();
-  }, [activated, jobs]);
+
+  // Periodic Job Sync
   useEffect(() => {
     if (!activated) return;
     const sync = async () => {
@@ -219,12 +630,16 @@ function App() {
       if (!key) return;
       const machine = await runtime.getMachineInfo();
       const providers = await runtime.getProviderProfiles().catch(() => []);
-      const candidates = jobs.filter((job) => !job.synced && !syncingJobs.current.has(job.id));
+      const candidates = jobs.filter(
+        (job) => !job.sourceOnly && !job.synced && !syncingJobs.current.has(job.id)
+      );
       for (const job of candidates) {
         syncingJobs.current.add(job.id);
         try {
           const needsProvider = ["cloud", "hybrid"].includes(job.mode);
-          const providerId = needsProvider ? resolveReadyProvider(providers, job.providerId, "analysis")?.id : undefined;
+          const providerId = needsProvider
+            ? resolveReadyProvider(providers, job.providerId, "analysis")?.id
+            : undefined;
           if (needsProvider && !providerId) continue;
           await createClientJob(key, machine.machineId, { ...job, providerId });
           if (job.status !== "queued" || job.progress > 0 || job.stage) {
@@ -240,7 +655,7 @@ function App() {
           }
           replaceJob(job.id, { synced: true, providerId });
         } catch {
-          // Keep the job local; the next activation or refresh retries sync.
+          // Keep local
         } finally {
           syncingJobs.current.delete(job.id);
         }
@@ -250,31 +665,382 @@ function App() {
     const timer = window.setInterval(() => void sync(), 15_000);
     return () => window.clearInterval(timer);
   }, [activated, jobs]);
-  const current = useMemo(() => NAV_ITEMS.find((item) => item.key === active) ?? NAV_ITEMS[0], [active]);
-  const Page = pages[active];
-  if (activated === null) return <main className="boot-screen"><span className="brand-mark"><span /></span><p>Đang kiểm tra license...</p></main>;
-  const navigate = (key: NavKey) => { if (!activated && !["activation", "settings"].includes(key)) { setActive("activation"); return; } setActive(key); };
-  const addJob = (job: Job) => { setJobs((existing) => { const next = [job, ...existing]; persistJobs(next); return next; }); void (async () => { const key = await getRuntime().readLicense(); if (!key) return; const machine = await getRuntime().getMachineInfo(); try { const providers = await getRuntime().getProviderProfiles(); const needsProvider = ["cloud", "hybrid"].includes(job.mode); const providerId = needsProvider ? resolveReadyProvider(providers, job.providerId, "analysis")?.id : undefined; if (needsProvider && !providerId) { replaceJob(job.id, { status: "failed", stage: "failed", error: `Job ${job.mode} cần provider analysis đang bật và có API key. Mở Cài đặt tool để cấu hình trước.` }); return; } await createClientJob(key, machine.machineId, { ...job, providerId }); replaceJob(job.id, { synced: true, providerId }); } catch { /* keep queued locally for retry */ } })(); };
-  const cancelJob = (jobId: string) => { const job = jobs.find((item) => item.id === jobId); if (!job || ["completed", "failed", "cancelled"].includes(job.status)) return; void getRuntime().cancelOperation?.(jobId); replaceJob(jobId, { status: "cancelled", stage: "cancelled", progress: 0, error: "Đã hủy theo yêu cầu." }); };
-  const retryJob = (jobId: string) => { const job = jobs.find((item) => item.id === jobId); if (!job || !["failed", "cancelled"].includes(job.status)) return; replaceJob(jobId, { status: "queued", stage: job.sourceType === "url" && !job.localPath ? "downloading" : "queued", progress: 0, error: undefined, synced: false, providerId: ["cloud", "hybrid"].includes(job.mode) ? undefined : job.providerId, ttsProviderId: job.narratorEnabled ? undefined : job.ttsProviderId }); };
-  const onActivated = (value: boolean) => { setActivated(value); setActive(value ? "overview" : "activation"); if (value) void getRuntime().readJobs?.().then((value) => setJobs(value || [])); };
-  const initials = (preferences.operatorName || "JACS").trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "JS";
-  return <main className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark"><span /></span><div><strong>JACS</strong><small>STUDIO</small></div></div><div className="workspace-switcher"><span className="workspace-dot" /><div><small>WORKSPACE</small><strong>{preferences.workspaceName}</strong></div><span className="chevron">⌄</span></div><nav><p className="nav-label">WORKSPACE</p>{NAV_ITEMS.slice(0, 4).map((item) => <button key={item.key} className={`nav-item ${active === item.key ? "active" : ""} ${!activated ? "locked" : ""}`} onClick={() => navigate(item.key)}><Icon name={item.icon as never} size={18} /><span><strong>{item.label}</strong><small>{item.hint}</small></span>{item.key === "batch" && <b className="nav-count">{jobs.filter((job) => job.status === "queued" || job.status === "running").length}</b>}</button>)}<p className="nav-label nav-label-lower">ACCOUNT</p>{NAV_ITEMS.slice(4).map((item) => <button key={item.key} className={`nav-item ${active === item.key ? "active" : ""}`} onClick={() => navigate(item.key)}><Icon name={item.icon as never} size={18} /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>)}</nav><div className="sidebar-bottom"><div className="system-status"><span className="pulse" /><div><strong>{activated ? "Hệ thống ổn định" : "Cần kích hoạt"}</strong><small>API · GPU · Storage</small></div></div><div className="profile"><span className="avatar">{initials}</span><div><strong>{preferences.operatorName}</strong><small>{preferences.workspaceName}</small></div><span className="more">•••</span></div></div></aside><section className="main-area"><header className="topbar"><div className="breadcrumbs"><span>JACS Studio</span><Icon name="arrow" size={13} /><strong>{current.label}</strong></div><div className="topbar-actions"><button className="topbar-link"><span className="live-dot" /> API connected</button><button className="topbar-icon" title="Thông báo"><span className="notification-dot" />◌</button><button className="topbar-avatar">{initials}</button></div></header><div className="page-content"><Page jobs={jobs} metrics={metrics} navigate={navigate} addJob={addJob} cancelJob={cancelJob} retryJob={retryJob} onActivated={onActivated} preferences={preferences} onPreferencesChanged={setPreferences} /></div></section></main>;
-}
 
-async function reportClientTelemetry(job: Job, message: string, severity: "warning" | "error" | "fatal") {
-  try {
-    const runtime = getRuntime();
-    const preferences = await runtime.getPreferences();
-    if (!preferences.telemetryEnabled) return;
-    const key = await runtime.readLicense();
-    if (!key) return;
-    const machine = await runtime.getMachineInfo();
-    const redacted = message.replace(/(?:[A-Za-z]:)?[\\/][^\s]+/g, "[path]").slice(0, 1800);
-    await sendClientTelemetry(key, machine.machineId, { event_name: "desktop.job.failed", severity, app_version: machine.appVersion, fingerprint: `job:${job.id}:${severity}`, message: `${job.name}: ${redacted}` });
-  } catch {
-    // Telemetry must never prevent the local queue from completing its error path.
+  // Root Gatekeeper Logic
+  if (activated === null) {
+    return (
+      <main className="boot-screen">
+        <span className="brand-mark">
+          <span />
+        </span>
+        <p>Đang khởi tạo JACS Studio...</p>
+      </main>
+    );
   }
+
+  if (!activated) {
+    return (
+      <ActivationGate
+        onActivated={(customLogo) => {
+          setActivated(true);
+          setActive("overview");
+          if (customLogo) {
+            setPreferences((prev) => ({
+              ...prev,
+              logoPath: customLogo,
+              brandKitLogo: customLogo,
+            }));
+          }
+          void getRuntime()
+            .readJobs?.()
+            .then((value) => setJobs(value || []));
+        }}
+      />
+    );
+  }
+
+  const current =
+    NAV_ITEMS.find((item) => item.key === active) ?? NAV_ITEMS[0];
+  const Page = pages[active];
+
+  const navigate = (key: NavKey) => {
+    if (key === "analysis" && !analysisSourceId) {
+      const candidate = jobs.find(
+        (job) =>
+          job.sourceOnly &&
+          (job.status === "running" ||
+            job.stage === "analyzing" ||
+            job.analysis)
+      );
+      if (candidate) setAnalysisSourceId(candidate.id);
+    }
+    setActive(key);
+  };
+
+  const openTimeline = (jobId?: string) => {
+    setTimelineSourceId(jobId || undefined);
+    setActive("timeline");
+  };
+
+  const onAnalyzeSource = (job: Job) => {
+    setAnalysisSourceId(job.id);
+    setActive("analysis");
+  };
+
+  const analysisSource = analysisSourceId
+    ? jobs.find((job) => job.id === analysisSourceId)
+    : undefined;
+
+  const addJob = (job: Job) => {
+    setJobs((existing) => {
+      const next = [job, ...existing];
+      persistJobs(next);
+      return next;
+    });
+    if (job.sourceOnly) {
+      if (job.stage === "analyzing" || job.status === "running")
+        setAnalysisSourceId(job.id);
+      return;
+    }
+    void (async () => {
+      const key = await getRuntime().readLicense();
+      if (!key) return;
+      const machine = await getRuntime().getMachineInfo();
+      try {
+        const providers = await getRuntime().getProviderProfiles();
+        const needsProvider = ["cloud", "hybrid"].includes(job.mode);
+        const providerId = needsProvider
+          ? resolveReadyProvider(providers, job.providerId, "analysis")?.id
+          : undefined;
+        if (needsProvider && !providerId) {
+          replaceJob(job.id, {
+            status: "failed",
+            stage: "failed",
+            error: `Job ${job.mode} cần provider analysis đang bật và có API key. Mở Cài đặt tool để cấu hình trước.`,
+          });
+          return;
+        }
+        await createClientJob(key, machine.machineId, { ...job, providerId });
+        replaceJob(job.id, { synced: true, providerId });
+      } catch {
+        /* keep queued locally for retry */
+      }
+    })();
+  };
+
+  const cancelJob = (jobId: string) => {
+    const job = jobs.find((item) => item.id === jobId);
+    if (!job || ["completed", "failed", "cancelled"].includes(job.status)) return;
+    void getRuntime().cancelOperation?.(jobId);
+    replaceJob(jobId, {
+      status: "cancelled",
+      stage: "cancelled",
+      progress: 0,
+      error: "Đã hủy theo yêu cầu.",
+    });
+  };
+
+  const retryJob = (jobId: string) => {
+    const job = jobs.find((item) => item.id === jobId);
+    if (!job || !["failed", "cancelled"].includes(job.status)) return;
+    replaceJob(jobId, {
+      status: "queued",
+      stage:
+        job.sourceType === "url" && !job.localPath ? "downloading" : "queued",
+      progress: 0,
+      error: undefined,
+      synced: false,
+      providerId: ["cloud", "hybrid"].includes(job.mode)
+        ? undefined
+        : job.providerId,
+      ttsProviderId: job.narratorEnabled ? undefined : job.ttsProviderId,
+    });
+  };
+
+  const deleteJobs = (jobIds: string[]) => {
+    const ids = [...new Set(jobIds)].filter(Boolean);
+    if (!ids.length) return;
+    const selectedJobs = jobs.filter((job) => ids.includes(job.id));
+    selectedJobs
+      .filter((job) => !["completed", "failed", "cancelled"].includes(job.status))
+      .forEach((job) => {
+        void getRuntime().cancelOperation?.(job.id);
+      });
+    setJobs((current) => {
+      const next = current.filter((job) => !ids.includes(job.id));
+      persistJobs(next);
+      return next;
+    });
+    void (async () => {
+      const runtime = getRuntime();
+      const key = await runtime.readLicense();
+      if (!key) return;
+      const machine = await runtime.getMachineInfo();
+      await Promise.allSettled(
+        selectedJobs
+          .filter((job) => job.synced)
+          .map((job) => deleteClientJob(key, machine.machineId, job.id))
+      );
+    })();
+  };
+
+  const deleteSources = (sourceIds: string[]) => {
+    const sourceRecords = jobs.filter((job) => sourceIds.includes(job.id));
+    if (!sourceRecords.length) return;
+    const ids = new Set<string>(sourceRecords.map((job) => job.id));
+    let changed = true;
+    while (changed) {
+      changed = false;
+      jobs.forEach((job) => {
+        const sameSource = sourceRecords.some(
+          (source) =>
+            (source.source && job.source === source.source) ||
+            (source.localPath && job.localPath === source.localPath)
+        );
+        if ((job.parentJobId && ids.has(job.parentJobId)) || sameSource) {
+          if (!ids.has(job.id)) {
+            ids.add(job.id);
+            changed = true;
+          }
+        }
+      });
+    }
+    deleteJobs([...ids]);
+  };
+
+  const onActivated = (value: boolean) => {
+    setActivated(value);
+    setActive(value ? "overview" : "activation");
+    if (value) void getRuntime().readJobs?.().then((val) => setJobs(val || []));
+  };
+
+  const initials =
+    (preferences.operatorName || "JACS")
+      .trim()
+      .split(/\s+/)
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "JS";
+
+  const workflowItems = NAV_ITEMS.filter((item) =>
+    [
+      "overview",
+      "sources",
+      "analysis",
+      "story",
+      "timeline",
+      "brand",
+      "batch",
+    ].includes(item.key)
+  );
+  const outputItems = NAV_ITEMS.filter((item) => ["render"].includes(item.key));
+  const systemItems = NAV_ITEMS.filter((item) =>
+    ["activation", "settings"].includes(item.key)
+  );
+
+  const renderNav = (items: typeof NAV_ITEMS) =>
+    items.map((item) => (
+      <button
+        key={item.key}
+        className={`nav-item ${active === item.key ? "active" : ""}`}
+        onClick={() => navigate(item.key)}
+      >
+        <Icon name={item.icon as never} size={18} />
+        <span>
+          <strong>{item.label}</strong>
+          <small>{item.hint}</small>
+        </span>
+        {item.key === "batch" && (
+          <b className="nav-count">
+            {
+              jobs.filter(
+                (job) =>
+                  !job.sourceOnly &&
+                  (job.status === "queued" || job.status === "running")
+              ).length
+            }
+          </b>
+        )}
+      </button>
+    ));
+
+  const activeCount = jobs.filter(
+    (job) =>
+      !job.sourceOnly && (job.status === "queued" || job.status === "running")
+  ).length;
+
+  return (
+    <main className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          {preferences.logoPath || preferences.brandKitLogo ? (
+            <img
+              src={preferences.logoPath || preferences.brandKitLogo}
+              alt="Logo"
+              className="sidebar-brand-custom-logo"
+            />
+          ) : (
+            <span className="brand-mark">
+              <span />
+            </span>
+          )}
+          <div>
+            <strong>JACS</strong>
+            <small>STUDIO</small>
+          </div>
+        </div>
+
+        <div className="workspace-switcher">
+          <span className="workspace-dot" />
+          <div>
+            <small>WORKSPACE</small>
+            <strong>{preferences.workspaceName}</strong>
+          </div>
+          <span className="chevron">
+            <Icon name="chevron" size={14} />
+          </span>
+        </div>
+
+        <nav>
+          <p className="nav-label">WORKFLOW</p>
+          {renderNav(workflowItems)}
+          <p className="nav-label nav-label-lower">OUTPUT</p>
+          {renderNav(outputItems)}
+          <p className="nav-label nav-label-lower">SYSTEM</p>
+          {renderNav(systemItems)}
+        </nav>
+
+        <div className="sidebar-bottom">
+          <div className="system-status">
+            <span className="pulse" />
+            <div>
+              <strong>Hệ thống ổn định</strong>
+              <small>API · GPU · Storage</small>
+            </div>
+          </div>
+          <div className="profile">
+            <span className="avatar">{initials}</span>
+            <div>
+              <strong>{preferences.operatorName}</strong>
+              <small>{preferences.workspaceName}</small>
+            </div>
+            <span className="more">
+              <Icon name="more" size={16} />
+            </span>
+          </div>
+        </div>
+      </aside>
+
+      <section className="main-area">
+        <header className="topbar">
+          <div className="breadcrumbs">
+            <span>JACS Studio</span>
+            <Icon name="arrow" size={13} />
+            <strong>{current.label}</strong>
+          </div>
+          <div className="topbar-actions">
+            <button
+              className="topbar-link"
+              type="button"
+              onClick={() => navigate("settings")}
+            >
+              <span className="live-dot" /> API connected
+            </button>
+            <button
+              className="topbar-icon"
+              type="button"
+              title={
+                activeCount
+                  ? `${activeCount} job đang xử lý`
+                  : "Không có job đang xử lý"
+              }
+              onClick={() => navigate("batch")}
+            >
+              <span
+                className="notification-dot"
+                style={{ opacity: activeCount ? 1 : 0.35 }}
+              />
+              <Icon name="bell" size={17} />
+            </button>
+            <button
+              className="topbar-avatar"
+              type="button"
+              title="Mở cài đặt"
+              onClick={() => navigate("settings")}
+            >
+              {initials}
+            </button>
+          </div>
+        </header>
+
+        <div className="page-content">
+          <Page
+            jobs={jobs}
+            metrics={metrics}
+            navigate={navigate}
+            onOpenTimeline={openTimeline}
+            timelineSourceId={timelineSourceId}
+            addJob={addJob}
+            updateJob={updateJob}
+            cancelJob={cancelJob}
+            retryJob={retryJob}
+            deleteJobs={deleteJobs}
+            deleteSources={deleteSources}
+            onActivated={onActivated}
+            preferences={preferences}
+            onPreferencesChanged={setPreferences}
+            onAnalyzeSource={onAnalyzeSource}
+            analysisSource={analysisSource}
+          />
+        </div>
+      </section>
+    </main>
+  );
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);

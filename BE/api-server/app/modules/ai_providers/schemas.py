@@ -20,6 +20,7 @@ class ProviderCreate(BaseModel):
     provider_type: ProviderType
     base_url: HttpUrl
     model: str = Field(min_length=1, max_length=160)
+    tts_model: str | None = Field(default=None, max_length=160)
     api_key: str = Field(min_length=8, max_length=4096)
     capabilities: list[str] = Field(default_factory=list)
     enabled: bool = True
@@ -29,6 +30,7 @@ class ProviderUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     base_url: HttpUrl | None = None
     model: str | None = Field(default=None, min_length=1, max_length=160)
+    tts_model: str | None = Field(default=None, max_length=160)
     capabilities: list[str] | None = None
     enabled: bool | None = None
     api_key: str | None = Field(default=None, min_length=8, max_length=4096)
@@ -40,6 +42,7 @@ class ProviderResponse(BaseModel):
     provider_type: ProviderType
     base_url: HttpUrl
     model: str
+    tts_model: str | None = None
     capabilities: list[str]
     enabled: bool
     has_api_key: bool

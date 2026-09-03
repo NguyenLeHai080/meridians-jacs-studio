@@ -30,6 +30,20 @@ Khách có thể tạo nhiều profile, chọn một profile mặc định và k
 trước khi lưu. Key không đi vào log, telemetry, file project, export hoặc ảnh
 chụp màn hình hỗ trợ.
 
+### Cấu hình TTS
+
+Profile OpenAI/OpenAI-compatible có trường `tts_model` riêng và phải bật
+capability `tts`. Desktop gọi endpoint `/audio/speech`; với gateway tương thích
+luôn thử `tts-1` trước, sau đó mới thử model khách đã nhập. Chỉ endpoint OpenAI
+chính thức mới thử thêm `gpt-4o-mini-tts`. Vì vậy cấu hình cũ dùng
+`gpt-4o-mini-tts` sẽ không còn chặn gateway chỉ có pricing cho `tts-1`.
+Lỗi `No pricing rule for this model` là lỗi cấu hình giá ở gateway, không phải
+lỗi license; cần thêm pricing rule hoặc chọn model TTS đã được gateway hỗ trợ.
+Nếu gateway vẫn không tạo được audio do pricing/model, bản Desktop chuyển sang
+giọng hệ điều hành cục bộ (macOS System Voice hoặc Windows Speech) để job vẫn
+render xong mà không gửi thêm dữ liệu hay API key. Voice không tương thích sẽ tự đổi sang `nova` (nữ) hoặc
+`onyx` (nam) trước khi báo lỗi.
+
 ## Chế độ thực thi
 
 | Chế độ | Phân tích AI | Render video | Phù hợp |
