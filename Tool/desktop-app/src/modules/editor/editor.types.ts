@@ -14,7 +14,7 @@ export type EditorScene = {
 export type EditorTrack = {
   id: string;
   label: string;
-  icon: "video" | "mic" | "volume" | "captions";
+  icon: "video" | "mic" | "volume" | "captions" | "music";
   color: string;
   clips: Array<{ sceneId: string; label: string; width: number; left: number }>;
 };

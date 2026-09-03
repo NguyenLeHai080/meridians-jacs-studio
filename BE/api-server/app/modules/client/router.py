@@ -149,3 +149,162 @@ async def desktop_metrics(
         "tokens_used": sum(int(item.get("tokens_used") or 0) for item in jobs),
         "credits_used": sum(int(item.get("credits_used") or 0) for item in jobs),
     }
+
+
+class SpeechSynthesisPayload(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+    voice: str | None = Field(default="vi-VN-NamMinhNeural", max_length=100)
+    language: str | None = Field(default="vi", max_length=20)
+    gender: str | None = Field(default="male", max_length=20)
+    api_key: str | None = Field(default=None, max_length=200)
+    provider: str | None = Field(default=None, max_length=50)
+
+
+@router.post("/synthesize-speech")
+async def client_synthesize_speech(payload: SpeechSynthesisPayload):
+    import os
+    import hashlib
+    import json
+    import urllib.request
+    from fastapi import Response
+    import edge_tts
+
+    clean_text = str(payload.text or "").strip()
+    voice_key = str(payload.voice or "").strip().lower()
+    provider_key = str(payload.provider or "").strip().lower()
+    api_key = payload.api_key or os.getenv("ELEVENLABS_API_KEY") or ""
+
+    cache_dir = "/tmp/tts_cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_key = hashlib.sha256(f"{voice_key}:{clean_text}:{api_key[:8]}".encode("utf-8")).hexdigest()
+    cache_file = os.path.join(cache_dir, f"{cache_key}.mp3")
+
+    if os.path.exists(cache_file) and os.path.getsize(cache_file) > 100:
+        with open(cache_file, "rb") as f:
+            cached_data = f.read()
+        return Response(content=cached_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(cached_data)), "X-Cache": "HIT"})
+
+    # 1. ELEVENLABS AI VOICE (Top 1 World for Human Rhythm, Emotion, Breath Pauses)
+    eleven_map = {
+        "eleven-adam": "pNInz6obpgDQGcFmaJgB",
+        "eleven-charlie": "IKne3meq5aSn9XLyUdCD",
+        "eleven-george": "JBFqnCBsd6RMkjVDRZzb",
+        "eleven-rachel": "21m00Tcm4TlvDq8ikWAM",
+        "eleven-brian": "nPczCjzI2devNBz1zQrb",
+        "eleven-sarah": "EXAVITQu4vr4xnSDxMaL",
+    }
+    is_eleven = voice_key.startswith("eleven-") or provider_key == "elevenlabs" or voice_key in eleven_map
+    if is_eleven and api_key:
+        voice_id = eleven_map.get(voice_key, voice_key.replace("eleven-", ""))
+        try:
+            req_data = json.dumps({
+                "text": clean_text,
+                "model_id": "eleven_multilingual_v2",
+                "voice_settings": {
+                    "stability": 0.40,
+                    "similarity_boost": 0.85,
+                    "style": 0.50,
+                    "use_speaker_boost": True,
+                },
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                data=req_data,
+                headers={
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                    "User-Agent": "JACS-Studio/1.0",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=25) as response:
+                content = response.read()
+                if len(content) > 200:
+                    with open(cache_file, "wb") as f:
+                        f.write(content)
+                    return Response(content=content, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(content)), "X-Cache": "MISS", "X-Engine": "ElevenLabs"})
+        except Exception as err:
+            print("ElevenLabs Error:", err)
+
+    # 2. MICROSOFT NEURAL PROSODY ENGINE (High-Speed Authentic Prosody Profiles)
+    voice_profiles = {
+        "vi-adam-review": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
+        "vi-namminh": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "-2Hz"},
+        "vi-mystery-deep": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-6Hz"},
+        "vi-hoaimy-review": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+1Hz"},
+        "vi-hoaimy": {"voice": "vi-VN-HoaiMyNeural", "rate": "+4%", "pitch": "+0Hz"},
+        "vi-baolong": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+2Hz"},
+        "vi-thihuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "-2Hz"},
+        "vbee-manhdung": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
+        "vbee-minhhoang": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+2Hz"},
+        "vbee-maiphuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+1Hz"},
+        "vbee-ngochoang": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "-2Hz"},
+        "eleven-adam": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
+        "eleven-charlie": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-6Hz"},
+        "eleven-george": {"voice": "vi-VN-NamMinhNeural", "rate": "+8%", "pitch": "-3Hz"},
+        "eleven-rachel": {"voice": "vi-VN-HoaiMyNeural", "rate": "+10%", "pitch": "+1Hz"},
+        "vi-male": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "-2Hz"},
+        "vi-female": {"voice": "vi-VN-HoaiMyNeural", "rate": "+5%", "pitch": "+0Hz"},
+        "en-adam": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
+        "en-guy": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
+        "en-brian": {"voice": "en-US-BrianNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "en-jenny": {"voice": "en-US-JennyNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "en-aria": {"voice": "en-US-AriaNeural", "rate": "+5%", "pitch": "+1Hz"},
+        "en-male": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
+        "en-female": {"voice": "en-US-JennyNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "ja-male": {"voice": "ja-JP-KeitaNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "ja-female": {"voice": "ja-JP-NanamiNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "ko-male": {"voice": "ko-KR-InJoonNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "ko-female": {"voice": "ko-KR-SunHiNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "zh-cn-male": {"voice": "zh-CN-YunxiNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "zh-cn-female": {"voice": "zh-CN-XiaoxiaoNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "fr-male": {"voice": "fr-FR-HenriNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "fr-female": {"voice": "fr-FR-DeniseNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "es-male": {"voice": "es-ES-AlvaroNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "es-female": {"voice": "es-ES-ElviraNeural", "rate": "+0%", "pitch": "+0Hz"},
+    }
+
+    profile = voice_profiles.get(voice_key)
+    if profile:
+        voice_name = profile["voice"]
+        rate = profile["rate"]
+        pitch = profile["pitch"]
+    else:
+        voice_name = payload.voice if (payload.voice and ("-" in payload.voice or "neural" in payload.voice.lower())) else ("vi-VN-NamMinhNeural" if payload.gender == "male" else "vi-VN-HoaiMyNeural")
+        rate = "+0%"
+        pitch = "+0Hz"
+
+    try:
+        communicate = edge_tts.Communicate(clean_text, voice_name, rate=rate, pitch=pitch)
+        audio_chunks = []
+        async for chunk in communicate.stream():
+            if chunk.get("type") == "audio" and "data" in chunk:
+                audio_chunks.append(chunk["data"])
+
+        if audio_chunks:
+            audio_data = b"".join(audio_chunks)
+            if len(audio_data) > 100:
+                try:
+                    with open(cache_file, "wb") as f:
+                        f.write(audio_data)
+                except Exception:
+                    pass
+                return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralProsody"})
+    except Exception as e:
+        print("TTS Stream Error:", e)
+
+    return Response(content=b"", media_type="audio/mpeg", status_code=500)
+
+
+@router.get("/config")
+async def get_client_public_config():
+    stored = store.get("system_settings", "main") or {}
+    return {
+        "data": {
+            "studio_brand_name": stored.get("studio_brand_name", "JACS Studio"),
+            "tool_slogan": stored.get("tool_slogan", "Judicious AI Content Scanner & Video Synthesis Engine"),
+            "custom_logo_url": stored.get("custom_logo_url", ""),
+            "support_contact": stored.get("support_contact", "https://t.me/jacs_support"),
+            "menu_locks": stored.get("menu_locks", {}),
+        }
+    }

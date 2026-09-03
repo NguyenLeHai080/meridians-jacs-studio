@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "../../core/api";
 import { useI18n } from "../../core/i18n";
+import { Pagination } from "../../components/common/Pagination";
 
 export type Release = {
   id: string;
@@ -57,6 +58,8 @@ export function ReleasesPage({
   const [filterPlatform, setFilterPlatform] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Form states
   const [version, setVersion] = useState("v0.3.18");
@@ -161,19 +164,24 @@ export function ReleasesPage({
     }
   }
 
-  const filteredReleases = releases.filter((r) => {
+  const safeReleases = Array.isArray(releases) ? releases : [];
+  const filteredReleases = safeReleases.filter((r) => {
+    if (!r) return false;
     const matchPlatform = filterPlatform === "all" || r.platform === filterPlatform;
     const matchStatus = filterStatus === "all" || r.status === filterStatus;
     const matchSearch =
       !searchTerm ||
-      r.version.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.release_notes.toLowerCase().includes(searchTerm.toLowerCase());
+      (r.version && String(r.version).toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (r.release_notes && String(r.release_notes).toLowerCase().includes(searchTerm.toLowerCase()));
     return matchPlatform && matchStatus && matchSearch;
   });
 
-  const latestWin = releases.find((r) => r.platform === "windows" && r.status === "published");
-  const latestMac = releases.find((r) => r.platform === "macos" && r.status === "published");
-  const publishedCount = releases.filter((r) => r.status === "published").length;
+  const totalPages = Math.ceil(filteredReleases.length / pageSize) || 1;
+  const pagedReleases = filteredReleases.slice((page - 1) * pageSize, page * pageSize);
+
+  const latestWin = safeReleases.find((r) => r && r.platform === "windows" && r.status === "published");
+  const latestMac = safeReleases.find((r) => r && r.platform === "macos" && r.status === "published");
+  const publishedCount = safeReleases.filter((r) => r && r.status === "published").length;
 
   return (
     <>
@@ -336,7 +344,7 @@ export function ReleasesPage({
                   </td>
                 </tr>
               ) : (
-                filteredReleases.map((rel) => {
+                pagedReleases.map((rel) => {
                   const isPublished = rel.status === "published";
                   return (
                     <tr key={rel.id}>
@@ -452,6 +460,19 @@ export function ReleasesPage({
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={filteredReleases.length}
+          pageSize={pageSize}
+          pageSizeOptions={[5, 10, 20, 50]}
+          onPageSizeChange={(s) => {
+            setPageSize(s);
+            setPage(1);
+          }}
+        />
       </div>
 
       {/* MODAL: CREATE RELEASE */}

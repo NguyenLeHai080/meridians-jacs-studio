@@ -7,8 +7,12 @@ __pycache__/
 
 # Node
 node_modules/
+# Build output
 dist/
 Tool/desktop-app/release/
+Tool/desktop-app/dist-unpacked/
+Tool/desktop-app/release-nsis/
+Tool/desktop-app/build/
 Tool/desktop-app/bin/darwin/ffmpeg
 Tool/desktop-app/bin/darwin/ffprobe
 Tool/desktop-app/bin/win32/ffmpeg.exe

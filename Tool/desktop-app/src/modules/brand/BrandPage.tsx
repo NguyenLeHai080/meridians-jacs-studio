@@ -3,9 +3,22 @@ import type { Job, NavKey } from "../../core/types";
 import { getRuntime, isNativeRuntime } from "../../core/runtime";
 import { Icon } from "../../shared/Icon";
 import { Pagination } from "../../shared/Pagination";
+import { WorkflowStepper } from "../../shared/WorkflowStepper";
+import { Modal } from "../../shared/Modal";
 
-type Props = { jobs: Job[]; onNavigate: (key: NavKey) => void; onUpdateJob: (id: string, values: Partial<Job>) => void; onAddJob: (job: Job) => void };
-const positions: Array<[NonNullable<Job["logoPosition"]>, string]> = [["top-left", "Trên trái"], ["top-right", "Trên phải"], ["bottom-left", "Dưới trái"], ["bottom-right", "Dưới phải"]];
+type Props = {
+  jobs: Job[];
+  onNavigate: (key: NavKey) => void;
+  onUpdateJob: (id: string, values: Partial<Job>) => void;
+  onAddJob: (job: Job) => void;
+};
+
+const positions: Array<[NonNullable<Job["logoPosition"]>, string]> = [
+  ["top-left", "Góc trên trái"],
+  ["top-right", "Góc trên phải"],
+  ["bottom-left", "Góc dưới trái (Shorts/Reels)"],
+  ["bottom-right", "Góc dưới phải"],
+];
 
 function fileUrl(value?: string) {
   if (!value || !isNativeRuntime()) return undefined;
@@ -15,42 +28,325 @@ function fileUrl(value?: string) {
 export function BrandPage({ jobs, onNavigate, onUpdateJob, onAddJob }: Props) {
   const [selectedId, setSelectedId] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(8);
   const [message, setMessage] = useState("");
-  const candidates = useMemo(() => jobs.filter((job) => job.localPath || job.sourceType === "url" || job.analysis), [jobs]);
-  const selected = useMemo(() => candidates.find((job) => job.id === selectedId) || candidates[0], [candidates, selectedId]);
-  const mediaUrl = selected?.localPath ? fileUrl(selected.localPath) : selected?.sourceType === "url" && /^https?:\/\//i.test(selected.source) ? selected.source : undefined;
-  const logoUrl = fileUrl(selected?.logoPath);
-  const pageJobs = useMemo(() => candidates.slice((page - 1) * pageSize, page * pageSize), [candidates, page, pageSize]);
-  useEffect(() => { setPage((value) => Math.min(value, Math.max(1, Math.ceil(candidates.length / pageSize)))); }, [candidates.length, pageSize]);
-  useEffect(() => { if (selected && !selectedId) setSelectedId(selected.id); }, [selected, selectedId]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
 
-  function update(values: Partial<Job>) { if (selected) onUpdateJob(selected.id, values); }
-  async function chooseLogo() {
+  const candidates = useMemo(
+    () =>
+      jobs.filter(
+        (job) => job.localPath || job.sourceType === "url" || job.analysis
+      ),
+    [jobs]
+  );
+
+  const pagedCandidates = useMemo(
+    () => candidates.slice((page - 1) * pageSize, page * pageSize),
+    [candidates, page, pageSize]
+  );
+
+  useEffect(() => {
+    setPage((value) =>
+      Math.min(value, Math.max(1, Math.ceil(candidates.length / pageSize)))
+    );
+  }, [candidates.length, pageSize]);
+
+  function openEditModal(job: Job) {
+    setEditingJob(job);
+    setIsEditModalOpen(true);
+  }
+
+  async function chooseLogoForJob(job: Job) {
     const path = await getRuntime().pickImage?.();
-    if (path) { update({ logoPath: path }); setMessage("Đã chọn logo. Bấm Lưu preset để ghi cấu hình vào job."); }
+    if (path) {
+      onUpdateJob(job.id, { logoPath: path });
+      setMessage("✓ Đã chọn logo thương hiệu cho video.");
+      setTimeout(() => setMessage(""), 2500);
+    }
   }
-  function savePreset() { if (!selected) return; update({}); setMessage("Preset phụ đề và logo đã được lưu vào job."); window.setTimeout(() => setMessage(""), 2200); }
-  function createRenderJob() {
-    if (!selected || (!selected.localPath && selected.sourceType !== "url")) { setMessage("Job này chưa có source local hoặc URL để render."); return; }
-    onAddJob({ ...selected, sourceOnly: false, id: `job-brand-${Date.now()}`, parentJobId: selected.id, name: `${selected.name} · branded`, status: "queued", stage: selected.sourceType === "url" && !selected.localPath ? "downloading" : "queued", progress: 0, outputPath: undefined, error: undefined, synced: false, createdAt: "Vừa tạo" });
-    setMessage("Đã tạo render job có phụ đề/logo và đưa vào queue.");
+
+  function renderBrandedJob(job: Job) {
+    onAddJob({
+      ...job,
+      sourceOnly: false,
+      id: `job-brand-${Date.now()}`,
+      parentJobId: job.id,
+      name: `${job.name} · có brand`,
+      status: "queued",
+      stage: job.sourceType === "url" && !job.localPath ? "downloading" : "queued",
+      progress: 0,
+      createdAt: new Date().toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    });
+    onNavigate("render");
   }
-  const subtitleText = selected?.subtitleText || selected?.analysis?.voiceScript || selected?.analysis?.scenes?.map((scene) => scene.voiceover || scene.translation || "").filter(Boolean).join(" ") || "";
-  return <div className="page-stack page-enter brand-page">
-    <div className="page-title"><div><p className="eyebrow">WORKFLOW / 07 · BRAND</p><h2>Phụ đề & Thương hiệu</h2><p>Gắn phụ đề đồng bộ lời kể và logo trực tiếp vào bản render bằng FFmpeg.</p></div><div className="page-title-actions"><button className="button-quiet" type="button" onClick={() => onNavigate("timeline")}><Icon name="video" size={15} /> Mở timeline</button><button type="button" disabled={!selected} onClick={createRenderJob}><Icon name="play" size={15} /> Tạo render branded</button></div></div>
-    {message && <p className="form-success">{message}</p>}
-    {!candidates.length ? <section className="panel-card empty-module"><span className="empty-module-icon"><Icon name="captions" size={24} /></span><h3>Chưa có job để hoàn thiện</h3><p>Hãy nạp video và chạy phân tích trước, sau đó quay lại để thêm phụ đề/logo.</p><button className="button-quiet" type="button" onClick={() => onNavigate("batch")}><Icon name="arrow" size={14} /> Mở tạo job</button></section> : <section className="brand-layout">
-      <aside className="panel-card brand-library"><div className="panel-head"><div><p className="eyebrow">RENDER TARGETS</p><h3>Chọn job</h3></div><span className="queue-count">{candidates.length}</span></div><div className="story-job-list">{pageJobs.map((job) => <button type="button" className={`story-job ${job.id === selected?.id ? "is-selected" : ""}`} key={job.id} onClick={() => setSelectedId(job.id)}><span className="story-job-icon"><Icon name="captions" size={15} /></span><span><strong>{job.name}</strong><small>{job.source}</small></span><Icon name="arrow" size={13} /></button>)}</div><div className="story-pagination"><Pagination total={candidates.length} page={page} pageSize={pageSize} onPageChange={setPage} /></div><label className="story-page-size">Hiển thị <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> dòng</label></aside>
-      <section className="panel-card brand-editor"><div className="panel-head"><div><p className="eyebrow">BRAND PRESET</p><h3>{selected?.name}</h3><span className="subtle">{selected?.source}</span></div><span className={isNativeRuntime() ? "result-live" : "result-draft"}>{isNativeRuntime() ? "Native render" : "Preview only"}</span></div>
-        <label className="preset-check"><input type="checkbox" checked={selected?.subtitlesEnabled ?? true} onChange={(event) => update({ subtitlesEnabled: event.target.checked })} /><span><strong>Bật phụ đề</strong><small>FFmpeg sẽ render phụ đề từ voice script/scene translation.</small></span></label>
-        <label className="field-label">Vị trí phụ đề<select value={selected?.subtitleStyle || "bottom"} onChange={(event) => update({ subtitleStyle: event.target.value as Job["subtitleStyle"] })}><option value="bottom">Dưới · an toàn cho Shorts</option><option value="center">Giữa khung hình</option><option value="top">Trên cùng</option></select></label>
-        <label className="field-label">Nội dung phụ đề<textarea rows={5} value={subtitleText} onChange={(event) => update({ subtitleText: event.target.value })} placeholder="Voice script hoặc nội dung phụ đề" /></label>
-        <div className="brand-logo-block"><div><p className="eyebrow">LOGO / WATERMARK</p><h3>Logo thương hiệu</h3></div>{selected?.logoPath ? <div className="logo-file"><Icon name="check" size={14} /><span>{selected.logoPath.split(/[\\/]/).pop()}</span><button type="button" className="text-button" onClick={chooseLogo}>Đổi</button></div> : <button type="button" className="button-quiet" onClick={chooseLogo} disabled={!isNativeRuntime()}><Icon name="upload" size={14} /> Chọn file logo</button>}</div>
-        <div className="brand-controls"><label className="field-label">Vị trí logo<select value={selected?.logoPosition || "bottom-right"} onChange={(event) => update({ logoPosition: event.target.value as Job["logoPosition"] })}>{positions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label className="field-label">Độ mờ <span className="range-value">{Math.round((selected?.logoOpacity ?? 0.82) * 100)}%</span><input type="range" min="0.1" max="1" step="0.05" value={selected?.logoOpacity ?? 0.82} onChange={(event) => update({ logoOpacity: Number(event.target.value) })} /></label></div>
-        <div className="brand-preview"><div className="brand-preview-art">{mediaUrl ? <video className="brand-preview-video" src={mediaUrl} controls muted preload="metadata" /> : <span className="brand-preview-empty"><Icon name="video" size={20} /> Chưa có video preview</span>}<span className={`brand-preview-caption ${(selected?.subtitleStyle || "bottom")}`}>{(selected?.subtitlesEnabled ?? true) ? (subtitleText.slice(0, 80) || "Phụ đề sẽ hiển thị ở đây") : ""}</span>{logoUrl && <img className={`brand-preview-logo ${selected?.logoPosition || "bottom-right"}`} src={logoUrl} alt="Logo preview" style={{ opacity: selected?.logoOpacity ?? 0.82 }} />}</div><small>Preview bố cục · phụ đề và logo dùng chính source video để render.</small></div>
-        <div className="brand-actions"><button className="button-quiet" type="button" onClick={savePreset}><Icon name="check" size={14} /> Lưu preset</button><button type="button" onClick={createRenderJob} disabled={!selected}><Icon name="play" size={14} /> Render bản này</button></div>
+
+  return (
+    <div className="page-stack page-enter">
+      {/* Header */}
+      <div className="page-title">
+        <div>
+          <p className="eyebrow">WORKFLOW / BƯỚC 5 · BRANDING & SUBTITLES</p>
+          <h2>5. Phụ đề & Nhận diện thương hiệu</h2>
+          <p>
+            Tùy biến vị trí phụ đề đồng bộ lời kể và gắn logo watermark trực tiếp vào video bằng engine GPU.
+          </p>
+        </div>
+        <div className="page-title-actions">
+          <button
+            type="button"
+            className="button-quiet"
+            onClick={() => onNavigate("timeline")}
+          >
+            <Icon name="timeline" size={14} /> 4. Dựng Timeline
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => onNavigate("render")}
+          >
+            <Icon name="play" size={14} /> 6. Sang Render Xuất Bản
+          </button>
+        </div>
+      </div>
+
+      <WorkflowStepper activeStep="brand" onNavigate={onNavigate} />
+
+      {message && <p className="form-help">{message}</p>}
+
+      {/* Brand & Subtitle Management Table */}
+      <section className="panel-card" style={{ padding: "20px" }}>
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">BRANDING PIPELINE</p>
+            <h3>Danh sách video & kịch bản ({candidates.length})</h3>
+          </div>
+        </div>
+
+        <div className="jacs-table-wrapper">
+          <table className="jacs-table">
+            <thead>
+              <tr>
+                <th>Tên Video / Phân cảnh</th>
+                <th>Phụ Đề (Subtitle Text)</th>
+                <th>Vị Trí Phụ Đề</th>
+                <th>Logo Watermark</th>
+                <th style={{ textAlign: "right", minWidth: "160px" }}>Cột Thao Tác (Actions)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedCandidates.length > 0 ? (
+                pagedCandidates.map((job) => {
+                  const subText =
+                    job.subtitleText ||
+                    job.analysis?.voiceScript ||
+                    job.analysis?.scenes?.[0]?.voiceover ||
+                    "Chưa có phụ đề";
+
+                  return (
+                    <tr key={job.id}>
+                      <td>
+                        <strong style={{ color: "#ffffff", display: "block" }}>{job.name}</strong>
+                        <small style={{ color: "#64748b" }}>{job.source}</small>
+                      </td>
+                      <td style={{ maxWidth: "260px" }}>
+                        <p
+                          style={{
+                            margin: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            color: "#cbd5e1",
+                            fontSize: "11.5px",
+                          }}
+                        >
+                          {subText}
+                        </p>
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            padding: "2px 7px",
+                            borderRadius: "4px",
+                            background: "rgba(255,255,255,0.06)",
+                            fontSize: "10.5px",
+                          }}
+                        >
+                          {job.subtitleStyle || "Mặc định (Dưới)"}
+                        </span>
+                      </td>
+                      <td>
+                        {job.logoPath ? (
+                          <span style={{ color: "#10b981", fontWeight: 700, fontSize: "11px" }}>
+                            ✓ Đã gắn logo
+                          </span>
+                        ) : (
+                          <span style={{ color: "#64748b", fontSize: "11px" }}>Chưa có logo</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            style={{ padding: "4px 8px", fontSize: "11px" }}
+                            onClick={() => openEditModal(job)}
+                          >
+                            <Icon name="sliders" size={11} /> Chỉnh Brand
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            style={{ padding: "4px 8px", fontSize: "11px" }}
+                            onClick={() => renderBrandedJob(job)}
+                          >
+                            <Icon name="play" size={11} /> Render
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
+                    Chưa có video nào. Hãy nạp nguồn video ở bước 1.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {candidates.length > pageSize && (
+          <div style={{ marginTop: "14px" }}>
+            <Pagination
+              total={candidates.length}
+              pageSize={pageSize}
+              page={page}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
       </section>
-    </section>}
-  </div>;
+
+      {/* Modal Chỉnh Sửa Phụ Đề & Logo Watermark */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title={`Cấu hình Brand & Phụ đề: ${editingJob?.name || ""}`}
+        eyebrow="BRANDING & SUBTITLE STYLING"
+        maxWidth="580px"
+      >
+        {editingJob && (
+          <div>
+            <label className="field-label">
+              Nội dung Phụ đề (Subtitle text)
+              <textarea
+                rows={4}
+                value={
+                  editingJob.subtitleText ||
+                  editingJob.analysis?.voiceScript ||
+                  ""
+                }
+                onChange={(e) =>
+                  setEditingJob({ ...editingJob, subtitleText: e.target.value })
+                }
+              />
+            </label>
+
+            <div className="field-pair" style={{ marginTop: "14px" }}>
+              <label className="field-label">
+                Vị trí Logo Watermark
+                <select
+                  value={editingJob.logoPosition || "bottom-left"}
+                  onChange={(e) =>
+                    setEditingJob({
+                      ...editingJob,
+                      logoPosition: e.target.value as Job["logoPosition"],
+                    })
+                  }
+                >
+                  {positions.map(([pos, label]) => (
+                    <option key={pos} value={pos}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field-label">
+                Độ mờ Logo (%)
+                <input
+                  type="number"
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={editingJob.logoOpacity ?? 85}
+                  onChange={(e) =>
+                    setEditingJob({
+                      ...editingJob,
+                      logoOpacity: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            </div>
+
+            <div style={{ marginTop: "14px" }}>
+              <label className="field-label">
+                File Logo Watermark
+                <div className="path-input-row">
+                  <Icon name="spark" size={14} />
+                  <span>{editingJob.logoPath || "Chưa chọn file logo"}</span>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ padding: "4px 10px", fontSize: "11px" }}
+                    onClick={async () => {
+                      const p = await getRuntime().pickImage?.();
+                      if (p) setEditingJob({ ...editingJob, logoPath: p });
+                    }}
+                  >
+                    Chọn file ảnh
+                  </button>
+                </div>
+              </label>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+              <button
+                type="button"
+                className="button-quiet"
+                onClick={() => setIsEditModalOpen(false)}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  onUpdateJob(editingJob.id, {
+                    subtitleText: editingJob.subtitleText,
+                    logoPosition: editingJob.logoPosition,
+                    logoOpacity: editingJob.logoOpacity,
+                    logoPath: editingJob.logoPath,
+                  });
+                  setIsEditModalOpen(false);
+                  setMessage("✓ Đã lưu cấu hình phụ đề & logo.");
+                  setTimeout(() => setMessage(""), 2500);
+                }}
+              >
+                Lưu cấu hình
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
 }

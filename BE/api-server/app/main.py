@@ -98,3 +98,12 @@ app.include_router(jobs_router)
 app.include_router(telemetry_router)
 app.include_router(system_router)
 
+
+@app.post("/api/webhook/sepay", tags=["billing"])
+async def root_sepay_webhook(payload: dict, request: Request) -> dict:
+    """Public root endpoint for SePay payment gateway webhook."""
+    from app.modules.billing.router import process_sepay_webhook
+    auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
+    api_key_query = request.query_params.get("api_key") or request.query_params.get("apikey")
+    return await process_sepay_webhook(payload, auth_header=auth_header, api_key_query=api_key_query)
+

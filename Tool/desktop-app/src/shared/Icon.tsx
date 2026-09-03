@@ -22,6 +22,7 @@ import {
   Key,
   Layers,
   Link45deg,
+  Lock,
   Mic,
   MusicNoteBeamed,
   Pause,
@@ -33,11 +34,16 @@ import {
   Stars,
   ThreeDots,
   Trash3,
+  Unlock,
   Upload,
+  VolumeMute,
   VolumeUp,
   ShieldCheck,
   LightningCharge,
   XLg,
+  ZoomIn,
+  ZoomOut,
+  ChatQuote,
 } from "react-bootstrap-icons";
 
 export type IconName =
@@ -59,6 +65,7 @@ export type IconName =
   | "undo"
   | "redo"
   | "volume"
+  | "volume-mute"
   | "maximize"
   | "chevron"
   | "chevron-left"
@@ -74,11 +81,16 @@ export type IconName =
   | "refresh"
   | "bell"
   | "trash"
-  | "alert"
   | "scissors"
   | "copy"
   | "shield"
   | "zap"
+  | "lock"
+  | "unlock"
+  | "zoom-in"
+  | "zoom-out"
+  | "chat"
+  | "alert"
   | "x";
 
 const ICONS = {
@@ -100,6 +112,7 @@ const ICONS = {
   undo: ArrowCounterclockwise,
   redo: ArrowClockwise,
   volume: VolumeUp,
+  "volume-mute": VolumeMute,
   maximize: Fullscreen,
   chevron: ChevronDown,
   "chevron-left": ChevronLeft,
@@ -120,6 +133,11 @@ const ICONS = {
   copy: Clipboard,
   shield: ShieldCheck,
   zap: LightningCharge,
+  lock: Lock,
+  unlock: Unlock,
+  "zoom-in": ZoomIn,
+  "zoom-out": ZoomOut,
+  chat: ChatQuote,
   x: XLg,
 } as const;
 
@@ -135,4 +153,3 @@ export function Icon({
   const Component = ICONS[name] || ICONS.grid;
   return <Component size={size} className={className} aria-hidden="true" focusable="false" />;
 }
-

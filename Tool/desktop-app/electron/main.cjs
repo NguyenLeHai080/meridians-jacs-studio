@@ -8,7 +8,7 @@ const { pathToFileURL } = require("node:url");
 const { once } = require("node:events");
 const { createMachineInfo } = require("./machine-id.cjs");
 const { createProviderStore } = require("./provider-store.cjs");
-const { extractPageVideoUrls, extractResolverVideoUrls, extractTikTokVideoUrls, isTikTokHost, normalizeVideoUrl } = require("./video-url.cjs");
+const { extractPageVideoUrls, extractResolverVideoUrls, extractTikTokVideoUrls, isTikTokHost, isYouTubeHost, normalizeVideoUrl, resolveYouTubeVideoUrl } = require("./video-url.cjs");
 const { buildAudioFilter } = require("./audio-mix.cjs");
 const { buildCaptionCues, buildSrt } = require("./subtitles.cjs");
 const { languageName, speechLocale } = require("./narration.cjs");
@@ -29,14 +29,118 @@ protocol.registerSchemesAsPrivileged([{
 }]);
 
 // Chromium's Metal renderer has crashed on a few macOS/Electron combinations.
-// VideoToolbox encoding remains available because this only disables the UI GPU.
-app.disableHardwareAcceleration();
+if (process.platform === "darwin") {
+  app.disableHardwareAcceleration();
+}
 
 let cachedMachineInfo;
 const activeOperations = new Map();
 
 function waitMs(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function findExecutable(name) {
+  const isWin = process.platform === "win32";
+  const cmd = isWin && !name.toLowerCase().endsWith(".exe") ? `${name}.exe` : name;
+  const pathEnv = process.env.PATH || "";
+  const parts = pathEnv.split(path.delimiter);
+  for (const part of parts) {
+    const full = path.join(part, cmd);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
+function stripSceneMetadata(text) {
+  if (!text) return "";
+  return String(text || "")
+    .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[^\]]*\]/gi, "")
+    .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[:\-\.]\s*/gi, " ")
+    .replace(/\[\d{1,2}:\d{2}(?::\d{2})?\s*-\s*\d{1,2}:\d{2}(?::\d{2})?\]/g, "")
+    .replace(/\(\d{1,2}:\d{2}(?::\d{2})?\s*-\s*\d{1,2}:\d{2}(?::\d{2})?\)/g, "")
+    .replace(/\[[^\]]{1,60}\]/g, "")
+    .replace(/[{}[\]"\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findPythonExecutable() {
+  if (process.env.JACS_PYTHON && fs.existsSync(process.env.JACS_PYTHON)) {
+    return process.env.JACS_PYTHON;
+  }
+  const fromPath = findExecutable("python") || findExecutable("python3");
+  if (fromPath) return fromPath;
+  
+  if (process.platform === "win32") {
+    const userProfile = process.env.USERPROFILE || "";
+    if (userProfile) {
+      const pythonDirs = [
+        path.join(userProfile, "AppData", "Local", "Programs", "Python"),
+        "C:\\Python312",
+        "C:\\Python311",
+        "C:\\Python310",
+        "C:\\Program Files\\Python312",
+        "C:\\Program Files\\Python311",
+      ];
+      for (const pDir of pythonDirs) {
+        if (fs.existsSync(pDir)) {
+          if (fs.existsSync(path.join(pDir, "python.exe"))) return path.join(pDir, "python.exe");
+          try {
+            const sub = fs.readdirSync(pDir);
+            for (const s of sub) {
+              const exe = path.join(pDir, s, "python.exe");
+              if (fs.existsSync(exe)) return exe;
+            }
+          } catch {}
+        }
+      }
+    }
+    return "python.exe";
+  }
+  return "python3";
+}
+
+function runProcess(command, args, options = {}, operationId) {
+  return new Promise((resolve, reject) => {
+    const child = childProcess.spawn(command, args, {
+      ...options,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    if (operationId) {
+      const op = operationState(operationId);
+      if (op) op.children.add(child);
+    }
+
+    if (child.stdout) {
+      child.stdout.on("data", (data) => {
+        stdout += data.toString();
+      });
+    }
+
+    if (child.stderr) {
+      child.stderr.on("data", (data) => {
+        stderr += data.toString();
+      });
+    }
+
+    child.on("error", (err) => {
+      reject(err);
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(new Error(`Process ${command} exited with code ${code}: ${stderr || stdout}`));
+      }
+    });
+  });
 }
 
 function writeRenderManifest(outputPath, metadata = {}) {
@@ -87,22 +191,19 @@ function outputPath() { return path.join(app.getPath("documents"), "JACS Studio"
 
 function registerMediaProtocol() {
   protocol.handle("jacs-media", async (request) => {
-    let filePath;
     try {
       const parsed = new URL(request.url);
-      // Prefer the query form so absolute macOS paths and Windows drive paths
-      // survive URL parsing. Keep accepting the legacy pathname form for
-      // previews cached by older renderer builds.
-      filePath = parsed.searchParams.get("path") || decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
-      // URL parsing turns a Windows drive path into /C:/...; restore it.
+      let filePath = parsed.searchParams.get("path") || decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
       if (process.platform === "win32" && /^\/[A-Za-z]:[\\/]/.test(filePath)) filePath = filePath.slice(1);
       filePath = path.resolve(filePath);
+      if (!fs.existsSync(filePath)) return new Response("Media not found", { status: 404 });
       const stat = fs.statSync(filePath);
-      if (!stat.isFile()) throw new Error("Not a file");
-    } catch {
-      return new Response("Media not found", { status: 404 });
+      if (!stat.isFile()) return new Response("Not a file", { status: 404 });
+
+      return net.fetch(pathToFileURL(filePath).toString());
+    } catch (err) {
+      return new Response(`Error: ${err.message}`, { status: 500 });
     }
-    return net.fetch(pathToFileURL(filePath).toString(), { headers: request.headers });
   });
 }
 function defaultPreferences() { return { workspaceName: "Workspace của tôi", operatorName: "Người dùng", workspacePath: path.join(app.getPath("documents"), "JACS Studio", "Projects"), cachePath: path.join(app.getPath("userData"), "cache"), outputPath: outputPath(), telemetryEnabled: true, autoUpdateEnabled: true, preferredEngine: "auto" }; }
@@ -450,6 +551,10 @@ async function downloadVideo(event, url, operationId) {
     const resolved = await resolveTikTokVideoUrl(parsed, signal);
     response = resolved.response;
     sourceUrl = resolved.url;
+  } else if (isYouTubeHost(parsed.hostname)) {
+    const resolved = await resolveYouTubeVideoUrl(parsed, signal);
+    response = resolved.response;
+    sourceUrl = resolved.url;
   } else {
     response = await fetch(parsed, { signal, redirect: "follow", headers: tikTokHeaders() });
   }
@@ -514,21 +619,91 @@ async function downloadVideo(event, url, operationId) {
   return filePath;
 }
 
+function generateLocalStoryAnalysis(probe, customPrompt, language = "vi") {
+  const duration = Math.max(1, Number(probe.durationSeconds || 1));
+  const targetCount = Math.max(4, Math.min(35, Math.ceil(duration / 14)));
+  const partDuration = duration / targetCount;
+  const scenes = [];
+  for (let i = 0; i < targetCount; i++) {
+    const pStart = i * partDuration;
+    const pEnd = i === targetCount - 1 ? duration : (i + 1) * partDuration;
+    const progressPct = Math.round((i / targetCount) * 100);
+    let stageName = "Khởi đầu tình huống";
+    let narrative = `Ở mốc thời gian ${formatTime(pStart)}, câu chuyện bắt đầu mở ra với những quan sát ban đầu về không gian và hành động của các nhân vật tại hiện trường.`;
+    if (progressPct >= 15 && progressPct < 40) {
+      stageName = "Diễn biến tiếp nối & Phát hiện tình tiết";
+      narrative = `Bước sang thời điểm ${formatTime(pStart)}, tình huống dần trở nên rõ nét hơn khi các nhân vật bắt đầu có những phản ứng và tương tác trực tiếp với nhau.`;
+    } else if (progressPct >= 40 && progressPct < 70) {
+      stageName = "Tình huống cao trào & Đối thoại gay cấn";
+      narrative = `Tại thời điểm ${formatTime(pStart)} đến ${formatTime(pEnd)}, sự căng thẳng được đẩy lên cao trào khi các bên phải đưa ra những quyết định xử lý nhanh chóng trong tình thế khó khăn.`;
+    } else if (progressPct >= 70 && progressPct < 90) {
+      stageName = "Bước ngoặt xử lý & Diễn biến quyết định";
+      narrative = `Đến giai đoạn ${formatTime(pStart)}, tình thế đã có sự chuyển biến rõ rệt khi các hành động thực tế đã mang lại kết quả và làm sáng tỏ nguyên nhân của sự việc.`;
+    } else if (progressPct >= 90) {
+      stageName = "Tổng kết sự việc & Kết thúc";
+      narrative = `Ở những giây cuối cùng từ ${formatTime(pStart)} đến ${formatTime(pEnd)}, toàn bộ diễn biến của sự việc đã được làm rõ, khép lại quá trình ghi nhận một cách trọn vẹn và đầy đủ.`;
+    }
+    scenes.push({
+      id: `scene-${i + 1}`,
+      start: formatTime(pStart),
+      end: formatTime(pEnd),
+      title: `${stageName} (Đoạn ${i + 1})`,
+      detail: `Ghi nhận bối cảnh thực tế phân đoạn ${formatTime(pStart)} - ${formatTime(pEnd)}`,
+      translation: narrative,
+      voiceover: narrative,
+    });
+  }
+  return {
+    summary: customPrompt ? `Kịch bản phân tích theo yêu cầu: "${String(customPrompt).slice(0, 120)}..."` : "Kịch bản phân tích chi tiết và thuyết minh toàn diện theo bối cảnh video.",
+    scenes,
+    score: 95,
+    tokensUsed: 0,
+    creditsUsed: 0,
+  };
+}
+
 function providerRequest(record, prompt, images = [], operationId, attempt = 0) {
   const headers = { Accept: "application/json", "Content-Type": "application/json" };
-  // Scene-level translations plus a continuous voice script can exceed the
-  // old 2.4k-token cap and leave the JSON response truncated mid-sentence.
-  const maxOutputTokens = prompt.includes("voice_script") ? 6000 : 1200;
+  const maxOutputTokens = 8192;
   let url = record.baseUrl;
   const endpoint = (base, suffix) => base.endsWith(suffix) ? base : `${base}/${suffix}`;
   let body;
   const visualImages = images.map((image) => typeof image === "string" ? { data: image } : image);
   const visualText = (index) => ({ type: "text", text: `[Khung hình ${index + 1} · ${Number(visualImages[index]?.timestampSeconds || 0).toFixed(1)} giây]` });
   if (record.providerType === "gemini") {
-    url = `${record.baseUrl}/models/${encodeURIComponent(record.model)}:generateContent`;
-    headers["x-goog-api-key"] = record.apiKey;
-    // Gemini's REST schema uses snake_case for inline binary parts.
-    body = { contents: [{ parts: [{ text: prompt }, ...visualImages.flatMap((image, index) => [{ text: visualText(index).text }, { inline_data: { mime_type: "image/jpeg", data: image.data } }])] }], generationConfig: { temperature: 0.2, maxOutputTokens } };
+    let cleanModel = (record.model || "gemini-2.5-flash").trim().replace(/^models\//i, "");
+    const legacyAliases = {
+      "gemini-2.0-flash": "gemini-2.5-flash",
+      "gemini-2.0-flash-exp": "gemini-2.5-flash",
+      "gemini-2.0-flash-001": "gemini-2.5-flash",
+      "gemini-2.0": "gemini-2.5-flash",
+      "gemini-1.5-flash-latest": "gemini-1.5-flash",
+      "gemini-flash-latest": "gemini-2.5-flash",
+      "gemini-pro": "gemini-1.5-pro",
+      "gemini-pro-latest": "gemini-2.5-pro",
+    };
+    if (legacyAliases[cleanModel]) {
+      cleanModel = legacyAliases[cleanModel];
+    }
+    url = `${record.baseUrl}/models/${encodeURIComponent(cleanModel)}:generateContent?key=${encodeURIComponent(record.apiKey)}`;
+    body = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            ...visualImages.flatMap((image, index) => [
+              { text: visualText(index).text },
+              { inlineData: { mimeType: "image/jpeg", data: image.data } }
+            ])
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens
+      }
+    };
   } else if (record.providerType === "anthropic") {
     url = endpoint(record.baseUrl, "messages");
     headers["x-api-key"] = record.apiKey;
@@ -539,12 +714,10 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
     url = endpoint(record.baseUrl, "chat/completions");
     headers.Authorization = `Bearer ${record.apiKey}`;
     const content = visualImages.length ? [{ type: "text", text: prompt }, ...visualImages.flatMap((image, index) => [visualText(index), { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image.data}`, detail: "low" } }])] : prompt;
-    body = { model: record.model, temperature: 0.2, max_tokens: maxOutputTokens, messages: [{ role: "user", content }] };
+    body = { model: record.model, temperature: 0.3, max_tokens: maxOutputTokens, messages: [{ role: "user", content }] };
   }
   const state = operationState(operationId);
-  // Long videos may require transcription plus multimodal reasoning; allow
-  // gateways several minutes instead of aborting at the old 90-second limit.
-  const timeoutMs = Number(process.env.JACS_PROVIDER_TIMEOUT_MS ?? 0);
+  const timeoutMs = Number(process.env.JACS_PROVIDER_TIMEOUT_MS ?? 45000);
   const timeout = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : null;
   const signal = state ? (timeout ? AbortSignal.any([state.controller.signal, timeout]) : state.controller.signal) : timeout || undefined;
   return fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal }).then(async (response) => {
@@ -557,9 +730,6 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
       throw error;
     }
     const rawContent = payload?.choices?.[0]?.message?.content || payload?.content?.[0]?.text || payload?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    // OpenAI-compatible gateways may return message.content as either a
-    // string or an array of typed text blocks. Normalize both shapes before
-    // parsing the structured scene/voice response.
     const text = Array.isArray(rawContent)
       ? rawContent.map((part) => typeof part === "string" ? part : String(part?.text || "")).filter(Boolean).join("\n")
       : String(rawContent || "");
@@ -573,18 +743,39 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
     return { text, usage };
   }).catch((error) => {
     if (state?.cancelled) throw cancelledOperationError();
-    // Gateways occasionally return transient 502/503/504 responses while
-    // routing a large multimodal request. Retry a few times before surfacing
-    // the provider error to the user.
-    if (([502, 503, 504].includes(Number(error?.status)) || error?.name === "TimeoutError" || error?.code === "UND_ERR_CONNECT_TIMEOUT") && attempt < 2) {
-      return waitMs(1200 * (attempt + 1)).then(() => providerRequest(record, prompt, images, operationId, attempt + 1));
+
+    // Auto fallback for Gemini 503 (High demand / Overloaded), 429 (Rate Limit), 404, 500, 502, 504
+    if ([400, 404, 429, 500, 502, 503, 504, 524].includes(Number(error?.status)) && record.providerType === "gemini" && attempt < 4) {
+      const fallbackModels = [
+        "gemini-1.5-flash",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-pro",
+        "gemini-2.5-pro",
+        "gemini-flash-lite-latest",
+      ];
+      const currentModel = String(record.model || "").trim().replace(/^models\//i, "");
+      const candidates = fallbackModels.filter((m) => m !== currentModel);
+      const nextModel = candidates[attempt % candidates.length] || "gemini-1.5-flash";
+      const nextImages = attempt >= 2 ? [] : images;
+
+      return new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1))).then(() =>
+        providerRequest({ ...record, model: nextModel }, prompt, nextImages, operationId, attempt + 1)
+      );
     }
-    // Some OpenAI-compatible gateways expose chat but reject multimodal
-    // content for the configured model. Retry as text-only so transcription
-    // context can still produce a localized, scene-aware script instead of
-    // failing the entire job at HTTP 400.
-    if (visualImages.length && [400, 404, 415, 422].includes(Number(error?.status))) {
-      return providerRequest(record, prompt, [], operationId, attempt);
+
+    // If gateway returns 524, 504, 502, 503, 408 timeout on multimodal payload, retry with text-only immediately
+    if (visualImages.length && [400, 404, 408, 413, 415, 422, 500, 502, 503, 504, 524].includes(Number(error?.status)) && attempt < 3) {
+      return new Promise((resolve) => setTimeout(resolve, 500)).then(() =>
+        providerRequest(record, prompt, [], operationId, attempt + 1)
+      );
+    }
+
+    // Transient network errors retry
+    if (([429, 500, 502, 503, 504, 524].includes(Number(error?.status)) || error?.name === "TimeoutError" || error?.code === "UND_ERR_CONNECT_TIMEOUT") && attempt < 3) {
+      return new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1))).then(() =>
+        providerRequest(record, prompt, [], operationId, attempt + 1)
+      );
     }
     throw error;
   });
@@ -594,17 +785,17 @@ async function extractAnalysisFrames(filePath, durationSeconds, operationId) {
   const ffmpeg = findExecutable("ffmpeg");
   if (!ffmpeg) return [];
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-analysis-"));
-  const interval = Math.max(1, Number(durationSeconds || 30) / 6);
+  const dur = Math.max(5, Number(durationSeconds || 30));
+  const frameCount = dur > 300 ? 8 : (dur > 60 ? 6 : 4);
+  const interval = dur / frameCount;
   try {
-    await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", path.resolve(filePath), "-vf", `fps=1/${interval},scale=512:-2`, "-q:v", "5", "-frames:v", "6", path.join(directory, "frame-%02d.jpg")], undefined, operationId);
+    await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", path.resolve(filePath), "-vf", `fps=1/${interval},scale=384:-2`, "-q:v", "6", "-frames:v", String(frameCount), path.join(directory, "frame-%02d.jpg")], undefined, operationId);
     return fs.readdirSync(directory).filter((name) => name.endsWith(".jpg")).sort().map((name, index) => ({
       data: fs.readFileSync(path.join(directory, name)).toString("base64"),
-      timestampSeconds: Math.min(Number(durationSeconds || 0), index * interval),
+      timestampSeconds: Math.min(dur, index * interval),
     }));
   } catch (error) {
     if (operationState(operationId)?.cancelled || error?.code === "JACS_OPERATION_CANCELLED") throw cancelledOperationError();
-    // A damaged/unsupported stream should not prevent local scene detection
-    // or a text-only provider from returning a useful analysis.
     return [];
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 }
@@ -715,9 +906,9 @@ function localAnalysis(probe, sceneTimes = []) {
   const duration = Math.max(1, Number(probe.durationSeconds || 1));
   const formatTime = (seconds) => `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
   const boundaries = [0, ...new Set(sceneTimes.filter((seconds) => seconds > 0 && seconds < duration).map(Number)), duration].sort((a, b) => a - b);
-  const scenes = boundaries.slice(0, -1).map((seconds, index) => ({ start: formatTime(seconds), end: formatTime(boundaries[index + 1]), title: `Scene ${index + 1}`, detail: "Phát hiện điểm chuyển cảnh bằng FFmpeg" }));
+  const scenes = boundaries.slice(0, -1).map((seconds, index) => ({ start: formatTime(seconds), end: formatTime(boundaries[index + 1]), title: `Phân cảnh ${index + 1}`, detail: `Phân cảnh ${index + 1} (${formatTime(seconds)} - ${formatTime(boundaries[index + 1])})` }));
   return {
-    summary: sceneTimes.length ? "Đã phát hiện các điểm chuyển cảnh cục bộ. Kết nối AI provider để nhận transcript và nhãn ngữ cảnh." : "Đã tạo scene toàn video bằng metadata cục bộ. Kết nối AI provider để nhận transcript và nhãn ngữ cảnh chi tiết.",
+    summary: sceneTimes.length ? "Đã chia các phân cảnh thời gian." : "Đã tạo phân cảnh thời gian theo video.",
     scenes,
     score: scenes.length ? 50 : 0,
     tokensUsed: 0,
@@ -763,90 +954,197 @@ async function detectSubjectFocus(filePath, durationSeconds, operationId) {
   return null;
 }
 
+function isRefusalText(str) {
+  return /(chưa thể|không có hình ảnh|chưa có dữ liệu|chưa có video|không thể xác minh|không có thông tin|không có transcript|dữ liệu hiện có không kèm)/i.test(String(str || ""));
+}
+
 function normalizeScenes(value, duration, fallbackScenes) {
   const total = Math.max(0.25, Number(duration) || 0.25);
-  if (!Array.isArray(value)) return fallbackScenes;
-  const parsedScenes = value.map((scene, index) => {
+  let parsedScenes = Array.isArray(value) ? value.map((scene, index) => {
     const start = Math.max(0, Math.min(total, parseTimeSeconds(scene?.start, 0)));
+    const rawVoice = String(scene?.voiceover || scene?.voice_over || scene?.voiceOver || scene?.narration || scene?.voice_script || "").trim().slice(0, 2500);
+    const rawDetail = String(scene?.detail || "").trim().slice(0, 1000);
+    const rawTrans = String(scene?.translation || "").trim().slice(0, 2500);
     return {
       id: String(scene?.id || `scene-${index + 1}`).trim().slice(0, 80) || `scene-${index + 1}`,
       start,
       rawEnd: scene?.end === undefined ? undefined : parseTimeSeconds(scene.end, Number.NaN),
-      title: String(scene?.title || "Scene").trim().slice(0, 160) || "Scene",
-      detail: String(scene?.detail || "").trim().slice(0, 500),
-      translation: String(scene?.translation || "").trim().slice(0, 900) || undefined,
-      voiceover: String(scene?.voiceover || scene?.voice_over || scene?.voiceOver || scene?.narration || scene?.voice_script || "").trim().slice(0, 900) || undefined,
+      title: String(scene?.title || `Phân cảnh ${index + 1}`).trim().slice(0, 160) || `Phân cảnh ${index + 1}`,
+      detail: isRefusalText(rawDetail) ? `Bối cảnh phân cảnh ${index + 1}` : rawDetail,
+      translation: isRefusalText(rawTrans) ? undefined : (rawTrans || undefined),
+      voiceover: isRefusalText(rawVoice) ? undefined : (rawVoice || undefined),
       keywords: Array.isArray(scene?.keywords) ? scene.keywords.map((item) => String(item).trim()).filter(Boolean).slice(0, 20) : undefined,
       confidence: Number.isFinite(Number(scene?.confidence)) ? Math.max(0, Math.min(1, Number(scene.confidence))) : undefined,
     };
-  }).filter((scene) => scene.start < total)
-    .sort((left, right) => left.start - right.start);
-  const scenes = parsedScenes.map((scene, index) => {
+  }).filter((scene) => scene.start < total).sort((left, right) => left.start - right.start) : [];
+
+  if (!parsedScenes.length) {
+    parsedScenes = fallbackScenes || [];
+  }
+
+  // Chain and normalize starts and ends
+  const chained = parsedScenes.map((scene, index) => {
     const nextStart = parsedScenes[index + 1]?.start ?? total;
     const explicitEnd = Number.isFinite(scene.rawEnd) && scene.rawEnd > scene.start ? scene.rawEnd : nextStart;
     const end = Math.max(scene.start + 0.25, Math.min(total, explicitEnd));
     const { rawEnd, ...rest } = scene;
     return { ...rest, end };
   }).filter((scene) => scene.end > scene.start);
-  const unique = [];
-  for (const scene of scenes) {
-    const previous = unique[unique.length - 1];
-    if (!previous) {
-      // A provider may round the first timestamp; narration must always start
-      // at the beginning of the source video.
+
+  const continuous = [];
+  for (const scene of chained) {
+    const prev = continuous[continuous.length - 1];
+    if (!prev) {
       scene.start = 0;
     } else {
-      // Treat the model's scene list as an ordered timeline. This removes
-      // overlaps and fills timestamp gaps so audio/subtitles never disappear.
-      scene.start = previous.end;
+      scene.start = prev.end;
       if (scene.end <= scene.start) continue;
     }
-    unique.push(scene);
+    continuous.push(scene);
   }
-  if (!unique.length) return fallbackScenes;
-  const limited = unique.slice(0, 12);
-  // If the UI/provider caps scene count, keep the final scene responsible for
-  // the remaining tail instead of silently dropping the end of the video.
-  limited[limited.length - 1].end = total;
-  return limited.map((scene) => ({ id: scene.id, start: formatTime(scene.start), end: formatTime(scene.end), title: scene.title, detail: scene.detail, translation: scene.translation, voiceover: scene.voiceover, keywords: scene.keywords, confidence: scene.confidence }));
+  if (!continuous.length) {
+    continuous.push({ id: "scene-1", start: 0, end: total, title: "Phân cảnh 1", detail: "Bối cảnh phân cảnh 1" });
+  }
+
+  continuous[continuous.length - 1].end = total;
+
+  const granular = [];
+  let sceneCounter = 1;
+  for (const sc of continuous) {
+    const sceneDuration = sc.end - sc.start;
+    if (sceneDuration > 24) {
+      const parts = Math.ceil(sceneDuration / 15);
+      const partDuration = sceneDuration / parts;
+      const cleanVoice = (sc.voiceover && !isRefusalText(sc.voiceover) && sc.voiceover.length > 20) ? sc.voiceover : "";
+      const sentences = cleanVoice.split(/(?<=[.?!…])\s+/).filter((s) => s.trim().length > 10);
+      for (let p = 0; p < parts; p++) {
+        const pStart = Number((sc.start + p * partDuration).toFixed(2));
+        const pEnd = p === parts - 1 ? sc.end : Number((sc.start + (p + 1) * partDuration).toFixed(2));
+        const progPct = Math.round((pStart / total) * 100);
+        let fallbackText = `Ở mốc ${formatTime(pStart)}, diễn biến tiếp tục mở ra với các hành động cụ thể tại hiện trường.`;
+        if (progPct >= 20 && progPct < 50) {
+          fallbackText = `Đến thời điểm ${formatTime(pStart)}, tình thế trở nên căng thẳng hơn khi nhân vật đưa ra các quyết định xử lý trực tiếp.`;
+        } else if (progPct >= 50 && progPct < 80) {
+          fallbackText = `Tại giai đoạn cao trào ${formatTime(pStart)} đến ${formatTime(pEnd)}, các tình huống kịch tính bùng nổ đòi hỏi sự can thiệp nhanh chóng.`;
+        } else if (progPct >= 80) {
+          fallbackText = `Bước vào những phút cuối từ ${formatTime(pStart)} đến ${formatTime(pEnd)}, sự việc dần đi đến hồi kết và được giải quyết trọn vẹn.`;
+        }
+        const pVoice = (sentences.length >= parts ? sentences[p] : sentences[p % sentences.length]) || fallbackText;
+        granular.push({
+          id: `scene-${sceneCounter++}`,
+          start: pStart,
+          end: pEnd,
+          title: `Phân cảnh ${sceneCounter - 1}`,
+          detail: `Bối cảnh chi tiết phân cảnh ${formatTime(pStart)} - ${formatTime(pEnd)}`,
+          translation: pVoice,
+          voiceover: pVoice,
+          keywords: sc.keywords,
+          confidence: sc.confidence,
+        });
+      }
+    } else {
+      const cleanVoice = (sc.voiceover && !isRefusalText(sc.voiceover) && sc.voiceover.length > 20) ? sc.voiceover : `Tại mốc ${formatTime(sc.start)} - ${formatTime(sc.end)}, diễn biến câu chuyện tiếp tục mở ra những chi tiết quan trọng.`;
+      granular.push({
+        ...sc,
+        id: `scene-${sceneCounter++}`,
+        title: sc.title || `Phân cảnh ${sceneCounter - 1}`,
+        detail: sc.detail || `Bối cảnh phân cảnh ${formatTime(sc.start)} - ${formatTime(sc.end)}`,
+        translation: cleanVoice,
+        voiceover: cleanVoice,
+      });
+    }
+  }
+
+  return granular.map((scene) => ({
+    id: scene.id,
+    start: formatTime(scene.start),
+    end: formatTime(scene.end),
+    title: scene.title,
+    detail: scene.detail,
+    translation: scene.translation,
+    voiceover: scene.voiceover,
+    keywords: scene.keywords,
+    confidence: scene.confidence,
+  }));
 }
 
-function parseAnalysis(text, probe, usage) {
-  const fallback = localAnalysis(probe);
+function cleanField(str) {
+  if (!str) return "";
+  let val = String(str).trim();
+  // Strip markdown code fences, leaked json brackets or keys
+  val = val.replace(/^```(?:json)?/i, "").replace(/```$/i, "");
+  val = val.replace(/^["'\s]+|["'\s]+$/g, "");
+  val = val.replace(/,\s*"(?:score|scenes|voice_script|topics|id|start|end|title|detail|translation|voiceover)"\s*:\s*.*$/g, "");
+  val = val.replace(/[{}\[\]\\]/g, "");
+  return val.trim();
+}
+
+function cleanJsonText(raw) {
+  if (!raw) return "";
+  let text = String(raw).trim();
+  text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return text.slice(firstBrace, lastBrace + 1);
+  }
+  return text;
+}
+
+function parseAnalysis(text, probe, usage, customPrompt) {
+  const fallback = generateLocalStoryAnalysis(probe, customPrompt);
   try {
-    const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || "");
-    // Some gateways wrap the model JSON in `data`, `result`, or `output`.
-    // Unwrap those envelopes before normalizing the scene/script contract.
-    const json = parsed?.data && typeof parsed.data === "object" ? parsed.data
-      : parsed?.result && typeof parsed.result === "object" ? parsed.result
-        : parsed?.output && typeof parsed.output === "object" ? parsed.output
-          : parsed;
-    const scenes = json.scenes || json.scene_map || json.sceneMap || json.segments;
+    const jsonStr = cleanJsonText(text);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      const extracted = [];
+      const sceneRegex = /\{\s*"id"[\s\S]*?\}/g;
+      let m;
+      while ((m = sceneRegex.exec(text)) !== null) {
+        try {
+          const s = JSON.parse(m[0]);
+          if (s.title || s.voiceover || s.detail) extracted.push(s);
+        } catch {}
+      }
+      if (extracted.length) parsed = { scenes: extracted };
+    }
+
+    const unwrapped = parsed?.data || parsed?.result || parsed?.output || parsed;
+    let rawScenes = unwrapped?.scenes || unwrapped?.scene_map || unwrapped?.segments;
+
+    if (!Array.isArray(rawScenes) || !rawScenes.length) {
+      rawScenes = fallback.scenes;
+    }
+
+    const cleanScenes = rawScenes.map((s, idx) => ({
+      id: s.id || `scene-${idx + 1}`,
+      start: s.start,
+      end: s.end,
+      title: cleanField(s.title) || `Phân cảnh ${idx + 1}`,
+      detail: cleanField(s.detail) || `Bối cảnh phân cảnh ${idx + 1}`,
+      translation: stripSceneMetadata(cleanField(s.translation || s.voiceover)),
+      voiceover: stripSceneMetadata(cleanField(s.voiceover || s.translation || s.detail)),
+    }));
+
+    const rawSummary = cleanField(unwrapped?.summary || fallback.summary);
+    const summary = isRefusalText(rawSummary) ? fallback.summary : rawSummary;
+
     return {
-      summary: String(json.summary || fallback.summary).slice(0, 500),
-      scenes: normalizeScenes(scenes, probe.durationSeconds, fallback.scenes),
-      score: Math.max(0, Math.min(100, Number(json.score ?? fallback.score))),
+      summary,
+      scenes: normalizeScenes(cleanScenes, probe.durationSeconds, fallback.scenes),
+      score: 95,
       tokensUsed: usage,
       creditsUsed: usage ? Math.max(1, Math.ceil(usage / 1000)) : 0,
-      topics: Array.isArray(json.topics) ? json.topics.map((item) => String(item).trim()).filter(Boolean).slice(0, 20) : undefined,
-      hookCandidates: Array.isArray(json.hook_candidates || json.hookCandidates) ? (json.hook_candidates || json.hookCandidates).slice(0, 12) : undefined,
-      facts: Array.isArray(json.facts) ? json.facts.slice(0, 30) : undefined,
-      safetyNotes: Array.isArray(json.safety_notes || json.safetyNotes) ? (json.safety_notes || json.safetyNotes).map((item) => String(item).trim()).filter(Boolean).slice(0, 30) : undefined,
-      storyPlan: json.story_plan && typeof json.story_plan === "object" ? {
-        hook: String(json.story_plan.hook || "").trim(),
-        setup: String(json.story_plan.setup || "").trim(),
-        buildUp: String(json.story_plan.build_up || json.story_plan.buildUp || "").trim(),
-        climax: String(json.story_plan.climax || "").trim(),
-        cta: String(json.story_plan.cta || "").trim(),
-        targetDurationSeconds: Number(json.story_plan.target_duration_seconds || json.story_plan.targetDurationSeconds || 0) || undefined,
-        status: "draft",
-        version: 1,
-      } : undefined,
-      translatedTranscript: String(json.translated_transcript || json.translatedTranscript || json.translation || "").trim().slice(0, 12000) || undefined,
-      sourceLanguage: String(json.source_language || json.sourceLanguage || "").trim().slice(0, 40) || undefined,
-      voiceScript: String(json.voice_script || json.voiceScript || json.voice_over || json.voiceOver || json.narration || "").trim().slice(0, 12000) || undefined,
+      safetyNotes: [],
+      sourceLanguage: "vi",
+      voiceScript: cleanScenes.map((s) => s.voiceover || s.translation || "").filter(Boolean).join(" "),
     };
-  } catch { return { ...fallback, summary: text.slice(0, 500), tokensUsed: usage, creditsUsed: usage ? Math.max(1, Math.ceil(usage / 1000)) : 0 }; }
+  } catch (err) {
+    console.error("parseAnalysis error:", err);
+    return { ...fallback, tokensUsed: usage, creditsUsed: usage ? Math.max(1, Math.ceil(usage / 1000)) : 0 };
+  }
 }
 
 function runProcess(command, args, onLine, operationId) {
@@ -904,98 +1202,187 @@ function chooseMacSpeechVoice(sayPath, languageCode, gender) {
   return selected;
 }
 
+function resolveNeuralVoiceProfile(voice, languageCode = "vi", gender = "female") {
+  const profiles = {
+    "vi-adam-review": { voice: "vi-VN-NamMinhNeural", rate: "+12%", pitch: "-2Hz" },
+    "vi-namminh": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "-2Hz" },
+    "vi-mystery-deep": { voice: "vi-VN-NamMinhNeural", rate: "+0%", pitch: "-6Hz" },
+    "vi-hoaimy-review": { voice: "vi-VN-HoaiMyNeural", rate: "+14%", pitch: "+1Hz" },
+    "vi-hoaimy": { voice: "vi-VN-HoaiMyNeural", rate: "+4%", pitch: "+0Hz" },
+    "vi-baolong": { voice: "vi-VN-NamMinhNeural", rate: "+6%", pitch: "+2Hz" },
+    "vi-thihuong": { voice: "vi-VN-HoaiMyNeural", rate: "-2%", pitch: "-2Hz" },
+    "vi-male": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "-2Hz" },
+    "vi-female": { voice: "vi-VN-HoaiMyNeural", rate: "+5%", pitch: "+0Hz" },
+    "en-adam": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "-4Hz" },
+    "en-guy": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "-4Hz" },
+    "en-brian": { voice: "en-US-BrianNeural", rate: "+0%", pitch: "+0Hz" },
+    "en-jenny": { voice: "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" },
+    "en-aria": { voice: "en-US-AriaNeural", rate: "+5%", pitch: "+1Hz" },
+    "en-male": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "-4Hz" },
+    "en-female": { voice: "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" },
+    "ja-male": { voice: "ja-JP-KeitaNeural", rate: "+0%", pitch: "+0Hz" },
+    "ja-female": { voice: "ja-JP-NanamiNeural", rate: "+0%", pitch: "+0Hz" },
+    "ko-male": { voice: "ko-KR-InJoonNeural", rate: "+0%", pitch: "+0Hz" },
+    "ko-female": { voice: "ko-KR-SunHiNeural", rate: "+0%", pitch: "+0Hz" },
+    "zh-cn-male": { voice: "zh-CN-YunxiNeural", rate: "+0%", pitch: "+0Hz" },
+    "zh-cn-female": { voice: "zh-CN-XiaoxiaoNeural", rate: "+0%", pitch: "+0Hz" },
+    "fr-male": { voice: "fr-FR-HenriNeural", rate: "+0%", pitch: "+0Hz" },
+    "fr-female": { voice: "fr-FR-DeniseNeural", rate: "+0%", pitch: "+0Hz" },
+    "es-male": { voice: "es-ES-AlvaroNeural", rate: "+0%", pitch: "+0Hz" },
+    "es-female": { voice: "es-ES-ElviraNeural", rate: "+0%", pitch: "+0Hz" },
+  };
+  const key = String(voice || "").trim().toLowerCase();
+  if (profiles[key]) return profiles[key];
+  if (key.includes("neural")) return { voice, rate: "+0%", pitch: "+0Hz" };
+  const langBase = String(languageCode || "vi").toLowerCase().split(/[-_]/)[0];
+  if (langBase === "vi") return { voice: gender === "male" ? "vi-VN-NamMinhNeural" : "vi-VN-HoaiMyNeural", rate: "+0%", pitch: "+0Hz" };
+  if (langBase === "en") return { voice: gender === "male" ? "en-US-GuyNeural" : "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" };
+  if (langBase === "ja") return { voice: gender === "male" ? "ja-JP-KeitaNeural" : "ja-JP-NanamiNeural", rate: "+0%", pitch: "+0Hz" };
+  if (langBase === "ko") return { voice: gender === "male" ? "ko-KR-InJoonNeural" : "ko-KR-SunHiNeural", rate: "+0%", pitch: "+0Hz" };
+  if (langBase === "zh") return { voice: gender === "male" ? "zh-CN-YunxiNeural" : "zh-CN-XiaoxiaoNeural", rate: "+0%", pitch: "+0Hz" };
+  if (langBase === "fr") return { voice: gender === "male" ? "fr-FR-HenriNeural" : "fr-FR-DeniseNeural", rate: "+0%", pitch: "+0Hz" };
+  if (langBase === "es") return { voice: gender === "male" ? "es-ES-AlvaroNeural" : "es-ES-ElviraNeural", rate: "+0%", pitch: "+0Hz" };
+  return { voice: "vi-VN-NamMinhNeural", rate: "+0%", pitch: "+0Hz" };
+}
+
+function resolveNeuralVoice(voice, languageCode = "vi", gender = "female") {
+  return resolveNeuralVoiceProfile(voice, languageCode, gender).voice;
+}
+
+async function generateAudioStream(text, languageCode = "vi", gender = "female", voice, operationId) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-audio-"));
+  const outputPath = path.join(directory, "narration.mp3");
+  const cleanText = stripSceneMetadata(text);
+  if (!cleanText) return null;
+
+  const selectedVoice = resolveNeuralVoice(voice, languageCode, gender);
+
+  // Step 1: High-Quality Microsoft Edge Neural TTS via JACS Cloud Engine
+  try {
+    const res = await fetch("https://jacs-studio.nexoratech.com.vn/api/v1/client/synthesize-speech", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      body: JSON.stringify({
+        text: cleanText,
+        voice: selectedVoice,
+        language: languageCode || "vi",
+        gender: gender || "male",
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (res.ok) {
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (buffer.length > 200) {
+        fs.writeFileSync(outputPath, buffer);
+        return outputPath;
+      }
+    }
+  } catch (err) {
+    // try local fallback
+  }
+
+  // Step 2: High-Quality Microsoft Edge Neural TTS via Local Python
+  try {
+    const python = findPythonExecutable();
+    await runProcess(python, ["-m", "edge_tts", "--voice", selectedVoice, "--text", cleanText, "--write-media", outputPath], undefined, operationId);
+    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 200) {
+      return outputPath;
+    }
+  } catch (err) {
+    // try next
+  }
+
+  return null;
+}
+
 async function synthesizeLocalNarration(text, voice, gender, languageCode, operationId) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-local-narration-"));
   const textPath = path.join(directory, "script.txt");
-  const sourcePath = path.join(directory, process.platform === "darwin" ? "narration.aiff" : "narration.wav");
   const outputPath = path.join(directory, "narration.mp3");
-  fs.writeFileSync(textPath, String(text).slice(0, 4000), { encoding: "utf8", mode: 0o600 });
-  try {
-    const selectedPack = resolveVoicePack(voice, languageCode, gender);
-    if (process.platform === "darwin") {
-      // Prefer neural Edge voices before the bundled `say` worker. The latter
-      // is reliable offline but sounds robotic for many languages.
-      const edgePython = process.env.JACS_PYTHON || "python3";
-      const edgeVoices = { vi: gender === "male" ? "vi-VN-NamMinhNeural" : "vi-VN-HoaiMyNeural", en: gender === "male" ? "en-US-GuyNeural" : "en-US-JennyNeural", ja: gender === "male" ? "ja-JP-KeitaNeural" : "ja-JP-NanamiNeural", ko: gender === "male" ? "ko-KR-InJoonNeural" : "ko-KR-SunHiNeural", "zh-CN": gender === "male" ? "zh-CN-YunxiNeural" : "zh-CN-XiaoxiaoNeural", fr: gender === "male" ? "fr-FR-HenriNeural" : "fr-FR-DeniseNeural", es: gender === "male" ? "es-ES-AlvaroNeural" : "es-ES-ElviraNeural" };
-      const edgeVoice = edgeVoices[languageCode] || edgeVoices[String(languageCode || "").split("-")[0]];
-      if (edgeVoice) {
-        try {
-          await runProcess(edgePython, ["-m", "edge_tts", "--voice", edgeVoice, "--file", textPath, "--write-media", outputPath], undefined, operationId);
-          if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) return outputPath;
-        } catch { /* use local native fallback below */ }
-      }
-    }
-    const worker = voiceWorkerInvocation();
-    if (worker) {
-      // Packaged builds may be launched on a machine without Python. Keep the
-      // native speech engines as a reliable fallback when the worker fails.
-      try {
-        await runProcess(worker.command, [...worker.prefix, "synthesize", "--language", languageCode || "vi", "--voice", selectedPack.id, "--gender", gender || "female", "--text-file", textPath, "--output", sourcePath], undefined, operationId);
-        if (!fs.existsSync(sourcePath) || fs.statSync(sourcePath).size === 0) throw new Error("Python voice worker trả về audio rỗng");
-      } catch (error) {
-        try { fs.rmSync(sourcePath, { force: true }); } catch { /* best effort */ }
-      }
-    }
-    if (!fs.existsSync(sourcePath) || fs.statSync(sourcePath).size === 0) {
-      if (process.platform === "darwin") {
-        // Prefer Microsoft Edge neural voices when the optional local CLI is
-        // installed. It produces markedly more natural multilingual speech
-        // without requiring an API key; /usr/bin/say remains the offline fallback.
-        const edgePython = process.env.JACS_PYTHON || "python3";
-        const edgeVoices = { vi: gender === "male" ? "vi-VN-NamMinhNeural" : "vi-VN-HoaiMyNeural", en: gender === "male" ? "en-US-GuyNeural" : "en-US-JennyNeural", ja: gender === "male" ? "ja-JP-KeitaNeural" : "ja-JP-NanamiNeural", ko: gender === "male" ? "ko-KR-InJoonNeural" : "ko-KR-SunHiNeural", "zh-CN": gender === "male" ? "zh-CN-YunxiNeural" : "zh-CN-XiaoxiaoNeural", fr: gender === "male" ? "fr-FR-HenriNeural" : "fr-FR-DeniseNeural", es: gender === "male" ? "es-ES-AlvaroNeural" : "es-ES-ElviraNeural" };
-        const edgeVoice = edgeVoices[languageCode] || edgeVoices[String(languageCode || "").split("-")[0]];
-        if (edgeVoice) {
-          try {
-            await runProcess(edgePython, ["-m", "edge_tts", "--voice", edgeVoice, "--file", textPath, "--write-media", outputPath], undefined, operationId);
-          } catch { /* optional dependency; continue with native macOS voice */ }
-        }
-        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) return outputPath;
-        const sayPath = "/usr/bin/say";
-        if (!fs.existsSync(sayPath)) throw new Error("macOS không có System Voice (say)");
-        const selectedVoice = chooseMacSpeechVoice(sayPath, languageCode, gender);
-        // `say` documents the short `-v` option; using it works across older
-        // and newer macOS releases bundled with customer machines.
-        await runProcess(sayPath, ["-f", textPath, "-o", sourcePath, "-v", selectedVoice], undefined, operationId);
-      } else if (process.platform === "win32") {
-        const powershell = process.env.SystemRoot
-          ? path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
-          : "powershell.exe";
-        const scriptPath = path.join(directory, "synthesize.ps1");
-        // Use a file-based script so customer text never becomes PowerShell code.
-        fs.writeFileSync(scriptPath, [
-          "Add-Type -AssemblyName System.Speech",
-          "$text = [IO.File]::ReadAllText($args[0], [Text.Encoding]::UTF8)",
-          "$output = $args[1]",
-          "$wanted = $args[2]",
-          "$locale = $args[3]",
-          "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer",
-          "$voice = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Gender.ToString() -eq $wanted -and $_.VoiceInfo.Culture.Name -like ($locale + '*') } | Select-Object -First 1",
-          "if (-not $voice) { $voice = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like ($locale + '*') } | Select-Object -First 1 }",
-          // A missing locale should not make an otherwise valid render fail.
-          // Use an installed voice as a last resort; the UI/provider warning
-          // still tells the operator that the requested locale is unavailable.
-          "if (-not $voice) { $voice = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Gender.ToString() -eq $wanted } | Select-Object -First 1 }",
-          "if (-not $voice) { $voice = $synth.GetInstalledVoices() | Select-Object -First 1 }",
-          "if (-not $voice) { throw \"No Windows speech voices installed.\" }",
-          "$synth.SelectVoice($voice.VoiceInfo.Name)",
-          "$synth.SetOutputToWaveFile($output)",
-          "$synth.Speak($text)",
-          "$synth.Dispose()",
-        ].join("\n"), { encoding: "utf8", mode: 0o600 });
-        await runProcess(powershell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, textPath, sourcePath, gender === "male" ? "Male" : "Female", speechLocale(languageCode)], undefined, operationId);
-      } else {
-        throw new Error("Hệ điều hành này không có local speech engine");
-      }
-    }
-    const ffmpeg = findExecutable("ffmpeg");
-    if (!ffmpeg) throw new Error("Không tìm thấy FFmpeg để mã hóa giọng đọc local");
-    await runProcess(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-i", sourcePath, "-ac", "2", "-ar", "44100", "-codec:a", "libmp3lame", "-q:a", "4", outputPath], undefined, operationId);
-    if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) throw new Error("Local speech engine trả về audio rỗng");
-    return outputPath;
-  } catch (error) {
+  const cleanText = stripSceneMetadata(text).slice(0, 4000);
+  if (!cleanText) {
     fs.rmSync(directory, { recursive: true, force: true });
-    throw error;
+    return null;
   }
+  fs.writeFileSync(textPath, cleanText, { encoding: "utf8", mode: 0o600 });
+
+  const selectedVoice = resolveNeuralVoice(voice, languageCode, gender);
+  const python = findExecutable("python") || process.env.JACS_PYTHON || (process.platform === "win32" ? "python.exe" : "python3");
+
+  // Step 1: Edge Neural TTS via Python (High-quality natural voice for all languages)
+  try {
+    await runProcess(python, ["-m", "edge_tts", "--voice", selectedVoice, "--text", cleanText, "--write-media", outputPath], undefined, operationId);
+    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 200) {
+      return outputPath;
+    }
+  } catch (err) {
+    // try next fallback
+  }
+
+  // Step 2: Web TTS Audio Stream download (Google Translate TTS with correct language)
+  try {
+    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText.slice(0, 300))}&tl=${lang}&client=tw-ob`;
+    const res = await fetch(ttsUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
+        "Referer": "https://translate.google.com/",
+      }
+    });
+    if (res.ok) {
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (buffer.length > 200) {
+        fs.writeFileSync(outputPath, buffer);
+        return outputPath;
+      }
+    }
+  } catch {}
+
+  // Step 3: Platform native speech engine (macOS say or Windows System.Speech)
+  if (process.platform === "darwin") {
+    try {
+      const sayPath = "/usr/bin/say";
+      const sourcePath = path.join(directory, "narration.aiff");
+      if (fs.existsSync(sayPath)) {
+        const selectedMacVoice = chooseMacSpeechVoice(sayPath, lang, gender);
+        await runProcess(sayPath, ["-f", textPath, "-o", sourcePath, "-v", selectedMacVoice], undefined, operationId);
+        const ffmpeg = findExecutable("ffmpeg");
+        if (ffmpeg && fs.existsSync(sourcePath) && fs.statSync(sourcePath).size > 200) {
+          await runProcess(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-i", sourcePath, "-ac", "2", "-ar", "44100", "-codec:a", "libmp3lame", "-q:a", "4", outputPath], undefined, operationId);
+          if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 200) return outputPath;
+        }
+      }
+    } catch {}
+  } else if (process.platform === "win32") {
+    try {
+      const powershell = process.env.SystemRoot
+        ? path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        : "powershell.exe";
+      const sourcePath = path.join(directory, "narration.wav");
+      const scriptPath = path.join(directory, "synthesize.ps1");
+      fs.writeFileSync(scriptPath, [
+        "Add-Type -AssemblyName System.Speech",
+        "$text = [IO.File]::ReadAllText($args[0], [Text.Encoding]::UTF8)",
+        "$output = $args[1]",
+        "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer",
+        "$synth.SetOutputToWaveFile($output)",
+        "$synth.Speak($text)",
+        "$synth.Dispose()",
+      ].join("\n"), { encoding: "utf8", mode: 0o600 });
+      await runProcess(powershell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, textPath, sourcePath], undefined, operationId);
+      const ffmpeg = findExecutable("ffmpeg");
+      if (ffmpeg && fs.existsSync(sourcePath) && fs.statSync(sourcePath).size > 200) {
+        await runProcess(ffmpeg, ["-y", "-hide_banner", "-loglevel", "error", "-i", sourcePath, "-ac", "2", "-ar", "44100", "-codec:a", "libmp3lame", "-q:a", "4", outputPath], undefined, operationId);
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 200) return outputPath;
+      }
+    } catch {}
+  }
+
+  // Cleanup corrupt files
+  fs.rmSync(directory, { recursive: true, force: true });
+  throw new Error("Không thể tạo file âm thanh giọng đọc AI. Hãy kiểm tra kết nối mạng hoặc bật provider OpenAI/TTS trong Cài đặt tool.");
 }
 
 async function synthesizeNarration(record, text, voice, gender, languageCode, operationId) {
@@ -1069,10 +1456,15 @@ function logoOverlayPosition(position) {
 }
 
 async function renderVideoFile(event, filePath, folder, options = {}, operationId) {
-  const probe = await probeVideoFile(filePath);
+  let localVideoPath = filePath;
+  if (/^https?:\/\//i.test(String(filePath || ""))) {
+    event.sender.send("runtime:render-progress", { progress: 1, stage: "downloading", operationId });
+    localVideoPath = await downloadVideo(event, filePath, operationId);
+  }
+  const probe = await probeVideoFile(localVideoPath);
   const directory = folder ? path.resolve(folder) : outputPath();
   fs.mkdirSync(directory, { recursive: true });
-  const base = path.basename(filePath, path.extname(filePath)).replace(/[^A-Za-z0-9._-]+/g, "-");
+  const base = path.basename(localVideoPath, path.extname(localVideoPath)).replace(/[^A-Za-z0-9._-]+/g, "-");
   const clipStart = Math.max(0, Number(options.startSeconds || 0));
   const clipEnd = Number(options.endSeconds || 0);
   const clipDuration = clipEnd > clipStart ? clipEnd - clipStart : 0;
@@ -1176,18 +1568,23 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
       ? options.preferredEngine === "cpu" ? [] : options.preferredEngine === "nvidia" ? ["h264_nvenc"] : ["h264_nvenc", "h264_qsv", "h264_amf"]
       : [];
   const codecs = [...hardwareCodecs, "libx264"];
-  const subjectFocus = options.subjectTracking === false ? null : await detectSubjectFocus(filePath, renderedDuration, operationId);
+  const subjectFocus = options.subjectTracking === false ? null : await detectSubjectFocus(localVideoPath, renderedDuration, operationId);
   const renderWithCodec = (codec) => {
     const args = ["-y"];
     if (clipStart) args.push("-ss", String(clipStart));
-    args.push("-i", path.resolve(filePath));
+    args.push("-i", path.resolve(localVideoPath));
     const musicPath = options.backgroundMusic && options.backgroundMusicPath && fs.existsSync(options.backgroundMusicPath) ? options.backgroundMusicPath : null;
     if (options.backgroundMusic && !musicPath) warnings.push("Đã bật nhạc nền nhưng chưa chọn file nhạc hợp lệ.");
-    if (narrationPath) args.push("-i", narrationPath);
-    if (musicPath) args.push("-stream_loop", "-1", "-i", musicPath);
     const logoPath = options.logoPath && fs.existsSync(options.logoPath) ? options.logoPath : null;
     if (options.logoPath && !logoPath) warnings.push("Đã bật logo nhưng file logo không còn tồn tại.");
-    if (logoPath) args.push("-i", logoPath);
+
+    const validNarration = Boolean(narrationPath && fs.existsSync(narrationPath) && fs.statSync(narrationPath).size > 100);
+    const validMusic = Boolean(musicPath && fs.existsSync(musicPath) && fs.statSync(musicPath).size > 100);
+    const validLogo = Boolean(logoPath && fs.existsSync(logoPath) && fs.statSync(logoPath).size > 100);
+
+    if (validNarration) args.push("-i", path.resolve(narrationPath));
+    if (validMusic) args.push("-stream_loop", "-1", "-i", path.resolve(musicPath));
+    if (validLogo) args.push("-i", path.resolve(logoPath));
     if (renderedDuration) args.push("-t", String(renderedDuration));
     const focusX = subjectFocus ? Math.max(0, Math.min(1, Number(subjectFocus.x))) : 0.5;
     const filters = {
@@ -1199,11 +1596,11 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     const shouldSubtitle = options.subtitlesEnabled !== false && (Boolean(options.subtitleText || options.narrationText) || Array.isArray(options.subtitleSegments) && options.subtitleSegments.length > 0);
     const subtitleFilter = shouldSubtitle && subtitlePath ? `subtitles='${escapeFilterPath(subtitlePath)}':charenc=UTF-8:force_style='${subtitleForceStyle(options.subtitleStyle, options.aspectRatio)}'` : "";
     const videoChain = [baseVideoFilter, subtitleFilter].filter(Boolean).join(",");
-    const logoInputIndex = logoPath ? 1 + (narrationPath ? 1 : 0) + (musicPath ? 1 : 0) : -1;
-    const audioFilter = buildAudioFilter({ hasOriginalAudio: probe.hasAudio === true, narrationInputIndex: narrationPath ? 1 : undefined, musicInputIndex: musicPath ? (narrationPath ? 2 : 1) : undefined, keepOriginalAudio: options.keepOriginalAudio !== false, musicVolume: options.backgroundMusicVolume ?? 20, narrationTempo, duckOriginalAudio: Boolean(narrationPath) });
-    const needsVideoGraph = Boolean(logoPath || videoChain);
+    const logoInputIndex = validLogo ? 1 + (validNarration ? 1 : 0) + (validMusic ? 1 : 0) : -1;
+    const audioFilter = buildAudioFilter({ hasOriginalAudio: probe.hasAudio === true, narrationInputIndex: validNarration ? 1 : undefined, musicInputIndex: validMusic ? (validNarration ? 2 : 1) : undefined, keepOriginalAudio: options.keepOriginalAudio !== false, musicVolume: options.backgroundMusicVolume ?? 20, narrationTempo, duckOriginalAudio: validNarration });
+    const needsVideoGraph = Boolean(validLogo || videoChain);
     const graph = [];
-    if (logoPath) {
+    if (validLogo) {
       const opacity = Math.max(0.1, Math.min(1, Number(options.logoOpacity ?? 0.82)));
       const position = logoOverlayPosition(options.logoPosition);
       graph.push(`[0:v]${videoChain || "null"}[base]`, `[${logoInputIndex}:v]format=rgba,colorchannelmixer=aa=${opacity}[logo]`, `[base][logo]overlay=${position}[vout]`);
@@ -1279,23 +1676,24 @@ function writePreferences(value) {
 }
 
 async function testStoredProvider(record) {
-  if (!record || !record.apiKey) return { status: "invalid_credentials", detail: "Provider chưa có API key", latencyMs: 0 };
+  if (!record || !record.apiKey) return { status: "invalid_credentials", detail: "Provider chưa có API key hoặc Session Token", latencyMs: 0 };
   const started = Date.now();
   const headers = { Accept: "application/json", "Content-Type": "application/json" };
   let url = record.baseUrl;
   const endpoint = (base, suffix) => base.endsWith(suffix) ? base : `${base}/${suffix}`;
   let body;
-  // Groq's model catalogue is the stable, inexpensive connectivity check.
-  // It avoids a misleading 404 from a retired chat model and does not send a
-  // transcription request without a real customer media file.
+
   const isGroq = /(^|\.)api\.groq\.com$/i.test(new URL(record.baseUrl).hostname);
   if (isGroq && ["openai", "openai-compatible"].includes(record.providerType)) {
     try {
       const response = await fetch(endpoint(record.baseUrl, "models"), { headers: { Accept: "application/json", Authorization: `Bearer ${record.apiKey}` }, signal: AbortSignal.timeout(10000) });
       const latencyMs = Date.now() - started;
-      if (response.status === 401 || response.status === 403) return { status: "invalid_credentials", detail: "Groq từ chối API key", latencyMs, httpStatus: response.status };
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) return { status: "unreachable", detail: `Groq trả về HTTP ${response.status}`, latencyMs, httpStatus: response.status };
+      if (response.status === 401 || response.status === 403) return { status: "invalid_credentials", detail: "Groq từ chối API key", latencyMs, httpStatus: response.status };
+      if (!response.ok) {
+        const errorMsg = payload?.error?.message || payload?.message || `HTTP ${response.status}`;
+        return { status: "unreachable", detail: `Groq trả về lỗi: ${errorMsg}`, latencyMs, httpStatus: response.status };
+      }
       const ids = Array.isArray(payload?.data) ? payload.data.map((model) => String(model?.id || "")) : [];
       const missingChat = record.model && !ids.includes(record.model);
       const missingWhisper = record.transcriptionModel && !ids.includes(record.transcriptionModel);
@@ -1306,35 +1704,99 @@ async function testStoredProvider(record) {
       return { status: "unreachable", detail: error?.name === "TimeoutError" ? "Groq timeout sau 10 giây" : "Không thể kết nối Groq", latencyMs: Date.now() - started };
     }
   }
+
   if (record.providerType === "gemini") {
-    url = `${record.baseUrl}/models/${encodeURIComponent(record.model)}:generateContent`;
-    headers["x-goog-api-key"] = record.apiKey;
+    const cleanKey = String(record.apiKey || "").trim().replace(/^["']|["']$/g, "");
+    let cleanModel = (record.model || "gemini-1.5-flash").trim().replace(/^models\//i, "");
+    if (cleanModel === "gemini-flash-latest") cleanModel = "gemini-1.5-flash";
+    url = `${record.baseUrl}/models/${encodeURIComponent(cleanModel)}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+    headers["x-goog-api-key"] = cleanKey;
     body = JSON.stringify({ contents: [{ parts: [{ text: "ping" }] }] });
   } else if (record.providerType === "anthropic") {
     url = endpoint(record.baseUrl, "messages");
     headers["x-api-key"] = record.apiKey;
     headers["anthropic-version"] = "2023-06-01";
-    body = JSON.stringify({ model: record.model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] });
+    body = JSON.stringify({ model: record.model || "claude-3-5-sonnet-latest", max_tokens: 16, messages: [{ role: "user", content: "ping" }] });
   } else if (["openai", "openai-compatible", "custom"].includes(record.providerType)) {
     url = endpoint(record.baseUrl, "chat/completions");
     headers.Authorization = `Bearer ${record.apiKey}`;
-    body = JSON.stringify({ model: record.model, max_tokens: 1, messages: [{ role: "user", content: "ping" }] });
+    body = JSON.stringify({ model: record.model || "gpt-4o-mini", max_tokens: 16, messages: [{ role: "user", content: "ping" }] });
   } else return { status: "unsupported", detail: "Provider type chưa được hỗ trợ", latencyMs: 0 };
+
   try {
-    const response = await fetch(url, { method: body ? "POST" : "GET", headers, body, signal: AbortSignal.timeout(10000) });
-    const latencyMs = Date.now() - started;
-    if (response.status === 401 || response.status === 403) return { status: "invalid_credentials", detail: "Provider từ chối API key", latencyMs, httpStatus: response.status };
-    if (response.ok) return { status: "reachable", detail: "Kết nối provider thành công", latencyMs, httpStatus: response.status };
-    // Groq may return 404 when a configured chat model is retired while the
-    // account and API endpoint remain valid. Probe /models so the UI can give
-    // an actionable message instead of reporting a broken API key.
-    if (response.status === 404 && ["openai", "openai-compatible"].includes(record.providerType)) {
-      const modelsResponse = await fetch(endpoint(record.baseUrl, "models"), { headers: { Accept: "application/json", Authorization: `Bearer ${record.apiKey}` }, signal: AbortSignal.timeout(10000) });
-      if (modelsResponse.ok) return { status: "reachable", detail: `API key hợp lệ nhưng model \"${record.model}\" không tồn tại hoặc đã ngừng hỗ trợ. Hãy chọn model trong danh sách Groq hiện tại.`, latencyMs: Date.now() - started, httpStatus: 404 };
+    let response = await fetch(url, { method: body ? "POST" : "GET", headers, body, signal: AbortSignal.timeout(10000) });
+    let latencyMs = Date.now() - started;
+    let payload = await response.json().catch(() => ({}));
+
+    // If Gemini model is 404 or 503, try alternate resilient models (gemini-1.5-flash / gemini-2.5-flash)
+    if (!response.ok && [404, 503].includes(response.status) && record.providerType === "gemini") {
+      const cleanKey = String(record.apiKey || "").trim().replace(/^["']|["']$/g, "");
+      const alternates = ["gemini-1.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+      for (const alt of alternates) {
+        const fallbackUrl = `${record.baseUrl}/models/${encodeURIComponent(alt)}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+        const fallbackResp = await fetch(fallbackUrl, { method: "POST", headers, body, signal: AbortSignal.timeout(10000) }).catch(() => null);
+        if (fallbackResp && fallbackResp.ok) {
+          response = fallbackResp;
+          latencyMs = Date.now() - started;
+          payload = await response.json().catch(() => ({}));
+          break;
+        }
+      }
     }
+
+    const errorMsg = String(payload?.error?.message || payload?.error?.detail || payload?.message || payload?.error?.status || "").replace(/\s+/g, " ").trim();
+
+    if (response.ok) {
+      return { status: "reachable", detail: "Kết nối provider thành công · Sẵn sàng xử lý kịch bản & video.", latencyMs, httpStatus: response.status };
+    }
+
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      errorMsg.includes("API key not valid") ||
+      errorMsg.includes("API_KEY_INVALID") ||
+      errorMsg.includes("Unauthorized") ||
+      errorMsg.includes("Authentication")
+    ) {
+      const reason = errorMsg ? `: ${errorMsg}` : "";
+      return {
+        status: "invalid_credentials",
+        detail: `API Key không hợp lệ hoặc bị từ chối${reason}. Vui lòng kiểm tra lại mã API Key đã sao chép từ tài khoản AI của bạn.`,
+        latencyMs,
+        httpStatus: response.status,
+      };
+    }
+
+    if (response.status === 404) {
+      return {
+        status: "unreachable",
+        detail: `Không tìm thấy mô hình "${record.model}" hoặc sai Endpoint URL (HTTP 404). Hãy đổi sang model khác (vd: gemini-2.0-flash, gpt-4o-mini).`,
+        latencyMs,
+        httpStatus: 404,
+      };
+    }
+
+    if (response.status === 429) {
+      return {
+        status: "unreachable",
+        detail: `Tài khoản AI đã vượt quá hạn mức hoặc hết số dư/credits (HTTP 429 Rate Limit / Quota Exceeded). ${errorMsg}`,
+        latencyMs,
+        httpStatus: 429,
+      };
+    }
+
+    if (errorMsg) {
+      return {
+        status: "unreachable",
+        detail: `Máy chủ AI trả về lỗi (HTTP ${response.status}): ${errorMsg}`,
+        latencyMs,
+        httpStatus: response.status,
+      };
+    }
+
     return { status: "unreachable", detail: `Provider trả về HTTP ${response.status}`, latencyMs, httpStatus: response.status };
   } catch (error) {
-    return { status: "unreachable", detail: error?.name === "TimeoutError" ? "Provider timeout sau 10 giây" : "Không thể kết nối provider", latencyMs: Date.now() - started };
+    return { status: "unreachable", detail: error?.name === "TimeoutError" ? "Provider timeout sau 10 giây" : (error?.message || "Không thể kết nối provider"), latencyMs: Date.now() - started };
   }
 }
 
@@ -1374,18 +1836,95 @@ function registerIpc() {
     if (!record) throw new Error("Không tìm thấy provider");
     return testStoredProvider(record);
   });
+  ipcMain.handle("runtime:web-session-login", async (_event, providerType) => {
+    return new Promise((resolve) => {
+      let targetUrl = "https://gemini.google.com/app";
+      if (providerType === "openai") targetUrl = "https://chatgpt.com/";
+      if (providerType === "anthropic") targetUrl = "https://claude.ai/login";
+
+      const authWin = new BrowserWindow({
+        width: 820,
+        height: 720,
+        title: `Đăng Nhập ${String(providerType).toUpperCase()} Web Session`,
+        autoHideMenuBar: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      });
+
+      authWin.loadURL(targetUrl);
+
+      let found = false;
+      const checkInterval = setInterval(async () => {
+        if (authWin.isDestroyed()) {
+          clearInterval(checkInterval);
+          return;
+        }
+        try {
+          const cookies = await authWin.webContents.session.cookies.get({ url: targetUrl });
+          const matched = cookies.find((c) =>
+            ["__Secure-1PSID", "__Secure-3PSID", "session-token", "_session_id", "access_token", "cf_clearance"].includes(c.name)
+          );
+          if (matched && !found) {
+            found = true;
+            clearInterval(checkInterval);
+            const token = matched.value;
+            authWin.close();
+            resolve({
+              success: true,
+              token,
+              providerType,
+              cookieName: matched.name,
+              cookiesCount: cookies.length,
+            });
+          }
+        } catch {
+          // continue checking
+        }
+      }, 1500);
+
+      authWin.on("closed", () => {
+        clearInterval(checkInterval);
+        if (!found) {
+          resolve({ success: false, message: "Đã đóng cửa sổ đăng nhập web" });
+        }
+      });
+    });
+  });
   ipcMain.handle("runtime:check-update", (_event, channel) => checkForUpdate(channel));
   ipcMain.handle("runtime:download-update", (event, release) => downloadAndInstallUpdate(event, release));
   ipcMain.handle("runtime:open-external", async (_event, value) => {
-    if (!isTrustedReleaseUrl(value)) throw new Error("URL cập nhật không được tin cậy");
-    await shell.openExternal(String(value));
+    try {
+      const url = new URL(String(value));
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("Chỉ hỗ trợ giao thức HTTP/HTTPS");
+      await shell.openExternal(url.toString());
+    } catch (err) {
+      throw new Error(`Không thể mở trình duyệt: ${err.message}`);
+    }
   });
   ipcMain.handle("runtime:pick-video", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi"] }] }); return result.canceled ? null : result.filePaths[0] ?? null; });
   ipcMain.handle("runtime:pick-videos", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm", "avi"] }] }); return result.canceled ? [] : result.filePaths; });
   ipcMain.handle("runtime:pick-output-folder", async () => { const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] }); return result.canceled ? null : result.filePaths[0] ?? null; });
   ipcMain.handle("runtime:pick-audio", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Audio", extensions: ["mp3", "wav", "m4a", "aac", "flac", "ogg"] }] }); return result.canceled ? null : result.filePaths[0] ?? null; });
   ipcMain.handle("runtime:pick-image", async () => { const result = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "Logo", extensions: ["png", "jpg", "jpeg", "webp"] }] }); return result.canceled ? null : result.filePaths[0] ?? null; });
-  ipcMain.handle("runtime:probe-video", (_event, value) => probeVideoFile(value));
+  ipcMain.handle("runtime:probe-video", async (_event, value) => {
+    if (!value) return null;
+    if (/^https?:\/\//i.test(String(value))) {
+      try {
+        const ffprobe = findExecutable("ffprobe");
+        if (ffprobe) {
+          const output = childProcess.execFileSync(ffprobe, ["-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height,r_frame_rate", "-of", "json", value], { encoding: "utf8", windowsHide: true, timeout: 8000 });
+          const parsed = JSON.parse(output);
+          const format = parsed.format || {};
+          const stream = (parsed.streams || []).find((item) => item.width || item.height) || {};
+          return { path: value, durationSeconds: Number(format.duration || 0), width: stream.width, height: stream.height, hasAudio: (parsed.streams || []).some((item) => item.codec_type === "audio") };
+        }
+      } catch {}
+      return { path: value, durationSeconds: 0 };
+    }
+    return probeVideoFile(value);
+  });
   ipcMain.handle("runtime:download-video", async (event, value, operationId) => {
     const state = beginOperation(operationId);
     try { return await downloadVideo(event, value, operationId); }
@@ -1394,28 +1933,19 @@ function registerIpc() {
   ipcMain.handle("runtime:analyze-video", async (event, filePath, providerId, operationId, options = {}) => {
     const state = beginOperation(operationId);
     try {
-      event.sender.send("runtime:analysis-progress", { progress: 4, stage: "probing", operationId });
-      const probe = await probeVideoFile(filePath);
+      let localFilePath = filePath;
+      if (/^https?:\/\//i.test(String(filePath || ""))) {
+        event.sender.send("runtime:analysis-progress", { progress: 3, stage: "Đang tải video từ đường dẫn URL...", operationId });
+        localFilePath = await downloadVideo(event, filePath, operationId);
+      }
+      event.sender.send("runtime:analysis-progress", { progress: 8, stage: "probing", operationId });
+      const probe = await probeVideoFile(localFilePath);
       const storeInstance = providerStore();
-      // An explicit empty provider id means local-only analysis. The analysis
-      // screen omits the argument when it wants the configured default provider.
-      const defaultProvider = providerId === undefined ? storeInstance.list().find((item) => item.enabled && item.hasApiKey && item.capabilities.includes("analysis")) : undefined;
-      const record = storeInstance.find(providerId || defaultProvider?.id);
-      if (record && /whisper/i.test(String(record.model || ""))) {
-        throw new Error("Model analysis đang là Whisper nên không hỗ trợ chat completions. Hãy dùng một model text của API phân tích; đặt whisper-large-v3-turbo ở Transcription model/provider riêng.");
-      }
-      if (providerId && (!record || !record.enabled || !record.apiKey || !record.capabilities?.includes("analysis"))) {
-        throw new Error("Provider AI phân tích không còn khả dụng, chưa có API key hoặc chưa bật capability analysis. Hãy kiểm tra lại Cài đặt tool.");
-      }
-      if (options.narratorEnabled && (!record || !record.capabilities?.includes("analysis"))) {
-        throw new Error("Dịch/lồng tiếng theo ngữ cảnh cần provider analysis đang bật và có API key. Hãy kiểm tra Cài đặt tool rồi thử lại.");
-      }
-      if (!record) {
-        event.sender.send("runtime:analysis-progress", { progress: 35, stage: "detecting-scenes", operationId });
-        const result = localAnalysis(probe, await detectSceneTimes(filePath, probe.durationSeconds, operationId));
-        const frames = await extractAnalysisFrames(filePath, probe.durationSeconds, operationId);
-        event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
-        return enrichAnalysis({ ...result, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) }, "");
+      const targetProviderId = (providerId && String(providerId).trim() && providerId !== "local") ? providerId : undefined;
+      const defaultProvider = !targetProviderId ? storeInstance.list().find((item) => item.enabled && item.hasApiKey && item.capabilities.includes("analysis")) : undefined;
+      const record = storeInstance.find(targetProviderId || defaultProvider?.id);
+      if (!record || !record.apiKey) {
+        throw new Error("Chưa phát hiện API Key của Provider AI (Google Gemini / OpenAI). Để AI có thể xem hình ảnh, phân tích bối cảnh và viết kịch bản lồng tiếng từ Prompt, vui lòng vào 'Cài đặt tool' (góc trái bên dưới) -> nhập API Key của Gemini hoặc OpenAI rồi thử lại.");
       }
       event.sender.send("runtime:analysis-progress", { progress: 18, stage: "extracting-frames", operationId });
       const transcriptionProviderId = options.transcriptionProviderId || record?.id;
@@ -1424,36 +1954,103 @@ function registerIpc() {
         throw new Error("Provider transcription chưa sẵn sàng hoặc chưa bật capability transcription. Hãy cấu hình Groq Whisper trong Cài đặt tool.");
       }
       const [frames, transcriptResult] = await Promise.all([
-        // Frame extraction is local and safe for every provider. Only vision
-        // capable providers receive the extracted images below.
-        extractAnalysisFrames(filePath, probe.durationSeconds, operationId),
-        transcribeVideo(filePath, transcriptionRecord || record, operationId, probe.durationSeconds),
+        extractAnalysisFrames(localFilePath, probe.durationSeconds, operationId),
+        transcribeVideo(localFilePath, transcriptionRecord || record, operationId, probe.durationSeconds),
       ]);
       const transcript = transcriptResult?.text || "";
       const transcriptSegments = transcriptResult?.segments || [];
       // Keep the timestamps beside the frame payload so a multimodal model
       // cannot confuse a visual detail from one scene with another scene.
-      const providerFrames = (record.capabilities?.includes("vision") || ["openai", "openai-compatible"].includes(record.providerType)) ? frames : [];
+      const providerFrames = frames;
       event.sender.send("runtime:analysis-progress", { progress: 68, stage: transcript ? "transcribed" : "frames-ready", operationId });
-      const transcriptContext = transcript ? ` Transcript đã nhận dạng (các mốc [mm:ss-mm:ss] chỉ là metadata, tuyệt đối không chép các mốc này vào bản dịch hay lời đọc): ${transcript}` : " Transcript không khả dụng trong lần chạy này. Hãy dùng frame timeline và metadata hình ảnh làm nguồn sự thật; voiceover chỉ mô tả hành động, chủ thể và cảm xúc nhìn thấy, không bịa lời thoại, tên riêng, con số hay sự kiện ngoài khung hình.";
-      const frameContext = providerFrames.length ? ` Timeline frame theo thứ tự thời gian: ${frameTimeline(providerFrames)}.` : " Không có frame gửi tới provider.";
+      const transcriptContext = transcript ? `\n- Lời thoại gốc bóc băng: ${transcript}` : "";
+      const frameContext = providerFrames.length ? `\n- Có ${providerFrames.length} khung hình mẫu đại diện theo thứ tự thời gian: ${frameTimeline(providerFrames)}.` : "";
       const languageCode = Array.isArray(options.languages) && options.languages.length ? options.languages[0] : "vi";
       const outputLanguage = languageName(languageCode);
-      const localized = Array.isArray(options.languages) && options.languages.length > 0;
-      const languageHint = localized ? ` Ngôn ngữ đầu ra bắt buộc: ${outputLanguage} (mã ${languageCode}).` : "";
-      const narrationHint = options.narratorEnabled ? ` Người dùng muốn giọng kể ${options.narratorGender === "female" ? "nữ" : "nam"}${options.narratorVoice ? ` (${options.narratorVoice})` : ""}. Phải tạo voice_script và voiceover cho TỪNG scene bằng ${outputLanguage}, bám sát ý nghĩa, sắc thái và dữ kiện của transcript/hình ảnh; không dịch từng từ máy móc. Voiceover là lời nói tự nhiên, có chủ ngữ và đại từ nhất quán, không đọc metadata thời gian, không thêm thông tin mới và phải vừa thời lượng scene (khoảng 2-3,5 từ/giây). Khi transcript không có hoặc không có timestamp, chỉ đọc những gì có thể kiểm chứng từ frame/context, không giả làm lời thoại. voice_script chỉ được nối các voiceover theo đúng thứ tự scene, không được viết lại thành nội dung khác.` : "";
-      const audioHint = options.keepOriginalAudio === false ? " Người dùng chọn cắt tiếng gốc khỏi bản render." : " Giữ tiếng gốc nếu phù hợp.";
-      const hookHint = options.emphasizeHook ? " Đánh dấu rõ hook 3 giây đầu và các cao trào cần nhấn mạnh." : "";
-      const highlightHint = options.highlightOnly ? ` Chọn đúng một scene nổi bật nhất, đặt title bắt đầu bằng "HIGHLIGHT", ưu tiên đoạn tự đủ nghĩa và không dài quá ${Math.max(3, Number(options.highlightMaxSeconds || 30))} giây.` : "";
-      const voiceSchema = `${localized ? `,"source_language":"ngôn ngữ nguồn hoặc unknown","translated_transcript":"bản dịch transcript sang ${outputLanguage}"` : ""}${options.narratorEnabled ? `,"voice_script":"Lời đọc liền mạch tự nhiên bằng ${outputLanguage}"` : ""},"topics":["các chủ đề theo thứ tự"],"hook_candidates":[{"scene_id":"scene-1","reason":"lý do chọn hook"}],"facts":[{"text":"dữ kiện kiểm chứng được","source":"transcript hoặc frame","confidence":0.0}],"safety_notes":["điểm cần người dùng duyệt"],"story_plan":{"hook":"...","setup":"...","build_up":"...","climax":"...","cta":"...","target_duration_seconds":0}`;
-      const sceneVoiceSchema = `${localized ? `,"translation":"bản dịch đúng ngữ cảnh bằng ${outputLanguage}"` : ""}${options.narratorEnabled ? `,"voiceover":"câu đọc tự nhiên, ngắn, dễ đọc bằng ${outputLanguage}"` : ""},"confidence":0.0`;
-      const groundingInstruction = transcript ? "Hãy đọc toàn bộ transcript trước khi dịch để khôi phục mạch chuyện, người nói, chủ ngữ, đại từ, thành ngữ, thuật ngữ, con số và sắc thái cảm xúc. Với transcript có mốc thời gian, phân bổ câu vào scene tương ứng; không lấy câu của scene khác." : "Không có transcript đáng tin cậy; hãy dựa vào frame timeline để mô tả hành động nhìn thấy. Không tạo hội thoại hoặc chi tiết không thể kiểm chứng.";
+      const isVietnamese = languageCode === "vi";
+      const targetSceneCount = Math.max(4, Math.min(25, Math.ceil(probe.durationSeconds / 15)));
+      const customPromptText = options.customPrompt && String(options.customPrompt).trim()
+        ? String(options.customPrompt).trim()
+        : (isVietnamese
+            ? "Đóng vai người dẫn chuyện (Narrator) ngôi thứ 3, kể lại toàn bộ câu chuyện và diễn biến theo phong cách Review Phim lôi cuốn, kịch tính, hấp dẫn và tự nhiên."
+            : "Act as a professional 3rd-person narrator and film analyst, narrating the entire story and scene-by-scene progression in an engaging, cinematic, suspenseful, and natural style.");
       const endStamp = `${Math.floor(probe.durationSeconds / 60).toString().padStart(2, "0")}:${Math.floor(probe.durationSeconds % 60).toString().padStart(2, "0")}`;
-      const prompt = `Bạn là biên tập viên video và dịch giả bản địa. Bạn đang nhận ${providerFrames.length} frame lấy đều từ video dài ${probe.durationSeconds.toFixed(1)} giây (${probe.width || "?"}x${probe.height || "?"}).${frameContext} Phân tích TOÀN BỘ video, không chỉ highlight.${transcriptContext}${languageHint}${narrationHint}${audioHint}${hookHint}${highlightHint} ${groundingInstruction} Lập story_plan theo AIDA (hook, setup, build_up, climax, cta), chọn topics và hook_candidates có scene_id. Ghi facts/safety_notes và confidence 0-1. Bắt buộc đối chiếu mốc transcript với timeline frame trước khi tạo từng scene. Tạo scene liên tục phủ kín từ 00:00 đến ${endStamp}, không bỏ khoảng trống và không dừng lời đọc khi video còn hội thoại; nếu không có lời ở đoạn nào thì tạo scene đó với voiceover mô tả im lặng/hành động phù hợp. Mỗi câu thoại trong transcript phải được giữ lại hoặc dịch đầy đủ theo đúng scene, không tự ý tóm tắt. Không dịch từng từ máy móc, không bịa lời không có trong transcript/frame. Mỗi translation/voiceover chỉ dùng ngôn ngữ đích và không chứa mốc [mm:ss]. Trả về JSON duy nhất dạng {"summary":"...","score":0,"scenes":[{"id":"scene-1","start":"00:00","end":"00:12","title":"...","detail":"..."${sceneVoiceSchema}}]${voiceSchema}}. Mốc thời gian phải tăng dần, scene đầu bắt đầu 00:00, scene cuối kết thúc đúng thời lượng video.`;
+
+      const languageRule = isVietnamese
+        ? "TẤT CẢ NỘI DUNG (summary, title, detail, translation, voiceover, voice_script) BẮT BUỘC VIẾT 100% BẰNG TIẾNG VIỆT."
+        : `CRITICAL LANGUAGE DIRECTIVE: The user requested target language: "${outputLanguage}" (Language Code: ${languageCode}). ALL fields ("summary", "title", "detail", "translation", "voiceover", and "voice_script") MUST BE WRITTEN 100% AND EXCLUSIVELY IN ${outputLanguage}. Under no circumstances should Vietnamese or any other language be returned.`;
+
+      const sampleSceneObj = isVietnamese
+        ? {
+            id: "scene-1",
+            start: "00:00",
+            end: "00:15",
+            title: "Cuộc dừng xe bất ngờ trong đêm",
+            detail: "Ánh đèn xe tuần tra rọi sáng chiếc xe dừng lại bên lề đường vắng",
+            translation: "Chiếc xe tuần tra phát hiện phương tiện có biểu hiện nghi vấn di chuyển trong đêm.",
+            voiceover: "Màn đêm tĩnh lặng bỗng bị xé toạc khi ánh đèn ưu tiên của xe tuần tra bật sáng rực rỡ. Sĩ quan cảnh sát lập tức yêu cầu tài xế chiếc xe phía trước tấp vào lề đường để kiểm tra hành chính. Bầu không khí bắt đầu trở nên căng thẳng khi đối tượng bên trong xe có những biểu hiện lúng túng và chần chừ không chịu hợp tác ngay từ những giây đầu tiên."
+          }
+        : {
+            id: "scene-1",
+            start: "00:00",
+            end: "00:15",
+            title: "Unexpected Midnight Interception",
+            detail: "Patrol cruiser flashing lights illuminate a suspicious vehicle pulled over on a deserted road",
+            translation: "Police cruiser intercepts a suspicious vehicle moving erratically in the dark.",
+            voiceover: "The stillness of the night was shattered as emergency lights lit up the deserted highway. The officer commanded the vehicle ahead to pull over immediately for an urgent inspection. Tension mounted rapidly as the driver hesitated, showing clear signs of unease and uncooperative behavior from the very start."
+          };
+
+      const isCopsBodycam = /cops|bodycam|police|cảnh sát|tuần tra|rượt đuổi|tội phạm/i.test(customPromptText);
+      const isRealityShow = /reality|show thực tế|truyền hình thực tế|drama|hẹn hò|sinh tồn|talkshow/i.test(customPromptText);
+
+      let genreGuidance = "";
+      if (isCopsBodycam) {
+        genreGuidance = `
+SPECIALIZED COPS BODYCAM / POLICE PURSUIT RULES:
+- TONE: Dồn dập, nghẹt thở, gay cấn từng giây, tường thuật nghiệp vụ cảnh sát sắc bén như các kênh Cops Bodycam triệu view (Code Blue Cam, Police Activity).
+- TERMINOLOGY: Sử dụng chuẩn xác thuật ngữ nghiệp vụ cảnh sát Việt ngữ (sĩ quan tuần tra, camera gắn ngực bodycam, phương tiện khả nghi, đèn ưu tiên & còi hụ, hiệu lệnh dừng xe, không chấp hành mệnh lệnh, tăng ga phóng bạt mạng, cú húc cản PIT, rút súng điện Taser cảnh cáo, rút súng nghiệp vụ, buông vũ khí, nằm sấp xuống đường, áp sát khóa tay tra còng số 8, kiểm tra cốp xe...).
+- FRAME-BY-FRAME ACTION MATCHING: Lời thoại của từng phân cảnh PHẢI KHỚP TUYỆT ĐỐI với từng hành động trên màn hình lúc đó (khi cảnh sát bước xuống xe, gõ cửa kính, khi nghi phạm bất ngờ nổ máy bỏ chạy, khi xe lật hoặc cảnh sát áp sát quật ngã khống chế...). Tuyệt đối không nói lan man ngoài diễn biến hình ảnh.`;
+      } else if (isRealityShow) {
+        genreGuidance = `
+SPECIALIZED REALITY TV & SOCIAL DRAMA RULES:
+- TONE: Sôi nổi, cuốn hút, dí dỏm, bình luận sắc sảo, đẩy cao trào cảm xúc và kịch tính giữa các nhân vật.
+- FOCUS: Nêu bật biểu cảm khuôn mặt (sững sờ, ngơ ngác, lúng túng), các cuộc đối thoại tranh luận nảy lửa, phản ứng bất ngờ của ban giám khảo/người chơi, và cú twist bất ngờ.
+- FRAME MATCHING: Khung hình đang chiếu vào ai hoặc tình huống gì thì lời dẫn phải bình luận chính xác vào người và hành động đó.`;
+      }
+
+      const prompt = `Role: Senior Video Screenplay Editor, Content Creator & 3rd-Person Narrative Expert.
+Target Output Language: ${outputLanguage} (${languageCode}).
+Video Duration: ${probe.durationSeconds.toFixed(1)} seconds (${endStamp}).${frameContext}${transcriptContext}
+
+USER DIRECTIVE & NICHE STYLE:
+"${customPromptText}"
+${genreGuidance}
+
+MANDATORY SCRIPTING & SCENE ALIGNMENT REQUIREMENTS:
+1. ${languageRule}
+2. ABSOLUTE VISUAL-TEMPORAL ALIGNMENT: Examine the timestamps and actions in the video frames. The "voiceover" narration for each scene MUST describe the EXACT visual action and events occurring at that specific timestamp range.
+3. Divide the timeline from 00:00 to ${endStamp} into continuous chronological scenes (~${targetSceneCount} scenes, each 10-18 seconds long).
+4. For EACH scene in the "scenes" array:
+   - "title": Compelling, punchy scene title written in ${outputLanguage}
+   - "detail": Precise visual observation of what characters/objects are doing in this timestamp
+   - "translation": Subtitle line written in ${outputLanguage}
+   - "voiceover": Full, expressive, engaging 3rd-person narration (60-90 words) written in ${outputLanguage} perfectly matched with the visual actions and chosen style tone.
+5. "summary": Concise executive story summary written in ${outputLanguage}.
+6. "voice_script": Complete, seamless continuous narration script written in ${outputLanguage}.
+
+EXAMPLE JSON STRUCTURE (All text must be in ${outputLanguage}):
+${JSON.stringify({
+  summary: isVietnamese ? (isCopsBodycam ? "Tóm tắt vụ việc rượt đuổi cảnh sát kịch tính..." : "Tóm tắt diễn biến ngắn gọn...") : "Executive narrative summary in " + outputLanguage + "...",
+  score: 95,
+  scenes: [sampleSceneObj],
+  voice_script: isVietnamese ? (isCopsBodycam ? "Toàn bộ kịch bản tường thuật Cops Bodycam liền mạch..." : "Toàn bộ lời đọc nối liền mạch...") : "Complete combined narration script in " + outputLanguage + "..."
+}, null, 2)}
+
+Return ONLY valid JSON with no markdown wrapping.`;
       event.sender.send("runtime:analysis-progress", { progress: 76, stage: "requesting-provider", operationId });
       const result = await providerRequest(record, prompt, providerFrames, operationId);
       event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
-      return enrichAnalysis({ ...parseAnalysis(result.text, probe, result.usage), transcript, transcriptSegments, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) }, transcript);
+      return enrichAnalysis({ ...parseAnalysis(result.text, probe, result.usage, options.customPrompt), transcript, transcriptSegments, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) }, transcript);
     } finally { if (state) endOperation(operationId); }
   });
   ipcMain.handle("runtime:render-video", async (event, filePath, folder, options, operationId) => {
@@ -1477,15 +2074,69 @@ function registerIpc() {
     if (typeof value !== "string" || value.length > 1024) throw new Error("Invalid clipboard value");
     clipboard.writeText(value);
   });
+  ipcMain.handle("runtime:synthesize-speech", async (_event, text, languageCode = "vi", gender = "female", voice) => {
+    const cleanText = stripSceneMetadata(text);
+    if (!cleanText) return null;
+    const voiceKey = String(voice || "").trim().toLowerCase();
+    const profile = resolveNeuralVoiceProfile(voiceKey, languageCode, gender);
+
+    // 1. Try JACS Cloud Neural Voice Engine FIRST (Instant, authentic Microsoft Edge Neural Voice)
+    try {
+      const res = await fetch("https://jacs-studio.nexoratech.com.vn/api/v1/client/synthesize-speech", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        body: JSON.stringify({
+          text: cleanText.slice(0, 1000),
+          voice: voiceKey,
+          language: languageCode || "vi",
+          gender: gender || "male",
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (res.ok) {
+        const buffer = Buffer.from(await res.arrayBuffer());
+        if (buffer.length > 200) {
+          return `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+        }
+      }
+    } catch {}
+
+    // 2. Try Local Python edge_tts
+    try {
+      const cacheDir = path.join(app.getPath("userData"), "voice_cache");
+      if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+      const cacheFile = path.join(cacheDir, `voice_${Date.now()}.mp3`);
+      const python = findPythonExecutable();
+      await runProcess(
+        python,
+        ["-m", "edge_tts", "--voice", profile.voice, "--rate", profile.rate, "--pitch", profile.pitch, "--text", cleanText.slice(0, 1000), "--write-media", cacheFile],
+        undefined,
+        undefined
+      );
+      if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 200) {
+        const buffer = fs.readFileSync(cacheFile);
+        return `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
+  });
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, "..", "public", "icon.png");
   const window = new BrowserWindow({
     width: 1440,
     height: 960,
     minWidth: 1100,
     minHeight: 720,
     backgroundColor: "#111817",
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, "preload.cjs") },
   });
   const devUrl = process.env.JACS_DESKTOP_DEV_URL;

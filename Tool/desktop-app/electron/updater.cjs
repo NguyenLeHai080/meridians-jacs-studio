@@ -149,9 +149,22 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
   if (!fs.existsSync(filePath)) throw new Error("Không tìm thấy file cập nhật đã tải");
   if (platform === "windows") {
     if (kind === "windows-installer") {
-      const child = childProcess.spawn(filePath, ["/S"], { detached: true, stdio: "ignore", windowsHide: true });
-      child.unref();
-      appModule.quit();
+      try {
+        const child = childProcess.spawn("cmd.exe", ["/c", "start", "", filePath], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        child.unref();
+      } catch {
+        try {
+          childProcess.exec(`start "" "${filePath}"`);
+        } catch {}
+      }
+      setTimeout(() => {
+        if (typeof appModule.exit === "function") appModule.exit(0);
+        else appModule.quit();
+      }, 500);
       return { status: "installing" };
     }
     if (kind === "windows-zip") {
@@ -162,23 +175,31 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
       const escapedZip = filePath.replace(/'/g, "''");
       const escapedDir = currentDir.replace(/'/g, "''");
       const batContent = `@echo off
-:wait
-timeout /t 1 /nobreak >nul
-tasklist /fi "PID eq ${Number(process.pid)}" | find "${Number(process.pid)}" >nul
-if not errorlevel 1 goto wait
+rem Terminate the running Electron process cleanly and release file locks
+%SystemRoot%\\System32\\taskkill.exe /f /pid ${Number(process.pid)} >nul 2>&1
+%SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
 
-tar -xf "${filePath}" -C "${currentDir}" >nul 2>&1 || (
-  powershell -NoProfile -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDir}' -Force"
+rem Extract update payload directly to target directory
+%SystemRoot%\\System32\\tar.exe -xf "${filePath}" -C "${currentDir}" >nul 2>&1 || (
+  %SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDir}' -Force"
 )
 
+rem Restart the updated JACS Studio application
 start "" "${path.join(currentDir, exeName)}"
+
+rem Clean up temporary script folder
+%SystemRoot%\\System32\\timeout.exe /t 2 /nobreak >nul
 rmdir /s /q "${extractDirectory}" >nul 2>&1
 exit
 `;
       await fsp.writeFile(scriptPath, batContent, { mode: 0o700 });
       const child = childProcess.spawn("cmd.exe", ["/c", scriptPath], { detached: true, stdio: "ignore", windowsHide: true });
       child.unref();
-      appModule.quit();
+      if (typeof appModule.exit === "function") {
+        appModule.exit(0);
+      } else {
+        appModule.quit();
+      }
       return { status: "installing" };
     }
   }

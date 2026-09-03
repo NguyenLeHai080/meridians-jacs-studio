@@ -1,4 +1,4 @@
-export type NavKey = "overview" | "sources" | "analysis" | "story" | "timeline" | "brand" | "batch" | "render" | "activation" | "settings";
+export type NavKey = "overview" | "sources" | "analysis" | "story" | "timeline" | "brand" | "batch" | "render" | "billing" | "logs" | "activation" | "settings";
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type JobStage = "queued" | "downloading" | "probing" | "analyzing" | "outlining" | "script_review" | "generating_voice" | "matching_scenes" | "timeline_review" | "rendering" | "qa" | "completed" | "failed" | "cancelled";
 export type Job = {
@@ -48,6 +48,7 @@ export type Job = {
   logoPath?: string;
   logoPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
   logoOpacity?: number;
+  customPrompt?: string;
   analysis?: AnalysisResult;
   status: JobStatus;
   progress: number;
@@ -137,6 +138,7 @@ export type DesktopRuntime = {
   saveProviderProfile: (value: ProviderDraft) => Promise<ProviderProfile>;
   deleteProviderProfile: (id: string) => Promise<void>;
   testProviderConnection: (id: string) => Promise<ProviderConnectionResult>;
+  webSessionLogin?: (providerType: string) => Promise<{ success: boolean; token?: string; cookieName?: string; cookiesCount?: number; message?: string }>;
   checkForUpdate?: (channel?: "stable" | "beta") => Promise<UpdateCheckResult>;
   downloadUpdate?: (release: UpdateRelease) => Promise<{ status: "installing" | "manual" }>;
   openExternal?: (url: string) => Promise<void>;
@@ -148,7 +150,7 @@ export type DesktopRuntime = {
   pickImage?: () => Promise<string | null>;
   downloadVideo?: (url: string, operationId?: string) => Promise<string>;
   probeVideo?: (path: string) => Promise<VideoProbe>;
-  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId">) => Promise<AnalysisResult>;
+  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId" | "customPrompt">) => Promise<AnalysisResult>;
   renderVideo?: (path: string, outputFolder?: string, options?: { mode?: string; startSeconds?: number; endSeconds?: number; outputFileName?: string; aspectRatio?: Job["aspectRatio"]; preferredEngine?: ToolPreferences["preferredEngine"]; subjectTracking?: boolean; keepOriginalAudio?: boolean; backgroundMusic?: boolean; backgroundMusicVolume?: number; backgroundMusicPath?: string; narrationText?: string; narratorEnabled?: boolean; narratorVoice?: string; narratorGender?: "male" | "female"; language?: string; providerId?: string; ttsProviderId?: string; subtitlesEnabled?: boolean; subtitleStyle?: Job["subtitleStyle"]; subtitleText?: string; subtitleSegments?: Array<{ start: number; end: number; text: string }>; logoPath?: string; logoPosition?: Job["logoPosition"]; logoOpacity?: number }, operationId?: string) => Promise<RenderResult>;
   mergeVideos?: (paths: string[], operationId?: string) => Promise<string>;
   onDownloadProgress?: (listener: (value: RuntimeProgress) => void) => () => void;
@@ -157,18 +159,21 @@ export type DesktopRuntime = {
   onUpdateProgress?: (listener: (value: UpdateProgress) => void) => () => void;
   readJobs?: () => Promise<Job[]>;
   saveJobs?: (jobs: Job[]) => Promise<void>;
+  synthesizeSpeech?: (text: string, language?: string, gender?: "male" | "female", voice?: string) => Promise<string | null>;
   revealPath: (value: string) => Promise<void>;
   copyText: (value: string) => Promise<void>;
 };
 export const NAV_ITEMS: Array<{ key: NavKey; label: string; hint: string; icon: string }> = [
-  { key: "overview", label: "Tổng quan", hint: "Workspace", icon: "grid" },
-  { key: "sources", label: "Nguồn video", hint: "Assets & proxy", icon: "folder" },
-  { key: "analysis", label: "Phân tích AI", hint: "Transcript & scenes", icon: "scan" },
-  { key: "story", label: "Kịch bản & Voice", hint: "Story + narration", icon: "mic" },
-  { key: "timeline", label: "Chọn cảnh & Timeline", hint: "Voice to footage", icon: "timeline" },
-  { key: "brand", label: "Phụ đề & Thương hiệu", hint: "Captions + logo", icon: "captions" },
-  { key: "batch", label: "Tạo job hàng loạt", hint: "Batch queue", icon: "layers" },
-  { key: "render", label: "Render & xuất bản", hint: "Media engine", icon: "play" },
-  { key: "activation", label: "License & thiết bị", hint: "Activation", icon: "key" },
-  { key: "settings", label: "Cài đặt tool", hint: "Preferences", icon: "sliders" },
+  { key: "overview", label: "Tổng quan", hint: "Dashboard", icon: "grid" },
+  { key: "sources", label: "1. Nguồn video", hint: "Thư viện footage", icon: "folder" },
+  { key: "analysis", label: "2. Phân tích AI", hint: "Scene Map & Transcript", icon: "scan" },
+  { key: "story", label: "3. Kịch bản & Voice", hint: "Kịch bản & Lồng tiếng", icon: "mic" },
+  { key: "timeline", label: "4. Dựng & Timeline", hint: "Bàn dựng đa track", icon: "timeline" },
+  { key: "brand", label: "5. Phụ đề & Brand", hint: "Phụ đề & Watermark", icon: "captions" },
+  { key: "render", label: "6. Render xuất bản", hint: "Xuất file video", icon: "play" },
+  { key: "batch", label: "Tạo job hàng loạt", hint: "Batch render", icon: "layers" },
+  { key: "billing", label: "Lịch sử gia hạn", hint: "Hạn dùng & Gói cước", icon: "activity" },
+  { key: "logs", label: "Nhật ký hệ thống", hint: "Runtime & AI Logs", icon: "sliders" },
+  { key: "activation", label: "License & Thiết bị", hint: "Bản quyền & HWID", icon: "key" },
+  { key: "settings", label: "Cài đặt tool", hint: "Cấu hình AI & Engine", icon: "sliders" },
 ];
