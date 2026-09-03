@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent, ChangeEvent } from "react";
 import {
   LayoutDashboard,
   Key,
@@ -7,11 +7,11 @@ import {
   CreditCard,
   Bot,
   FileText,
+  Settings,
   Search,
   RotateCw,
   Bell,
   Power,
-  Calendar,
   Plus,
   X,
   Check,
@@ -19,22 +19,30 @@ import {
   Pencil,
   Clock,
   Trash2,
-  Settings,
-  AlertCircle,
   AlertTriangle,
   Zap,
   Lock,
   Unlock,
-  Radio,
   ArrowUpRight,
-  ArrowDownRight,
-  TrendingUp,
-  Cpu,
-  ShieldCheck,
-  Sparkles,
+  Globe,
+  ChevronDown,
+  MessageSquare,
+  Wallet,
+  Database,
+  Server,
+  Download,
+  Upload,
+  Shield,
+  Activity,
+  Menu,
+  User,
+  KeyRound,
+  Rocket,
 } from "lucide-react";
-import { ApiRequestError, apiRequest, getApiBaseUrl } from "../../core/api";
-import { clearToken, getToken } from "../../core/session";
+import { ApiRequestError, apiRequest } from "../../core/api";
+import { clearToken, getToken, setToken } from "../../core/session";
+import { useI18n } from "../../core/i18n";
+import { ReleasesPage, type Release } from "../releases/ReleasesPage";
 
 export type License = {
   id: string;
@@ -58,35 +66,37 @@ export type License = {
 export type Provider = {
   id: string;
   name: string;
-  provider_type: string;
-  base_url?: string;
+  provider_type: "openai" | "gemini" | "custom";
+  base_url: string;
   model: string;
-  tts_model?: string | null;
-  masked_key: string;
+  tts_model?: string;
   capabilities: string[];
+  is_enabled: boolean;
 };
 
 export type TelemetryLog = {
   id: string;
-  severity: "info" | "warning" | "error" | "fatal" | string;
-  event_name: string;
-  fingerprint: string;
-  message: string;
+  machine_id: string;
   app_version: string;
-  created_at?: string;
+  event_name: string;
+  severity: "info" | "warning" | "error" | "fatal";
+  message: string;
+  details?: Record<string, unknown>;
+  created_at: string;
 };
 
 export type BillingTransaction = {
   id: string;
   license_id?: string;
   customer_name: string;
+  plan_name: string;
   amount: number;
-  plan_type: string;
+  currency: string;
   payment_method: string;
-  transaction_type: string;
-  actor: string;
+  transaction_type: "new_key" | "renewal" | "upgrade" | "adjustment";
   notes?: string;
   created_at: string;
+  created_by?: string;
 };
 
 export type BillingSummary = {
@@ -109,7 +119,54 @@ export type ClientSession = {
   is_online: boolean;
 };
 
-type MenuKey = "overview" | "licenses" | "sessions" | "billing" | "providers" | "telemetry";
+export type SystemSettings = {
+  app_name: string;
+  default_days_valid: number;
+  default_max_jobs: number;
+  telemetry_enabled: boolean;
+  auto_backup: boolean;
+  notification_email: string;
+  studio_brand_name: string;
+  custom_logo_url: string;
+};
+
+export type SystemInfo = {
+  app_name: string;
+  version: string;
+  environment: string;
+  python_version: string;
+  platform: string;
+  store_backend: string;
+  telemetry_enabled: boolean;
+  total_licenses: number;
+  total_transactions: number;
+  total_providers: number;
+  total_telemetry_events: number;
+  timestamp: string;
+};
+
+type MenuKey = "overview" | "licenses" | "sessions" | "billing" | "providers" | "telemetry" | "releases" | "settings";
+
+const VALID_MENUS: MenuKey[] = [
+  "overview",
+  "licenses",
+  "sessions",
+  "billing",
+  "providers",
+  "telemetry",
+  "releases",
+  "settings",
+];
+
+function getInitialMenu(): MenuKey {
+  if (typeof window === "undefined") return "overview";
+  const hash = window.location.hash.replace(/^#\/?/, "").toLowerCase() as MenuKey;
+  if (VALID_MENUS.includes(hash)) return hash;
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab") as MenuKey;
+  if (VALID_MENUS.includes(tab)) return tab;
+  return "overview";
+}
 
 const HWID_PATTERN = /JACS-(?:MAC|WIN|LNX)-[A-F0-9]{32}/;
 
@@ -132,7 +189,44 @@ function formatCurrency(amount: number) {
 
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const token = getToken() ?? "";
-  const [activeMenu, setActiveMenu] = useState<MenuKey>("overview");
+  const { language, setLanguage, t } = useI18n();
+  const [activeMenu, setActiveMenuState] = useState<MenuKey>(getInitialMenu);
+
+  const setActiveMenu = (menu: MenuKey) => {
+    setActiveMenuState(menu);
+    if (typeof window !== "undefined") {
+      window.location.hash = `/${menu}`;
+    }
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const nextMenu = getInitialMenu();
+      setActiveMenuState(nextMenu);
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    window.addEventListener("popstate", handleHashChange);
+    if (typeof window !== "undefined" && !window.location.hash) {
+      window.history.replaceState(null, "", `#/${getInitialMenu()}`);
+    }
+    return () => {
+      window.removeEventListener("hashchange", handleHashChange);
+      window.removeEventListener("popstate", handleHashChange);
+    };
+  }, []);
+  
+  // Popover menus state
+  const [showLangDropdown, setShowLangDropdown] = useState(false);
+  const [showUserPopover, setShowUserPopover] = useState(false);
+  const [showNotifPopover, setShowNotifPopover] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [hasUnreadAlerts, setHasUnreadAlerts] = useState(true);
+
+  // Search input ref
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const notifMenuRef = useRef<HTMLDivElement>(null);
   
   // Data states
   const [licenses, setLicenses] = useState<License[]>([]);
@@ -141,6 +235,18 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [transactions, setTransactions] = useState<BillingTransaction[]>([]);
   const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
   const [sessions, setSessions] = useState<ClientSession[]>([]);
+  const [releases, setReleases] = useState<Release[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+    app_name: "JACS Studio Server",
+    default_days_valid: 30,
+    default_max_jobs: 200,
+    telemetry_enabled: true,
+    auto_backup: true,
+    notification_email: "admin@example.com",
+    studio_brand_name: "JACS Studio",
+    custom_logo_url: "",
+  });
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   
   // UI states
   const [loading, setLoading] = useState(true);
@@ -148,60 +254,90 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [chartPeriod, setChartPeriod] = useState<"14d" | "30d">("14d");
+  const [logSeverityFilter, setLogSeverityFilter] = useState("all");
   
-  // Modals & Forms
+  // Account & Security Modal
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [accountEmail, setAccountEmail] = useState("admin@example.com");
+
+  // License Modals & Forms
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingLicense, setEditingLicense] = useState<License | null>(null);
   const [renewingLicense, setRenewingLicense] = useState<License | null>(null);
   const [resettingHwidLicense, setResettingHwidLicense] = useState<License | null>(null);
   const [deletingLicense, setDeletingLicense] = useState<License | null>(null);
+  const [createdKeyData, setCreatedKeyData] = useState<{ raw_key: string; key_hint: string; customer_name: string } | null>(null);
+
+  // Billing Modal
+  const [showAddTransactionModal, setShowAddTransactionModal] = useState(false);
+  const [deletingTransaction, setDeletingTransaction] = useState<BillingTransaction | null>(null);
+  const [txCustomerName, setTxCustomerName] = useState("");
+  const [txPlanName, setTxPlanName] = useState("Standard Monthly");
+  const [txAmount, setTxAmount] = useState("500000");
+  const [txPaymentMethod, setTxPaymentMethod] = useState("bank_transfer");
+  const [txType, setTxType] = useState<"new_key" | "renewal" | "upgrade" | "adjustment">("new_key");
+  const [txNotes, setTxNotes] = useState("");
+
+  // AI Provider Modals
+  const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
+  const [deletingProvider, setDeletingProvider] = useState<Provider | null>(null);
+  const [editProviderForm, setEditProviderForm] = useState({
+    name: "",
+    provider_type: "openai" as "openai" | "gemini" | "custom",
+    base_url: "",
+    model: "",
+    tts_model: "",
+    api_key: "",
+    capabilities: "",
+  });
+
+  // Telemetry Modals
+  const [showCreateLogModal, setShowCreateLogModal] = useState(false);
+  const [showClearLogsModal, setShowClearLogsModal] = useState(false);
+  const [manualLogForm, setManualLogForm] = useState({
+    event_name: "manual_diagnostic_test",
+    severity: "info" as "info" | "warning" | "error" | "fatal",
+    message: "Admin manual system test check",
+    app_version: "0.3.17",
+    machine_id: "ADMIN-CONSOLE",
+  });
   
   // Create License Form
-  const [licenseForm, setLicenseForm] = useState({
-    customer_name: "",
-    customer_contact: "",
-    hwid: "",
-    expires_at: "",
-    max_jobs_per_day: "100",
-    premium_ai: true,
-    logo_url: "",
-    notes: "",
-    amount: "500000",
-    plan_type: "1_month",
-    payment_method: "bank_transfer",
-  });
-  
+  const [createCustomerName, setCreateCustomerName] = useState("");
+  const [createCustomerContact, setCreateCustomerContact] = useState("");
+  const [createHwid, setCreateHwid] = useState("");
+  const [createDays, setCreateDays] = useState("30");
+  const [createMaxJobs, setCreateMaxJobs] = useState("200");
+  const [createPremiumAi, setCreatePremiumAi] = useState(true);
+  const [createNotes, setCreateNotes] = useState("");
+  const [createLogoUrl, setCreateLogoUrl] = useState("");
+  const [createBillAmount, setCreateBillAmount] = useState("500000");
+  const [createPlanName, setCreatePlanName] = useState("Standard 30 Days");
+
   // Edit License Form
-  const [editForm, setEditForm] = useState({
-    customer_name: "",
-    customer_contact: "",
-    max_jobs_per_day: 100,
-    premium_ai: true,
-    logo_url: "",
-    notes: "",
-    expires_at: "",
-  });
+  const [editCustomerName, setEditCustomerName] = useState("");
+  const [editCustomerContact, setEditCustomerContact] = useState("");
+  const [editMaxJobs, setEditMaxJobs] = useState("200");
+  const [editPremiumAi, setEditPremiumAi] = useState(true);
+  const [editNotes, setEditNotes] = useState("");
+  const [editLogoUrl, setEditLogoUrl] = useState("");
 
   // Renew License Form
-  const [renewForm, setRenewForm] = useState({
-    expires_at: "",
-    reason: "Gia hạn hợp đồng dịch vụ",
-    amount: "500000",
-    plan_type: "1_month",
-    payment_method: "bank_transfer",
-  });
+  const [renewDays, setRenewDays] = useState("30");
+  const [renewAmount, setRenewAmount] = useState("500000");
+  const [renewPlanName, setRenewPlanName] = useState("Gia hạn 30 ngày");
 
   // Reset HWID Form
-  const [hwidResetForm, setHwidResetForm] = useState({
-    hwid: "",
-    reason: "Khách hàng đổi máy tính mới",
-  });
+  const [newHwid, setNewHwid] = useState("");
+  const [hwidReason, setHwidReason] = useState("Khách hàng đổi máy tính mới");
 
-  // Provider Form
+  // Add Provider Form
   const [providerForm, setProviderForm] = useState({
     name: "",
-    provider_type: "openai",
+    provider_type: "openai" as "openai" | "gemini" | "custom",
     base_url: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
     tts_model: "tts-1",
@@ -210,12 +346,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   });
   const [providerStatus, setProviderStatus] = useState<Record<string, string>>({});
 
-  // Generated Key popup
-  const [generatedKey, setGeneratedKey] = useState("");
-  const [keyCopied, setKeyCopied] = useState(false);
+  // Copy Feedback state
   const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
 
-  function handleRequestError(reason: unknown): boolean {
+  async function copyText(text: string, id: string) {
+    await navigator.clipboard.writeText(text);
+    setCopiedItemId(id);
+    setTimeout(() => setCopiedItemId(null), 2000);
+  }
+
+  function handleRequestError(reason: unknown) {
     if (reason instanceof ApiRequestError && reason.status === 401) {
       clearToken();
       onLogout();
@@ -224,116 +364,157 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     return false;
   }
 
-  async function refresh() {
-    setLoading(true);
-    setError("");
-    try {
-      const [licenseRes, providerRes, telemetryRes, txRes, sumRes, sessRes] = await Promise.all([
-        apiRequest<License[]>("/api/v1/licenses", {}, token),
-        apiRequest<Provider[]>("/api/v1/ai-providers", {}, token),
-        apiRequest<TelemetryLog[]>("/api/v1/telemetry/logs?limit=30", {}, token),
-        apiRequest<BillingTransaction[]>("/api/v1/billing/transactions", {}, token).catch(() => []),
-        apiRequest<BillingSummary>("/api/v1/billing/summary", {}, token).catch(() => null),
-        apiRequest<ClientSession[]>("/api/v1/clients/sessions", {}, token).catch(() => []),
-      ]);
-      setLicenses(licenseRes || []);
-      setProviders(providerRes || []);
-      setLogs(telemetryRes || []);
-      setTransactions(txRes || []);
-      setBillingSummary(sumRes);
-      setSessions(sessRes || []);
-    } catch (reason) {
-      if (handleRequestError(reason)) return;
-      setError(reason instanceof Error ? reason.message : "Không tải được dữ liệu");
-    } finally {
-      setLoading(false);
+  // Close menus when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowSearchDropdown(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserPopover(false);
+      }
+      if (notifMenuRef.current && !notifMenuRef.current.contains(event.target as Node)) {
+        setShowNotifPopover(false);
+      }
     }
-  }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     void refresh();
   }, []);
 
-  // Copy helper
-  async function copyText(text: string, itemId?: string) {
+  async function refresh() {
+    setLoading(true);
+    setError("");
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const input = document.createElement("textarea");
-        input.value = text;
-        input.style.position = "fixed";
-        input.style.opacity = "0";
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand("copy");
-        input.remove();
+      const [lics, provs, tlogs, txs, bsum, sess, sysSet, sysInf, rels] = await Promise.all([
+        apiRequest<License[]>("/api/v1/licenses", {}, token),
+        apiRequest<Provider[]>("/api/v1/ai-providers", {}, token),
+        apiRequest<TelemetryLog[]>("/api/v1/telemetry/logs", {}, token),
+        apiRequest<BillingTransaction[]>("/api/v1/billing/transactions", {}, token).catch(() => []),
+        apiRequest<BillingSummary>("/api/v1/billing/summary", {}, token).catch(() => null),
+        apiRequest<ClientSession[]>("/api/v1/clients/sessions", {}, token).catch(() => []),
+        apiRequest<SystemSettings>("/api/v1/system/settings", {}, token).catch(() => systemSettings),
+        apiRequest<SystemInfo>("/api/v1/system/info", {}, token).catch(() => null as unknown as SystemInfo),
+        apiRequest<Release[]>("/api/v1/releases", {}, token).catch(() => []),
+      ]);
+      setLicenses(lics);
+      setProviders(provs);
+      setLogs(tlogs);
+      setTransactions(txs);
+      setBillingSummary(bsum);
+      setSessions(sess);
+      setReleases(rels || []);
+      if (sysSet) {
+        const unwrapped = (sysSet && typeof sysSet === "object" && "data" in sysSet && (sysSet as any).data !== sysSet ? (sysSet as any).data : sysSet) as SystemSettings;
+        if (unwrapped) setSystemSettings(unwrapped);
       }
-      if (itemId) {
-        setCopiedItemId(itemId);
-        window.setTimeout(() => setCopiedItemId(null), 2000);
-      } else {
-        setKeyCopied(true);
-        window.setTimeout(() => setKeyCopied(false), 2000);
+      if (sysInf) {
+        const unwrapped = (sysInf && typeof sysInf === "object" && "data" in sysInf && (sysInf as any).data !== sysInf ? (sysInf as any).data : sysInf) as SystemInfo;
+        if (unwrapped) setSystemInfo(unwrapped);
       }
-    } catch {
-      setError("Không thể sao chép");
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Lỗi khi tải dữ liệu từ máy chủ");
+    } finally {
+      setLoading(false);
     }
   }
 
-  // Create License
+  /* -------------------------------------------------------------------------- */
+  /* ACCOUNT & SECURITY                                                        */
+  /* -------------------------------------------------------------------------- */
+  async function handleChangePassword(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    if (newPassword !== confirmPassword) {
+      setError(language === "vi" ? "Mật khẩu mới và xác nhận mật khẩu không khớp" : "New passwords do not match");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError(language === "vi" ? "Mật khẩu mới phải có tối thiểu 6 ký tự" : "New password must have at least 6 characters");
+      return;
+    }
+
+    try {
+      const res = await apiRequest<{ data: { access_token: string; message: string } }>("/api/v1/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+          new_email: accountEmail.trim(),
+        }),
+      }, token);
+
+      if (res.data.access_token) {
+        setToken(res.data.access_token);
+      }
+      setShowAccountModal(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMessage(res.data.message || (language === "vi" ? "Đã cập nhật tài khoản quản trị thành công" : "Admin account updated successfully"));
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không đổi được mật khẩu");
+    }
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* LICENSE CRUD HANDLERS                                                     */
+  /* -------------------------------------------------------------------------- */
   async function handleCreateLicense(event: FormEvent) {
     event.preventDefault();
     setError("");
+    setMessage("");
+
+    const normHwid = normalizeHwid(createHwid);
+    const errHwid = licenseHwidError(normHwid);
+    if (errHwid) {
+      setError(errHwid);
+      return;
+    }
+
     try {
-      if (!licenseForm.customer_name.trim()) { setError("Vui lòng nhập tên khách hàng"); return; }
-      if (!licenseForm.customer_contact.trim()) { setError("Vui lòng nhập liên hệ"); return; }
-      const normalizedHwid = normalizeHwid(licenseForm.hwid);
-      const hwidErr = licenseHwidError(normalizedHwid);
-      if (hwidErr) { setError(hwidErr); return; }
-
-      const maxJobs = Number(licenseForm.max_jobs_per_day);
-      if (!Number.isInteger(maxJobs) || maxJobs < 1) { setError("Giới hạn job/ngày phải lớn hơn 0"); return; }
-
-      const amountVal = Number(licenseForm.amount) || 0;
-      const expiresAt = licenseForm.expires_at ? new Date(licenseForm.expires_at) : null;
-      if (expiresAt && expiresAt <= new Date()) { setError("Ngày hết hạn phải ở tương lai"); return; }
-
-      const payload = {
-        customer_name: licenseForm.customer_name.trim(),
-        customer_contact: licenseForm.customer_contact.trim(),
-        hwid: normalizedHwid,
-        expires_at: expiresAt ? expiresAt.toISOString() : null,
-        max_jobs_per_day: maxJobs,
-        premium_ai: licenseForm.premium_ai,
-        logo_url: licenseForm.logo_url.trim() || null,
-        notes: licenseForm.notes.trim() || null,
-        amount: amountVal,
-        plan_type: licenseForm.plan_type,
-        payment_method: licenseForm.payment_method,
-      };
-
-      const created = await apiRequest<License & { key: string }>("/api/v1/licenses", {
+      const res = await apiRequest<{
+        raw_key: string;
+        license: License;
+      }>("/api/v1/licenses", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          customer_name: createCustomerName.trim(),
+          customer_contact: createCustomerContact.trim(),
+          hwid: normHwid,
+          days_valid: parseInt(createDays) || 30,
+          max_jobs_per_day: parseInt(createMaxJobs) || 200,
+          premium_ai: createPremiumAi,
+          notes: createNotes.trim() || undefined,
+          logo_url: createLogoUrl.trim() || undefined,
+          bill_amount: parseFloat(createBillAmount) || 0,
+          plan_name: createPlanName.trim() || "Standard License",
+        }),
       }, token);
 
-      setGeneratedKey(created.key.trim().toUpperCase());
       setShowCreateModal(false);
-      setMessage(`Đã tạo thành công license cho ${payload.customer_name}`);
-      setLicenseForm({
-        customer_name: "",
-        customer_contact: "",
-        hwid: "",
-        expires_at: "",
-        max_jobs_per_day: "100",
-        premium_ai: true,
-        logo_url: "",
-        notes: "",
-        amount: "500000",
-        plan_type: "1_month",
-        payment_method: "bank_transfer",
+      const rawKey = (res as any)?.key || (res as any)?.raw_key || "";
+      const keyHint = (res as any)?.key_hint || (res as any)?.license?.key_hint || "JACS-****-XXXX";
+      const custName = (res as any)?.customer_name || (res as any)?.license?.customer_name || createCustomerName.trim();
+
+      setCreatedKeyData({
+        raw_key: rawKey,
+        key_hint: keyHint,
+        customer_name: custName,
       });
+
+      setCreateCustomerName("");
+      setCreateCustomerContact("");
+      setCreateHwid("");
+      setCreateNotes("");
+      setCreateLogoUrl("");
+
+      setMessage(`Đã cấp license thành công cho ${custName}`);
       await refresh();
     } catch (reason) {
       if (handleRequestError(reason)) return;
@@ -341,44 +522,34 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // Open Edit Modal
   function openEditModal(lic: License) {
     setEditingLicense(lic);
-    setEditForm({
-      customer_name: lic.customer_name,
-      customer_contact: lic.customer_contact,
-      max_jobs_per_day: lic.max_jobs_per_day ?? 100,
-      premium_ai: lic.premium_ai ?? true,
-      logo_url: lic.logo_url ?? "",
-      notes: lic.notes ?? "",
-      expires_at: lic.expires_at ? lic.expires_at.slice(0, 16) : "",
-    });
+    setEditCustomerName(lic.customer_name);
+    setEditCustomerContact(lic.customer_contact);
+    setEditMaxJobs(String(lic.max_jobs_per_day || 200));
+    setEditPremiumAi(Boolean(lic.premium_ai));
+    setEditNotes(lic.notes || "");
+    setEditLogoUrl(lic.logo_url || "");
   }
 
-  // Save Edit License
   async function handleSaveEdit(event: FormEvent) {
     event.preventDefault();
     if (!editingLicense) return;
     setError("");
     try {
-      const expiresAt = editForm.expires_at ? new Date(editForm.expires_at).toISOString() : null;
-      const payload = {
-        customer_name: editForm.customer_name.trim() || undefined,
-        customer_contact: editForm.customer_contact.trim() || undefined,
-        max_jobs_per_day: Number(editForm.max_jobs_per_day) || 100,
-        premium_ai: editForm.premium_ai,
-        logo_url: editForm.logo_url.trim() || null,
-        notes: editForm.notes.trim() || null,
-        expires_at: expiresAt,
-      };
-
       await apiRequest(`/api/v1/licenses/${editingLicense.id}`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
+        method: "PUT",
+        body: JSON.stringify({
+          customer_name: editCustomerName.trim(),
+          customer_contact: editCustomerContact.trim(),
+          max_jobs_per_day: parseInt(editMaxJobs) || 200,
+          premium_ai: editPremiumAi,
+          notes: editNotes.trim() || null,
+          logo_url: editLogoUrl.trim() || null,
+        }),
       }, token);
-
       setEditingLicense(null);
-      setMessage(`Đã cập nhật thông tin license ${editingLicense.key_hint}`);
+      setMessage(`Đã cập nhật license cho ${editCustomerName}`);
       await refresh();
     } catch (reason) {
       if (handleRequestError(reason)) return;
@@ -386,60 +557,29 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // Toggle Block / Active
-  async function toggleLicense(item: License) {
-    const status = item.status === "active" ? "blocked" : "active";
-    try {
-      await apiRequest(`/api/v1/licenses/${item.id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      }, token);
-      setMessage(`Đã ${status === "active" ? "mở khóa" : "khóa"} license ${item.key_hint}`);
-      await refresh();
-    } catch (reason) {
-      if (handleRequestError(reason)) return;
-      setError(reason instanceof Error ? reason.message : "Không đổi được trạng thái");
-    }
-  }
-
-  // Open Renew Modal
   function openRenewModal(lic: License) {
     setRenewingLicense(lic);
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    setRenewForm({
-      expires_at: nextMonth.toISOString().slice(0, 16),
-      reason: "Gia hạn hợp đồng dịch vụ",
-      amount: "500000",
-      plan_type: "1_month",
-      payment_method: "bank_transfer",
-    });
+    setRenewDays("30");
+    setRenewAmount("500000");
+    setRenewPlanName("Gia hạn 30 ngày");
   }
 
-  // Submit Renew
-  async function handleRenewSubmit(event: FormEvent) {
+  async function handleRenewLicense(event: FormEvent) {
     event.preventDefault();
     if (!renewingLicense) return;
     setError("");
     try {
-      const expiresAt = new Date(renewForm.expires_at);
-      if (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date()) {
-        setError("Ngày hết hạn gia hạn phải ở tương lai");
-        return;
-      }
       await apiRequest(`/api/v1/licenses/${renewingLicense.id}/renew`, {
         method: "POST",
         body: JSON.stringify({
-          expires_at: expiresAt.toISOString(),
-          reason: renewForm.reason.trim(),
-          amount: Number(renewForm.amount) || 0,
-          plan_type: renewForm.plan_type,
-          payment_method: renewForm.payment_method,
+          additional_days: parseInt(renewDays) || 30,
+          bill_amount: parseFloat(renewAmount) || 0,
+          plan_name: renewPlanName.trim(),
+          notes: `Gia hạn ${renewDays} ngày cho ${renewingLicense.customer_name}`,
         }),
       }, token);
-
       setRenewingLicense(null);
-      setMessage(`Đã gia hạn thành công license ${renewingLicense.key_hint}`);
+      setMessage(`Đã gia hạn thành công license cho ${renewingLicense.customer_name}`);
       await refresh();
     } catch (reason) {
       if (handleRequestError(reason)) return;
@@ -447,47 +587,63 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // Open Reset HWID Modal
   function openResetHwidModal(lic: License) {
     setResettingHwidLicense(lic);
-    setHwidResetForm({ hwid: "", reason: "Khách hàng đổi máy tính mới" });
+    setNewHwid("");
+    setHwidReason("Khách hàng thay đổi máy tính mới");
   }
 
-  // Submit Reset HWID
-  async function handleResetHwidSubmit(event: FormEvent) {
+  async function handleResetHwid(event: FormEvent) {
     event.preventDefault();
     if (!resettingHwidLicense) return;
     setError("");
-    try {
-      const normalizedHwid = normalizeHwid(hwidResetForm.hwid);
-      const hwidErr = licenseHwidError(normalizedHwid);
-      if (hwidErr) { setError(hwidErr); return; }
+    const normHwid = normalizeHwid(newHwid);
+    const errHwid = licenseHwidError(normHwid);
+    if (errHwid) {
+      setError(errHwid);
+      return;
+    }
 
-      await apiRequest(`/api/v1/licenses/${resettingHwidLicense.id}/reset-hwid`, {
-        method: "POST",
+    try {
+      await apiRequest(`/api/v1/licenses/${resettingHwidLicense.id}/hwid`, {
+        method: "PUT",
         body: JSON.stringify({
-          hwid: normalizedHwid,
-          reason: hwidResetForm.reason.trim(),
+          hwid: normHwid,
+          reason: hwidReason.trim(),
         }),
       }, token);
-
       setResettingHwidLicense(null);
-      setMessage(`Đã đổi Device ID cho license ${resettingHwidLicense.key_hint}`);
+      setMessage(`Đã đổi mã máy thành công cho ${resettingHwidLicense.customer_name}`);
       await refresh();
     } catch (reason) {
       if (handleRequestError(reason)) return;
-      setError(reason instanceof Error ? reason.message : "Không đổi được Device ID");
+      setError(reason instanceof Error ? reason.message : "Không đổi được mã máy");
     }
   }
 
-  // Submit Delete License
+  async function toggleLicense(lic: License) {
+    setError("");
+    const newStatus = lic.status === "active" ? "blocked" : "active";
+    try {
+      await apiRequest(`/api/v1/licenses/${lic.id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newStatus }),
+      }, token);
+      setMessage(`Đã ${newStatus === "active" ? "mở khóa" : "khóa"} license ${lic.key_hint}`);
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không đổi được trạng thái");
+    }
+  }
+
   async function handleDeleteLicense() {
     if (!deletingLicense) return;
     setError("");
     try {
       await apiRequest(`/api/v1/licenses/${deletingLicense.id}`, { method: "DELETE" }, token);
-      setMessage(`Đã xóa vĩnh viễn license ${deletingLicense.key_hint}`);
       setDeletingLicense(null);
+      setMessage(`Đã xóa vĩnh viễn license`);
       await refresh();
     } catch (reason) {
       if (handleRequestError(reason)) return;
@@ -495,8 +651,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // Terminate Client Session
-  async function terminateSession(licId: string) {
+  /* -------------------------------------------------------------------------- */
+  /* CLIENT SESSION HANDLER                                                    */
+  /* -------------------------------------------------------------------------- */
+  async function handleTerminateSession(licId: string) {
+    setError("");
     try {
       await apiRequest(`/api/v1/clients/sessions/${licId}`, { method: "DELETE" }, token);
       setMessage("Đã ngắt phiên hoạt động của client");
@@ -507,7 +666,52 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // Create AI Provider
+  /* -------------------------------------------------------------------------- */
+  /* BILLING CRUD HANDLERS                                                     */
+  /* -------------------------------------------------------------------------- */
+  async function handleCreateTransaction(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await apiRequest("/api/v1/billing/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          customer_name: txCustomerName.trim(),
+          plan_name: txPlanName.trim(),
+          amount: parseFloat(txAmount) || 0,
+          payment_method: txPaymentMethod,
+          transaction_type: txType,
+          notes: txNotes.trim() || undefined,
+        }),
+      }, token);
+      setShowAddTransactionModal(false);
+      setTxCustomerName("");
+      setTxNotes("");
+      setMessage("Đã thêm giao dịch tài chính thành công");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không thêm được giao dịch");
+    }
+  }
+
+  async function handleDeleteTransaction() {
+    if (!deletingTransaction) return;
+    setError("");
+    try {
+      await apiRequest(`/api/v1/billing/transactions/${deletingTransaction.id}`, { method: "DELETE" }, token);
+      setDeletingTransaction(null);
+      setMessage("Đã hủy/xóa giao dịch thành công");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không xóa được giao dịch");
+    }
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* AI PROVIDER CRUD HANDLERS                                                 */
+  /* -------------------------------------------------------------------------- */
   async function handleCreateProvider(event: FormEvent) {
     event.preventDefault();
     setError("");
@@ -536,9 +740,64 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  // Test Provider
+  function openEditProviderModal(prov: Provider) {
+    setEditingProvider(prov);
+    setEditProviderForm({
+      name: prov.name,
+      provider_type: prov.provider_type,
+      base_url: prov.base_url,
+      model: prov.model,
+      tts_model: prov.tts_model || "",
+      api_key: "",
+      capabilities: prov.capabilities.join(", "),
+    });
+  }
+
+  async function handleSaveEditProvider(event: FormEvent) {
+    event.preventDefault();
+    if (!editingProvider) return;
+    setError("");
+    try {
+      const payload: Record<string, unknown> = {
+        name: editProviderForm.name.trim(),
+        provider_type: editProviderForm.provider_type,
+        base_url: editProviderForm.base_url.trim(),
+        model: editProviderForm.model.trim(),
+        tts_model: editProviderForm.tts_model.trim() || undefined,
+        capabilities: editProviderForm.capabilities.split(",").map((s) => s.trim()).filter(Boolean),
+      };
+      if (editProviderForm.api_key.trim()) {
+        payload.api_key = editProviderForm.api_key.trim();
+      }
+      await apiRequest(`/api/v1/ai-providers/${editingProvider.id}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }, token);
+      setEditingProvider(null);
+      setMessage(`Đã cập nhật provider ${editProviderForm.name}`);
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không cập nhật được provider");
+    }
+  }
+
+  async function handleDeleteProvider() {
+    if (!deletingProvider) return;
+    setError("");
+    try {
+      await apiRequest(`/api/v1/ai-providers/${deletingProvider.id}`, { method: "DELETE" }, token);
+      setDeletingProvider(null);
+      setMessage("Đã xóa AI Provider thành công");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không xóa được provider");
+    }
+  }
+
   async function handleTestProvider(prov: Provider) {
-    setProviderStatus((prev) => ({ ...prev, [prov.id]: "Đang kiểm tra..." }));
+    setProviderStatus((prev) => ({ ...prev, [prov.id]: "..." }));
     try {
       const res = await apiRequest<{ status: string; detail: string; latency_ms: number }>(
         `/api/v1/ai-providers/${prov.id}/test`,
@@ -550,8 +809,111 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       if (handleRequestError(reason)) return;
       setProviderStatus((prev) => ({
         ...prev,
-        [prov.id]: `✗ ${reason instanceof Error ? reason.message : "Lỗi kết nối"}`,
+        [prov.id]: `✗ ${reason instanceof Error ? reason.message : "Lỗi"}`,
       }));
+    }
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* TELEMETRY CRUD HANDLERS                                                   */
+  /* -------------------------------------------------------------------------- */
+  async function handleCreateManualLog(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await apiRequest("/api/v1/telemetry/logs/manual", {
+        method: "POST",
+        body: JSON.stringify(manualLogForm),
+      }, token);
+      setShowCreateLogModal(false);
+      setMessage("Đã ghi log kiểm tra hệ thống thành công");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không tạo được log");
+    }
+  }
+
+  async function handleDeleteSingleLog(logId: string) {
+    setError("");
+    try {
+      await apiRequest(`/api/v1/telemetry/logs/${logId}`, { method: "DELETE" }, token);
+      setMessage("Đã xóa log thành công");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không xóa được log");
+    }
+  }
+
+  async function handleClearAllLogs() {
+    setError("");
+    try {
+      await apiRequest("/api/v1/telemetry/logs", { method: "DELETE" }, token);
+      setShowClearLogsModal(false);
+      setMessage("Đã dọn dẹp sạch toàn bộ logs");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không xóa được logs");
+    }
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* SYSTEM SETTINGS & BACKUP HANDLERS                                         */
+  /* -------------------------------------------------------------------------- */
+  async function handleSaveSystemSettings(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await apiRequest("/api/v1/system/settings", {
+        method: "PUT",
+        body: JSON.stringify(systemSettings),
+      }, token);
+      setMessage("Đã lưu cấu hình hệ thống thành công");
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không lưu được cài đặt");
+    }
+  }
+
+  async function handleExportBackup() {
+    setError("");
+    try {
+      const res = await apiRequest<Record<string, unknown>>("/api/v1/system/export", {}, token);
+      const exportData = (res && typeof res === "object" && "data" in res && (res as any).data !== res ? (res as any).data : res) || {};
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `jacs-studio-backup-${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      setMessage("Đã xuất file sao lưu hệ thống JSON thành công");
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không xuất được file sao lưu");
+    }
+  }
+
+  async function handleImportBackupFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const res = await apiRequest<{ imported_records?: number; data?: { imported_records?: number } }>("/api/v1/system/import", {
+        method: "POST",
+        body: JSON.stringify(json),
+      }, token);
+      const count = res?.imported_records ?? res?.data?.imported_records ?? 0;
+      setMessage(`Đã khôi phục thành công ${count} bản ghi từ file backup`);
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "File sao lưu không hợp lệ");
     }
   }
 
@@ -560,239 +922,557 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     onLogout();
   }
 
-  // Filtered Licenses
-  const filteredLicenses = licenses.filter((lic) => {
+  const filteredLicenses = (licenses || []).filter((lic) => {
+    if (!lic) return false;
     const matchesSearch =
       !searchTerm ||
-      lic.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lic.customer_contact.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lic.key_hint.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lic.hwid.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (lic.notes && lic.notes.toLowerCase().includes(searchTerm.toLowerCase()));
-
+      (lic.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (lic.customer_contact || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (lic.key_hint || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (lic.hwid || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "all" || lic.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const activeLicensesCount = licenses.filter((l) => l.status === "active").length;
-  const onlineSessionsCount = sessions.filter((s) => s.is_online).length;
+  const filteredLogs = (logs || []).filter((l) => {
+    if (!l) return false;
+    return logSeverityFilter === "all" || l.severity === logSeverityFilter;
+  });
+
+  // Global search matches
+  const searchMatchesLicenses = searchTerm
+    ? (licenses || [])
+        .filter(
+          (l) =>
+            l &&
+            ((l.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+              (l.key_hint || "").toLowerCase().includes(searchTerm.toLowerCase()))
+        )
+        .slice(0, 3)
+    : [];
+  const searchMatchesSessions = searchTerm
+    ? (sessions || [])
+        .filter(
+          (s) =>
+            s &&
+            ((s.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+              (s.hwid || "").toLowerCase().includes(searchTerm.toLowerCase()))
+        )
+        .slice(0, 3)
+    : [];
+  const searchMatchesProviders = searchTerm
+    ? (providers || [])
+        .filter(
+          (p) =>
+            p &&
+            ((p.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+              (p.model || "").toLowerCase().includes(searchTerm.toLowerCase()))
+        )
+        .slice(0, 3)
+    : [];
+
+  const activeLicensesCount = (licenses || []).filter((l) => l?.status === "active").length;
+  const onlineSessionsCount = (sessions || []).filter((s) => s?.is_online).length;
   const totalRevenueVal = billingSummary?.total_revenue || 0;
   const thisMonthRevenueVal = billingSummary?.this_month_revenue || 0;
 
   return (
     <div className="app-container">
-      {/* SIDEBAR */}
-      <aside className="sidebar">
+      {/* Mobile Drawer Backdrop */}
+      {mobileMenuOpen && (
+        <div className="sidebar-mobile-backdrop" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      {/* SIDEBAR (MintForge Dark Slate Navy) */}
+      <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-header">
-          <a href="#" className="brand-logo" onClick={(e) => { e.preventDefault(); setActiveMenu("overview"); }}>
-            <div className="brand-logo-icon">
-              <Zap size={18} />
+          <a href="#" className="brand-logo" onClick={(e) => { e.preventDefault(); setActiveMenu("overview"); setMobileMenuOpen(false); }}>
+            <div className="brand-logo-icon">MI</div>
+            <div className="brand-title-box">
+              <span className="brand-title">{t("appName")}</span>
+              <span className="brand-badge-sub">{t("appSuite")}</span>
             </div>
-            <span className="brand-title">JACS<span>.</span>Admin</span>
           </a>
-          <button type="button" className="sidebar-toggle-btn" title="Toggle Navigation">
-            <Radio size={16} />
-          </button>
+          {mobileMenuOpen && (
+            <button
+              type="button"
+              className="btn-sidebar-logout"
+              style={{ color: "#fff" }}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         <div className="sidebar-menu">
-          <div className="menu-heading">TỔNG QUAN & PHÂN TÍCH</div>
+          <div className="menu-heading">{t("workspaceSection")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "overview" ? "active" : ""}`}
-            onClick={() => setActiveMenu("overview")}
+            onClick={() => { setActiveMenu("overview"); setMobileMenuOpen(false); }}
           >
             <span className="menu-icon"><LayoutDashboard size={18} /></span>
-            <span className="menu-label">Bảng điều khiển</span>
+            <span className="menu-label">{t("menuOverview")}</span>
           </button>
 
-          <div className="menu-heading">QUẢN TRỊ BẢN QUYỀN</div>
+          <div className="menu-heading">{t("accessSection")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "licenses" ? "active" : ""}`}
-            onClick={() => setActiveMenu("licenses")}
+            onClick={() => { setActiveMenu("licenses"); setMobileMenuOpen(false); }}
           >
             <span className="menu-icon"><Key size={18} /></span>
-            <span className="menu-label">Quản lý License Keys</span>
+            <span className="menu-label">{t("menuLicenses")}</span>
             <span className="menu-badge badge-primary">{activeLicensesCount}</span>
           </button>
 
           <button
             type="button"
             className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
-            onClick={() => setActiveMenu("sessions")}
+            onClick={() => { setActiveMenu("sessions"); setMobileMenuOpen(false); }}
           >
             <span className="menu-icon"><Laptop size={18} /></span>
-            <span className="menu-label">Máy khách Desktop</span>
-            {onlineSessionsCount > 0 ? (
-              <span className="menu-badge badge-success">{onlineSessionsCount} online</span>
-            ) : (
-              <span className="menu-badge badge-primary">{sessions.length}</span>
-            )}
+            <span className="menu-label">{t("menuSessions")}</span>
+            <span className="menu-badge badge-primary">{sessions.length}</span>
           </button>
 
-          <div className="menu-heading">TÀI CHÍNH & DÒNG TIỀN</div>
+          <div className="menu-heading">{t("billingSection")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "billing" ? "active" : ""}`}
-            onClick={() => setActiveMenu("billing")}
+            onClick={() => { setActiveMenu("billing"); setMobileMenuOpen(false); }}
           >
             <span className="menu-icon"><CreditCard size={18} /></span>
-            <span className="menu-label">Doanh thu & Giao dịch</span>
+            <span className="menu-label">{t("menuBilling")}</span>
             <span className="menu-badge badge-warning">{transactions.length}</span>
           </button>
 
-          <div className="menu-heading">HỆ THỐNG & AI</div>
+          <div className="menu-heading">{t("serviceSection")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "providers" ? "active" : ""}`}
-            onClick={() => setActiveMenu("providers")}
+            onClick={() => { setActiveMenu("providers"); setMobileMenuOpen(false); }}
           >
             <span className="menu-icon"><Bot size={18} /></span>
-            <span className="menu-label">AI Providers Gateway</span>
-            <span className="menu-badge badge-info">{providers.length}</span>
+            <span className="menu-label">{t("menuProviders")}</span>
+            <span className="menu-badge badge-primary">{providers.length}</span>
+          </button>
+
+          <div className="menu-heading">{t("operationSection")}</div>
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "telemetry" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("telemetry"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><FileText size={18} /></span>
+            <span className="menu-label">{t("menuTelemetry")}</span>
+            {logs.length > 0 && (
+              <span className="menu-badge badge-warning">{logs.length}</span>
+            )}
           </button>
 
           <button
             type="button"
-            className={`menu-item ${activeMenu === "telemetry" ? "active" : ""}`}
-            onClick={() => setActiveMenu("telemetry")}
+            className={`menu-item ${activeMenu === "releases" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("releases"); setMobileMenuOpen(false); }}
           >
-            <span className="menu-icon"><FileText size={18} /></span>
-            <span className="menu-label">Nhật ký & Telemetry</span>
-            {logs.length > 0 && (
-              <span className="menu-badge badge-danger">{logs.length}</span>
-            )}
+            <span className="menu-icon"><Rocket size={18} /></span>
+            <span className="menu-label">{t("menuReleases")}</span>
+            <span className="menu-badge badge-primary">{releases.filter((r) => r.status === "published").length}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "settings" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("settings"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><Settings size={18} /></span>
+            <span className="menu-label">{t("menuSettings")}</span>
           </button>
         </div>
 
         <div className="sidebar-footer">
-          <div className="health-status-badge">
-            <span className="health-status-dot"></span>
-            <span>API Core: Live</span>
+          <div
+            className="user-profile-strip"
+            onClick={() => setShowUserPopover(!showUserPopover)}
+            style={{ cursor: "pointer" }}
+            title="Quản lý tài khoản"
+          >
+            <div className="user-avatar">AD</div>
+            <div className="user-info-text">
+              <div className="user-name">Admin Superuser</div>
+              <div className="user-role">{t("superAdmin")}</div>
+            </div>
+            <button
+              type="button"
+              className="btn-sidebar-logout"
+              onClick={(e) => { e.stopPropagation(); logout(); }}
+              title={t("logout")}
+            >
+              <Power size={16} />
+            </button>
           </div>
-          <span style={{ fontSize: "0.72rem", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>v0.1.0</span>
         </div>
       </aside>
 
       {/* MAIN WRAPPER */}
       <div className="main-wrapper">
-        {/* TOP NAVBAR */}
-        <header className="top-navbar">
+        <header className="navbar">
           <div className="navbar-left">
-            <div className="search-box">
-              <span className="search-icon"><Search size={16} /></span>
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Tìm license, khách hàng, HWID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="nav-tag-badge">
-              <ShieldCheck size={14} color="var(--success)" />
-              <span>Production Gateway</span>
+            <button
+              type="button"
+              className="mobile-hamburger-btn"
+              onClick={() => setMobileMenuOpen(true)}
+              title="Menu"
+            >
+              <Menu size={20} />
+            </button>
+
+            {/* Redesigned Search Pill with Live Results Popover */}
+            <div className="search-container-relative" ref={searchContainerRef}>
+              <div className="navbar-search-pill">
+                <Search size={15} color="var(--primary)" />
+                <input
+                  type="text"
+                  placeholder={t("searchPlaceholder")}
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); setShowSearchDropdown(true); }}
+                  onFocus={() => setShowSearchDropdown(true)}
+                />
+                {searchTerm ? (
+                  <button
+                    type="button"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 0 }}
+                    onClick={() => { setSearchTerm(""); setShowSearchDropdown(false); }}
+                  >
+                    <X size={14} />
+                  </button>
+                ) : (
+                  <span className="search-shortcut-chip">⌘ K</span>
+                )}
+              </div>
+
+              {/* Live Search Results Dropdown */}
+              {showSearchDropdown && (
+                <div className="search-dropdown-popover">
+                  {searchTerm && (
+                    <>
+                      {searchMatchesLicenses.length > 0 && (
+                        <div>
+                          <div className="search-section-header"><Key size={12} /> {t("menuLicenses")}</div>
+                          {searchMatchesLicenses.map((lic) => (
+                            <button
+                              key={lic.id}
+                              type="button"
+                              className="search-result-row"
+                              onClick={() => { setActiveMenu("licenses"); setShowSearchDropdown(false); }}
+                            >
+                              <div>
+                                <strong>{lic.customer_name}</strong>
+                                <small style={{ display: "block" }}>{lic.key_hint} · {lic.status}</small>
+                              </div>
+                              <span className="code-chip">{lic.hwid.slice(0, 10)}...</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {searchMatchesSessions.length > 0 && (
+                        <div>
+                          <div className="search-section-header"><Laptop size={12} /> {t("menuSessions")}</div>
+                          {searchMatchesSessions.map((sess) => (
+                            <button
+                              key={sess.license_id}
+                              type="button"
+                              className="search-result-row"
+                              onClick={() => { setActiveMenu("sessions"); setShowSearchDropdown(false); }}
+                            >
+                              <div>
+                                <strong>{sess.customer_name}</strong>
+                                <small style={{ display: "block" }}>{sess.last_platform} · v{sess.last_app_version}</small>
+                              </div>
+                              <span className={`pill-status ${sess.is_online ? "pill-online" : "pill-offline"}`} style={{ fontSize: "0.68rem" }}>
+                                {sess.is_online ? "Online" : "Offline"}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {searchMatchesProviders.length > 0 && (
+                        <div>
+                          <div className="search-section-header"><Bot size={12} /> {t("menuProviders")}</div>
+                          {searchMatchesProviders.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className="search-result-row"
+                              onClick={() => { setActiveMenu("providers"); setShowSearchDropdown(false); }}
+                            >
+                              <strong>{p.name}</strong>
+                              <small>{p.model}</small>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Quick Commands & Navigation */}
+                  <div className="search-section-header">⚡ {language === "vi" ? "Lệnh Thao Tác Nhanh" : "Quick Actions"}</div>
+                  <button
+                    type="button"
+                    className="search-result-row"
+                    onClick={() => { setShowCreateModal(true); setShowSearchDropdown(false); }}
+                  >
+                    <span>🔑 {t("createLicense")}</span>
+                    <small>Mở form cấp key</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="search-result-row"
+                    onClick={() => { setShowAddTransactionModal(true); setShowSearchDropdown(false); }}
+                  >
+                    <span>💳 {t("addTransaction")}</span>
+                    <small>Nạp credit / Hóa đơn</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="search-result-row"
+                    onClick={() => { setActiveMenu("settings"); setShowSearchDropdown(false); }}
+                  >
+                    <span>⚙️ {t("menuSettings")}</span>
+                    <small>Cấu hình & Backup</small>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="navbar-right">
+            {/* Multi-language Selector Pill */}
+            <div style={{ position: "relative" }}>
+              <div
+                className="lang-selector-pill"
+                onClick={() => setShowLangDropdown(!showLangDropdown)}
+                style={{ cursor: "pointer" }}
+              >
+                <Globe size={14} color="var(--primary)" />
+                <span className="lang-text-desktop">{language === "vi" ? "🇻🇳 Tiếng Việt" : "🇬🇧 English"}</span>
+                <span className="lang-text-mobile">{language === "vi" ? "🇻🇳 VN" : "🇬🇧 EN"}</span>
+                <ChevronDown size={14} color="var(--text-muted)" />
+              </div>
+
+              {showLangDropdown && (
+                <div style={{ position: "absolute", right: 0, top: "115%", background: "#1a1d2e", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", overflow: "hidden", minWidth: "140px", zIndex: 100, boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }}>
+                  <button
+                    type="button"
+                    style={{ width: "100%", padding: "0.55rem 0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", background: language === "vi" ? "#262a40" : "transparent", color: "#fff", border: "none", fontSize: "0.8rem", cursor: "pointer", textAlign: "left" }}
+                    onClick={() => { setLanguage("vi"); setShowLangDropdown(false); }}
+                  >
+                    🇻🇳 Tiếng Việt
+                  </button>
+                  <button
+                    type="button"
+                    style={{ width: "100%", padding: "0.55rem 0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", background: language === "en" ? "#262a40" : "transparent", color: "#fff", border: "none", fontSize: "0.8rem", cursor: "pointer", textAlign: "left" }}
+                    onClick={() => { setLanguage("en"); setShowLangDropdown(false); }}
+                  >
+                    🇬🇧 English
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Action Button */}
             <button
               type="button"
-              className="nav-icon-btn"
-              onClick={() => void refresh()}
-              title="Làm mới dữ liệu từ API"
+              className="btn-nav-action-orange"
+              title={t("quickActionCreateLicense")}
+              onClick={() => setShowCreateModal(true)}
             >
-              <RotateCw size={16} />
-            </button>
-            <button type="button" className="nav-icon-btn" title="Cảnh báo & Lỗi" onClick={() => setActiveMenu("telemetry")}>
-              <Bell size={16} />
-              {logs.length > 0 && <span className="notification-badge"></span>}
+              <Plus size={18} />
             </button>
 
-            <div className="user-profile-widget">
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-                alt="Avatar"
-                className="user-avatar-img"
-              />
-              <div className="user-info-text">
-                <span className="user-name-title">Super Admin</span>
-                <span className="user-role-sub">admin@jacs.vn</span>
-              </div>
+            {/* Notifications with Popover */}
+            <div style={{ position: "relative" }} ref={notifMenuRef}>
               <button
                 type="button"
-                className="user-logout-btn"
-                onClick={logout}
-                title="Đăng xuất khỏi hệ thống"
+                className="btn-nav-icon-plain"
+                title={t("notifications")}
+                onClick={() => { setShowNotifPopover(!showNotifPopover); setHasUnreadAlerts(false); }}
               >
-                <Power size={15} />
+                <Bell size={16} />
+                {hasUnreadAlerts && logs.length > 0 && <span className="nav-dot-badge"></span>}
               </button>
+
+              {showNotifPopover && (
+                <div className="topbar-popover-card notif-popover-width">
+                  <div className="notif-header-row">
+                    <strong>{language === "vi" ? "Trung Tâm Thông Báo" : "Notification Center"}</strong>
+                    <span className="badge-primary menu-badge">{logs.length}</span>
+                  </div>
+
+                  <div style={{ maxHeight: "280px", overflowY: "auto" }}>
+                    {logs.slice(0, 5).map((log) => (
+                      <div
+                        key={log.id}
+                        className="notif-item"
+                        onClick={() => { setActiveMenu("telemetry"); setShowNotifPopover(false); }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.2rem" }}>
+                          <span className={`pill-status pill-${log.severity === "fatal" ? "danger" : log.severity === "error" ? "danger" : "warning"}`} style={{ fontSize: "0.65rem", padding: "0.1rem 0.35rem" }}>
+                            {log.severity.toUpperCase()}
+                          </span>
+                          <strong style={{ fontSize: "0.78rem", color: "#ffffff" }}>{log.event_name}</strong>
+                          <span style={{ fontSize: "0.68rem", color: "var(--sidebar-heading)", marginLeft: "auto" }}>v{log.app_version}</span>
+                        </div>
+                        <div style={{ fontSize: "0.74rem", color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {log.message}
+                        </div>
+                      </div>
+                    ))}
+                    {logs.length === 0 && (
+                      <div style={{ padding: "1.5rem", textAlign: "center", color: "#94a3b8", fontSize: "0.8rem" }}>
+                        {t("noLogsFound")}
+                      </div>
+                    )}
+                  </div>
+
+                  <a
+                    className="notif-footer-link"
+                    onClick={() => { setActiveMenu("telemetry"); setShowNotifPopover(false); }}
+                  >
+                    {language === "vi" ? "Xem tất cả sự cố & logs ➔" : "View all logs & telemetry ➔"}
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* User Profile Popover */}
+            <div style={{ position: "relative" }} ref={userMenuRef}>
+              <div
+                className="nav-avatar-photo"
+                onClick={() => setShowUserPopover(!showUserPopover)}
+                title="Tài khoản quản trị"
+              >
+                AD
+              </div>
+
+              {showUserPopover && (
+                <div className="topbar-popover-card user-popover-width">
+                  <div className="popover-user-header">
+                    <div className="nav-avatar-photo" style={{ width: "42px", height: "42px" }}>AD</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ display: "block", color: "#ffffff", fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Admin Superuser</strong>
+                      <span style={{ fontSize: "0.75rem", color: "var(--sidebar-heading)", display: "block" }}>admin@example.com</span>
+                      <span className="badge-primary menu-badge" style={{ marginTop: "0.25rem", display: "inline-block" }}>Super Admin</span>
+                    </div>
+                  </div>
+
+                  <div className="popover-menu-list">
+                    <button
+                      type="button"
+                      className="popover-menu-action"
+                      onClick={() => { setShowAccountModal(true); setShowUserPopover(false); }}
+                    >
+                      <User size={15} color="var(--primary)" />
+                      <span>{language === "vi" ? "Quản lý tài khoản & Đổi mật khẩu" : "Account & Password Security"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="popover-menu-action"
+                      onClick={() => { setActiveMenu("settings"); setShowUserPopover(false); }}
+                    >
+                      <Settings size={15} color="#94a3b8" />
+                      <span>{t("menuSettings")}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="popover-menu-action"
+                      onClick={() => { setLanguage(language === "vi" ? "en" : "vi"); setShowUserPopover(false); }}
+                    >
+                      <Globe size={15} color="#34d399" />
+                      <span>{language === "vi" ? "Chuyển sang English 🇬🇧" : "Chuyển sang Tiếng Việt 🇻🇳"}</span>
+                    </button>
+
+                    <div className="popover-divider" />
+
+                    <button
+                      type="button"
+                      className="popover-menu-action danger"
+                      onClick={() => { logout(); setShowUserPopover(false); }}
+                    >
+                      <Power size={15} color="#ef4444" />
+                      <span>{t("logout")}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>
 
-        {/* PAGE BODY */}
-        <main className="page-content">
+        <main className="page-body-content">
           {/* Header Row */}
           <div className="page-header-row">
-            <div>
-              <div className="page-title-box">
-                <span className="page-icon-badge">
-                  {activeMenu === "overview" && <LayoutDashboard size={24} />}
-                  {activeMenu === "licenses" && <Key size={24} />}
-                  {activeMenu === "sessions" && <Laptop size={24} />}
-                  {activeMenu === "billing" && <CreditCard size={24} />}
-                  {activeMenu === "providers" && <Bot size={24} />}
-                  {activeMenu === "telemetry" && <FileText size={24} />}
-                </span>
-                <h1 className="page-main-heading">
-                  {activeMenu === "overview" && "Tổng Quan Quản Trị Hệ Thống"}
-                  {activeMenu === "licenses" && "Quản Lý Bản Quyền License Keys"}
-                  {activeMenu === "sessions" && "Giám Sát Máy Khách Desktop Realtime"}
-                  {activeMenu === "billing" && "Doanh Thu & Dòng Tiền Giao Dịch"}
-                  {activeMenu === "providers" && "Cấu Hình AI Providers Gateway"}
-                  {activeMenu === "telemetry" && "Nhật Ký Telemetry & Báo Cáo Lỗi"}
-                </h1>
-              </div>
-              <div className="breadcrumb-trail">
-                <span>Trang chủ</span> / <span>JACS Admin</span> / <span>{activeMenu.toUpperCase()}</span>
-              </div>
+            <div className="page-title-group">
+              <h1>
+                {activeMenu === "overview" && t("overviewTitle")}
+                {activeMenu === "licenses" && t("licensesTitle")}
+                {activeMenu === "sessions" && t("sessionsTitle")}
+                {activeMenu === "billing" && t("billingTitle")}
+                {activeMenu === "providers" && t("providersTitle")}
+                {activeMenu === "telemetry" && t("telemetryTitle")}
+                {activeMenu === "releases" && (language === "vi" ? "Quản lý Bản phát hành & Cập nhật OTA 🚀" : "Releases & OTA Updates 🚀")}
+                {activeMenu === "settings" && t("settingsTitle")}
+              </h1>
+              <p>
+                {activeMenu === "overview" && t("overviewSubtitle")}
+                {activeMenu === "licenses" && t("licensesSubtitle")}
+                {activeMenu === "sessions" && t("sessionsSubtitle")}
+                {activeMenu === "billing" && t("billingSubtitle")}
+                {activeMenu === "providers" && t("providersSubtitle")}
+                {activeMenu === "telemetry" && t("telemetrySubtitle")}
+                {activeMenu === "releases" && (language === "vi" ? "Cung cấp bản cập nhật mới trực tiếp cho khách hàng. Người dùng chỉ cần 1 click để tải và áp dụng bản mới mà không cần cài lại tool." : "Broadcast updates to desktop clients with 1-click in-place update.")}
+                {activeMenu === "settings" && t("settingsSubtitle")}
+              </p>
             </div>
 
-            <div className="page-header-actions">
+            <div className="page-actions-group">
               <button
                 type="button"
-                className="btn-pill-action"
-                onClick={() => setChartPeriod(chartPeriod === "14d" ? "30d" : "14d")}
+                className="btn-white-outline"
+                onClick={() => void refresh()}
               >
-                <Calendar size={15} />
-                <span>Chu kỳ: {chartPeriod === "14d" ? "14 Ngày gần nhất" : "30 Ngày gần nhất"}</span>
+                <ArrowUpRight size={15} /> {t("refresh")}
               </button>
               <button
                 type="button"
-                className="btn-primary-action"
+                className="btn-primary-orange"
                 onClick={() => setShowCreateModal(true)}
               >
-                <Plus size={16} /> Cấp License Mới
+                <Zap size={15} /> {t("createLicense")}
               </button>
             </div>
           </div>
 
           {/* Flash Messages */}
           {message && (
-            <div className="info-alert-strip" style={{ background: "var(--success-light)", borderColor: "#a7f3d0", color: "var(--success-text)" }}>
+            <div className="kpi-card-mf" style={{ background: "var(--success-light)", borderColor: "#a7f3d0", color: "var(--success-text)", marginBottom: "1.25rem", padding: "0.85rem 1.25rem" }}>
               <Check size={18} />
-              <span>{message}</span>
+              <span style={{ fontWeight: 600 }}>{message}</span>
               <button type="button" style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 800 }} onClick={() => setMessage("")}>
                 <X size={16} />
               </button>
             </div>
           )}
           {error && (
-            <div className="info-alert-strip" style={{ background: "var(--danger-light)", borderColor: "#fecaca", color: "var(--danger-text)" }}>
+            <div className="kpi-card-mf" style={{ background: "var(--danger-light)", borderColor: "#fecaca", color: "var(--danger-text)", marginBottom: "1.25rem", padding: "0.85rem 1.25rem" }}>
               <AlertTriangle size={18} />
-              <span>{error}</span>
+              <span style={{ fontWeight: 600 }}>{error}</span>
               <button type="button" style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 800 }} onClick={() => setError("")}>
                 <X size={16} />
               </button>
@@ -802,469 +1482,247 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           {/* ========================================================================= */}
           {/* VIEW: OVERVIEW DASHBOARD */}
           {/* ========================================================================= */}
-          {activeMenu === "overview" && (
-            <>
-              {/* TOP 4 KPI CARDS */}
-              <div className="kpi-cards-grid">
-                {/* Card 1: Active Licenses */}
-                <div className="kpi-card" onClick={() => setActiveMenu("licenses")} style={{ cursor: "pointer" }}>
-                  <div className="kpi-card-bar bar-success"></div>
-                  <div className="kpi-card-title">LICENSE HOẠT ĐỘNG</div>
-                  <div className="kpi-card-body">
-                    <div className="kpi-main-stat kpi-stat-success">
-                      <TrendingUp size={22} />
-                      <span>{activeLicensesCount}</span>
-                      <span style={{ fontSize: "1rem", color: "var(--text-muted)" }}>/ {licenses.length}</span>
+          {activeMenu === "overview" && (() => {
+            const activePercent = licenses.length > 0 ? Math.round((activeLicensesCount / licenses.length) * 100) : 0;
+            const onlinePercent = sessions.length > 0 ? Math.round((onlineSessionsCount / sessions.length) * 100) : 0;
+            const lifetimeKeysCount = licenses.filter((l) => !l.expires_at).length;
+            const inactiveKeysCount = licenses.length - activeLicensesCount;
+            const donutDashOffset = Math.round(251 * (1 - (activePercent / 100)));
+
+            return (
+              <>
+                <div className="kpi-cards-grid-mintforge">
+                  {/* Card 1: Số dư / Doanh thu tháng này */}
+                  <div className="kpi-card-mf" onClick={() => setActiveMenu("billing")} style={{ cursor: "pointer" }}>
+                    <div className="kpi-squircle-badge squircle-orange"><Wallet size={24} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">{t("kpiBalanceLabel")}</div>
+                      <div className="kpi-value-mf">{formatCurrency(thisMonthRevenueVal)}</div>
+                      <div className="kpi-subtext-indicator">
+                        <span className="subtext-green">{t("kpiBalanceSub1")}</span>
+                        <span className="subtext-gray">{t("kpiBalanceSub2")}</span>
+                      </div>
                     </div>
-                    <div className="radial-progress-pill radial-success">
-                      <span>{licenses.length > 0 ? Math.round((activeLicensesCount / licenses.length) * 100) : 100}%</span>
+                  </div>
+
+                  {/* Card 2: Tổng tiền nạp / Doanh thu */}
+                  <div className="kpi-card-mf" onClick={() => setActiveMenu("billing")} style={{ cursor: "pointer" }}>
+                    <div className="kpi-squircle-badge squircle-green"><ArrowUpRight size={24} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">{t("kpiTotalRevenueLabel")}</div>
+                      <div className="kpi-value-mf">{formatCurrency(totalRevenueVal)}</div>
+                      <div className="kpi-subtext-indicator">
+                        <span className="subtext-green">{t("kpiTotalRevenueSub1")}</span>
+                        <span className="subtext-gray">{t("kpiTotalRevenueSub2")} ({transactions.length} tx)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: License đang hoạt động */}
+                  <div className="kpi-card-mf" onClick={() => setActiveMenu("licenses")} style={{ cursor: "pointer" }}>
+                    <div className="kpi-squircle-badge squircle-blue"><Key size={24} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">{t("kpiActiveKeysLabel")}</div>
+                      <div className="kpi-value-mf">{activeLicensesCount} key</div>
+                      <div className="kpi-subtext-indicator">
+                        <span className="subtext-orange">↘ {inactiveKeysCount} {t("kpiActiveKeysSub1")}</span>
+                        <span className="subtext-gray">/ {licenses.length} {t("kpiActiveKeysSub2")}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Máy khách Desktop Online */}
+                  <div className="kpi-card-mf" onClick={() => setActiveMenu("sessions")} style={{ cursor: "pointer" }}>
+                    <div className="kpi-squircle-badge squircle-purple"><Laptop size={24} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">{t("kpiDesktopOnlineLabel")}</div>
+                      <div className="kpi-value-mf">{onlineSessionsCount} {language === "vi" ? "thiết bị" : "devices"}</div>
+                      <div className="kpi-subtext-indicator">
+                        <span className="subtext-green">↘ {onlinePercent}% {t("kpiDesktopOnlineSub1")}</span>
+                        <span className="subtext-gray">{sessions.length} {t("kpiDesktopOnlineSub2")}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Card 2: This Month Revenue */}
-                <div className="kpi-card" onClick={() => setActiveMenu("billing")} style={{ cursor: "pointer" }}>
-                  <div className="kpi-card-bar bar-primary"></div>
-                  <div className="kpi-card-title">DOANH THU THÁNG NÀY</div>
-                  <div className="kpi-card-body">
-                    <div className="kpi-main-stat" style={{ fontSize: "1.45rem", color: "var(--primary)" }}>
-                      <span>{formatCurrency(thisMonthRevenueVal)}</span>
+                {/* CHARTS GRID (MintForge 2-Column Split) */}
+                <div className="charts-grid-mintforge">
+                  {/* Left Panel: Chi phí và request API */}
+                  <div className="mf-card-panel">
+                    <div className="mf-card-header">
+                      <div className="mf-card-title-group">
+                        <h3>{t("chartApiUsageTitle")}</h3>
+                        <p>{t("chartApiUsageSubtitle")}</p>
+                      </div>
+                      <div className="mf-card-actions">
+                        <select className="pill-dropdown-year" defaultValue="2026">
+                          <option value="2026">2026 ▾</option>
+                          <option value="2025">2025 ▾</option>
+                        </select>
+                        <button type="button" className="btn-dot-menu" title="Options">•••</button>
+                      </div>
                     </div>
-                    <div className="radial-progress-pill radial-info">
-                      <span>75%</span>
+
+                    <div className="mf-chart-legend">
+                      <span><span className="mf-legend-dot-orange">●</span> {t("chartCostLegend")}</span>
+                      <span><span className="mf-legend-dot-navy">●</span> {t("chartRequestLegend")}</span>
                     </div>
-                  </div>
-                </div>
 
-                {/* Card 3: Total Volume */}
-                <div className="kpi-card" onClick={() => setActiveMenu("billing")} style={{ cursor: "pointer" }}>
-                  <div className="kpi-card-bar bar-warning"></div>
-                  <div className="kpi-card-title">TỔNG DOANH THU TÍCH LŨY</div>
-                  <div className="kpi-card-body">
-                    <div className="kpi-main-stat" style={{ fontSize: "1.45rem" }}>
-                      <span>{formatCurrency(totalRevenueVal)}</span>
-                    </div>
-                    <div className="radial-progress-pill radial-warning">
-                      <span>{transactions.length} tx</span>
-                    </div>
-                  </div>
-                </div>
+                    <div style={{ height: "210px", width: "100%", position: "relative" }}>
+                      <svg viewBox="0 0 600 200" width="100%" height="100%" preserveAspectRatio="none" style={{ overflow: "visible" }}>
+                        <line x1="30" y1="20" x2="590" y2="20" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                        <line x1="30" y1="60" x2="590" y2="60" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                        <line x1="30" y1="100" x2="590" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                        <line x1="30" y1="140" x2="590" y2="140" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+                        <line x1="30" y1="170" x2="590" y2="170" stroke="#e5e7eb" strokeWidth="1" />
 
-                {/* Card 4: Active Desktop Sessions */}
-                <div className="kpi-card" onClick={() => setActiveMenu("sessions")} style={{ cursor: "pointer" }}>
-                  <div className="kpi-card-bar bar-info"></div>
-                  <div className="kpi-card-title">MÁY KHÁCH ONLINE</div>
-                  <div className="kpi-card-body">
-                    <div className="kpi-main-stat" style={{ color: "var(--text-dark)" }}>
-                      <Radio size={20} color="var(--success)" />
-                      <span>{onlineSessionsCount}</span>
-                      <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginLeft: "0.3rem" }}>thiết bị</span>
-                    </div>
-                    <div className="radial-progress-pill radial-info">
-                      <span>{sessions.length}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                        <text x="20" y="24" fontSize="10" fill="#9ca3af" textAnchor="end">4</text>
+                        <text x="20" y="64" fontSize="10" fill="#9ca3af" textAnchor="end">3</text>
+                        <text x="20" y="104" fontSize="10" fill="#9ca3af" textAnchor="end">2</text>
+                        <text x="20" y="144" fontSize="10" fill="#9ca3af" textAnchor="end">1</text>
+                        <text x="20" y="174" fontSize="10" fill="#9ca3af" textAnchor="end">0</text>
 
-              {/* CHARTS SECTION (SPLIT 2 COLUMNS) */}
-              <div className="charts-split-grid">
-                {/* Left Card: Traffic Sources Bar & Line Combined Chart */}
-                <div className="card-panel">
-                  <div className="card-panel-header">
-                    <div>
-                      <span className="card-panel-title">Lưu Lượng Render Video & Gọi AI</span>
-                      <div className="card-panel-subtitle">Thống kê số lượng video xử lý và truy vấn model AI theo ngày</div>
-                    </div>
-                    <button type="button" className="btn-actions-amber" onClick={() => setActiveMenu("telemetry")}>
-                      Xem Logs
-                    </button>
-                  </div>
-
-                  <div className="chart-container-box">
-                    <svg viewBox="0 0 680 220" width="100%" height="100%" style={{ overflow: "visible" }}>
-                      {/* Grid Lines */}
-                      <line x1="40" y1="20" x2="640" y2="20" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                      <line x1="40" y1="60" x2="640" y2="60" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                      <line x1="40" y1="100" x2="640" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                      <line x1="40" y1="140" x2="640" y2="140" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                      <line x1="40" y1="180" x2="640" y2="180" stroke="#e2e8f0" strokeWidth="1" />
-
-                      {/* Left Axis Labels */}
-                      <text x="25" y="24" fontSize="10" fill="#94a3b8" textAnchor="end">100</text>
-                      <text x="25" y="64" fontSize="10" fill="#94a3b8" textAnchor="end">80</text>
-                      <text x="25" y="104" fontSize="10" fill="#94a3b8" textAnchor="end">60</text>
-                      <text x="25" y="144" fontSize="10" fill="#94a3b8" textAnchor="end">40</text>
-                      <text x="25" y="184" fontSize="10" fill="#94a3b8" textAnchor="end">20</text>
-
-                      {/* Right Axis Labels */}
-                      <text x="655" y="24" fontSize="10" fill="#94a3b8" textAnchor="start">50</text>
-                      <text x="655" y="64" fontSize="10" fill="#94a3b8" textAnchor="start">40</text>
-                      <text x="655" y="104" fontSize="10" fill="#94a3b8" textAnchor="start">30</text>
-                      <text x="655" y="144" fontSize="10" fill="#94a3b8" textAnchor="start">20</text>
-                      <text x="655" y="184" fontSize="10" fill="#94a3b8" textAnchor="start">10</text>
-
-                      {/* Blue Columns (Bars - Rendered Videos) */}
-                      <rect x="70" y="110" width="28" height="70" rx="4" fill="#3b82f6" />
-                      <text x="84" y="198" fontSize="10" fill="#64748b" textAnchor="middle">01 Jan</text>
-
-                      <rect x="135" y="85" width="28" height="95" rx="4" fill="#3b82f6" />
-                      <text x="149" y="198" fontSize="10" fill="#64748b" textAnchor="middle">03 Jan</text>
-
-                      <rect x="200" y="100" width="28" height="80" rx="4" fill="#3b82f6" />
-                      <text x="214" y="198" fontSize="10" fill="#64748b" textAnchor="middle">05 Jan</text>
-
-                      <rect x="265" y="55" width="28" height="125" rx="4" fill="#3b82f6" />
-                      <text x="279" y="198" fontSize="10" fill="#64748b" textAnchor="middle">07 Jan</text>
-
-                      <rect x="330" y="130" width="28" height="50" rx="4" fill="#3b82f6" />
-                      <text x="344" y="198" fontSize="10" fill="#64748b" textAnchor="middle">09 Jan</text>
-
-                      <rect x="395" y="90" width="28" height="90" rx="4" fill="#3b82f6" />
-                      <text x="409" y="198" fontSize="10" fill="#64748b" textAnchor="middle">11 Jan</text>
-
-                      <rect x="460" y="40" width="28" height="140" rx="4" fill="#3b82f6" />
-                      <text x="474" y="198" fontSize="10" fill="#64748b" textAnchor="middle">13 Jan</text>
-
-                      <rect x="525" y="115" width="28" height="65" rx="4" fill="#3b82f6" />
-                      <text x="539" y="198" fontSize="10" fill="#64748b" textAnchor="middle">15 Jan</text>
-
-                      <rect x="590" y="145" width="28" height="35" rx="4" fill="#3b82f6" />
-                      <text x="604" y="198" fontSize="10" fill="#64748b" textAnchor="middle">17 Jan</text>
-
-                      {/* Teal Overlay Line Graph (AI Analysis Calls) */}
-                      <polyline
-                        points="84,120 149,70 214,95 279,125 344,55 409,140 474,105 539,150 604,135"
-                        fill="none"
-                        stroke="#06b6d4"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      {/* Dots on line */}
-                      {[[84, 120], [149, 70], [214, 95], [279, 125], [344, 55], [409, 140], [474, 105], [539, 150], [604, 135]].map(([cx, cy], i) => (
-                        <circle key={i} cx={cx} cy={cy} r="4" fill="#ffffff" stroke="#06b6d4" strokeWidth="2.5" />
-                      ))}
-                    </svg>
-                  </div>
-
-                  <div className="chart-legend-row">
-                    <span><span className="legend-dot-blue">●</span> Video Rendered (Clips)</span>
-                    <span><span className="legend-dot-teal">●</span> AI Vision & TTS Calls</span>
-                  </div>
-                </div>
-
-                {/* Right Card: Performance Circular Gauge */}
-                <div className="card-panel">
-                  <div className="card-panel-header">
-                    <div>
-                      <span className="card-panel-title">Hiệu Suất AI Gateway</span>
-                      <div className="card-panel-subtitle">Hạn mức & Tỷ lệ thành công</div>
-                    </div>
-                    <button type="button" className="sidebar-toggle-btn" title="Cấu hình Provider" onClick={() => setActiveMenu("providers")}>
-                      <Settings size={16} />
-                    </button>
-                  </div>
-
-                  <div className="gauge-wrapper">
-                    <div className="circular-gauge-container">
-                      <svg viewBox="0 0 100 100" width="170" height="170">
-                        {/* Background track */}
                         <path
-                          d="M 15 75 A 40 40 0 1 1 85 75"
+                          d="M 50 170 Q 200 170 320 168 T 480 160 T 570 145"
                           fill="none"
-                          stroke="#e2e8f0"
-                          strokeWidth="8"
+                          stroke="#f95738"
+                          strokeWidth="3.5"
                           strokeLinecap="round"
                         />
-                        {/* Gradient definition */}
-                        <defs>
-                          <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#10b981" />
-                            <stop offset="60%" stopColor="#06b6d4" />
-                            <stop offset="100%" stopColor="#3b82f6" />
-                          </linearGradient>
-                        </defs>
-                        {/* Progress stroke 75% */}
+                        <circle cx="570" cy="145" r="4.5" fill="#f95738" stroke="#ffffff" strokeWidth="2" />
+
                         <path
-                          d="M 15 75 A 40 40 0 1 1 85 75"
+                          d="M 50 170 Q 240 170 380 169 T 570 166"
                           fill="none"
-                          stroke="url(#gaugeGrad)"
-                          strokeWidth="8"
+                          stroke="#1e293b"
+                          strokeWidth="2.5"
                           strokeLinecap="round"
-                          strokeDasharray="188"
-                          strokeDashoffset="47"
                         />
+
+                        {[t("dayThu"), t("dayFri"), t("daySat"), t("daySun"), t("dayMon"), t("dayTue"), t("dayWed")].map((day, idx) => {
+                          const x = 50 + idx * 86;
+                          return (
+                            <text key={idx} x={x} y="190" fontSize="10" fill="#6b7280" textAnchor="middle" fontWeight="600">
+                              {day}
+                            </text>
+                          );
+                        })}
                       </svg>
-                      <div className="gauge-center-text">
-                        <span className="gauge-label">Thành công</span>
-                        <span className="gauge-number">99.8%</span>
+                    </div>
+                  </div>
+
+                  {/* Right Panel: Trạng thái API key (Emerald Donut) */}
+                  <div className="mf-card-panel">
+                    <div className="mf-card-header">
+                      <div className="mf-card-title-group">
+                        <h3>{t("chartKeyStatusTitle")}</h3>
+                        <p>{licenses.length} {t("chartKeyStatusSub")}</p>
                       </div>
+                      <button type="button" className="btn-dot-menu" title="Options">•••</button>
                     </div>
 
-                    <div className="target-progress-widget">
-                      <div className="target-progress-header">
-                        <span style={{ fontWeight: 800, color: "var(--warning)" }}>32% Hạn mức Token</span>
-                        <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>OpenAI + Gemini</span>
+                    <div className="mf-donut-status-layout">
+                      <div className="mf-donut-left">
+                        <svg viewBox="0 0 100 100" width="160" height="160">
+                          <circle cx="50" cy="50" r="40" fill="none" stroke="#f1f5f9" strokeWidth="11" />
+                          <circle
+                            cx="50"
+                            cy="50"
+                            r="40"
+                            fill="none"
+                            stroke="#10b981"
+                            strokeWidth="11"
+                            strokeLinecap="round"
+                            strokeDasharray="251"
+                            strokeDashoffset={donutDashOffset}
+                            transform="rotate(-90 50 50)"
+                          />
+                        </svg>
+                        <div className="mf-donut-center-text">
+                          <span className="mf-donut-count">{activeLicensesCount}</span>
+                          <span className="mf-donut-label">API key</span>
+                        </div>
                       </div>
-                      <div className="progress-track">
-                        <div className="progress-fill fill-warning" style={{ width: "32%" }}></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* 4 HORIZONTAL BOTTOM SUMMARY METRICS ROW */}
-              <div className="summary-strip-grid">
-                <div className="summary-card">
-                  <div>
-                    <div className="summary-card-label">Doanh thu TB / Key</div>
-                    <div className="summary-card-val">
-                      {formatCurrency(licenses.length > 0 ? totalRevenueVal / licenses.length : 500000)}
-                    </div>
-                  </div>
-                  <span className="trend-badge trend-up">
-                    <ArrowUpRight size={14} /> +14%
-                  </span>
-                </div>
-
-                <div className="summary-card">
-                  <div>
-                    <div className="summary-card-label">Chi phí AI API Est.</div>
-                    <div className="summary-card-val">{formatCurrency(totalRevenueVal * 0.12)}</div>
-                  </div>
-                  <span className="trend-badge trend-down">
-                    <ArrowDownRight size={14} /> 8%
-                  </span>
-                </div>
-
-                <div className="summary-card">
-                  <div>
-                    <div className="summary-card-label">Bản quyền Vĩnh viễn</div>
-                    <div className="summary-card-val">
-                      {licenses.filter((l) => !l.expires_at).length} keys
-                    </div>
-                  </div>
-                  <span className="trend-badge trend-info">
-                    <Sparkles size={14} /> Lifetime
-                  </span>
-                </div>
-
-                <div className="summary-card">
-                  <div>
-                    <div className="summary-card-label">Tổng giao dịch Billing</div>
-                    <div className="summary-card-val">{transactions.length} lượt</div>
-                  </div>
-                  <span className="trend-badge trend-amber">
-                    <TrendingUp size={14} /> +76%
-                  </span>
-                </div>
-              </div>
-
-              {/* TARGET SECTION (4 MULTI-COLORED PROGRESS BARS) */}
-              <div className="target-section-card">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span className="card-panel-title">Chỉ Số Mục Tiêu & Sức Khỏe Vận Hành (Targets)</span>
-                  <a href="#" style={{ fontSize: "0.8rem", color: "var(--primary)", fontWeight: 700, textDecoration: "none" }} onClick={(e) => { e.preventDefault(); setActiveMenu("billing"); }}>
-                    Xem chi tiết giao dịch →
-                  </a>
-                </div>
-
-                <div className="target-grid">
-                  {/* Target 1 */}
-                  <div className="target-item">
-                    <div className="target-item-top">
-                      <span className="target-percent">71%</span>
-                      <div className="progress-track" style={{ flex: 1, margin: "0 0.5rem" }}>
-                        <div className="progress-fill fill-danger" style={{ width: "71%" }}></div>
-                      </div>
-                    </div>
-                    <span className="target-label">Mục tiêu Doanh thu Tháng</span>
-                  </div>
-
-                  {/* Target 2 */}
-                  <div className="target-item">
-                    <div className="target-item-top">
-                      <span className="target-percent">94%</span>
-                      <div className="progress-track" style={{ flex: 1, margin: "0 0.5rem" }}>
-                        <div className="progress-fill fill-success" style={{ width: "94%" }}></div>
-                      </div>
-                    </div>
-                    <span className="target-label">Tỷ lệ License Đang Hoạt động</span>
-                  </div>
-
-                  {/* Target 3 */}
-                  <div className="target-item">
-                    <div className="target-item-top">
-                      <span className="target-percent">32%</span>
-                      <div className="progress-track" style={{ flex: 1, margin: "0 0.5rem" }}>
-                        <div className="progress-fill fill-warning" style={{ width: "32%" }}></div>
-                      </div>
-                    </div>
-                    <span className="target-label">Hạn mức Token AI Gateway</span>
-                  </div>
-
-                  {/* Target 4 */}
-                  <div className="target-item">
-                    <div className="target-item-top">
-                      <span className="target-percent">99.9%</span>
-                      <div className="progress-track" style={{ flex: 1, margin: "0 0.5rem" }}>
-                        <div className="progress-fill fill-info" style={{ width: "99.9%" }}></div>
-                      </div>
-                    </div>
-                    <span className="target-label">Uptime Hệ Thống Core</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* DUAL SPLIT PANELS: RECENT CLIENTS & SYSTEM ALERTS */}
-              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "1.25rem", marginTop: "1.5rem" }}>
-                {/* Recent Connected Clients */}
-                <div className="card-panel">
-                  <div className="card-panel-header">
-                    <div>
-                      <span className="card-panel-title">Thiết Bị Kết Nối Gần Nhất</span>
-                      <div className="card-panel-subtitle">Tín hiệu heartbeat từ ứng dụng Desktop</div>
-                    </div>
-                    <button type="button" className="btn-icon-action" onClick={() => setActiveMenu("sessions")}>
-                      Xem tất cả ({sessions.length})
-                    </button>
-                  </div>
-
-                  <div className="table-responsive">
-                    <table className="architect-table">
-                      <thead>
-                        <tr>
-                          <th>Khách hàng</th>
-                          <th>Device ID</th>
-                          <th>Bản Tool / OS</th>
-                          <th>Trạng thái</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sessions.slice(0, 5).map((sess) => (
-                          <tr key={sess.license_id}>
-                            <td>
-                              <strong>{sess.customer_name}</strong>
-                              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{sess.key_hint}</div>
-                            </td>
-                            <td><span className="code-chip">{sess.hwid.slice(0, 16)}...</span></td>
-                            <td>
-                              <span style={{ fontSize: "0.78rem" }}>
-                                {sess.last_platform || "Windows"} · v{sess.last_app_version || "0.3.17"}
-                              </span>
-                            </td>
-                            <td>
-                              <span className={`pill-status ${sess.is_online ? "pill-online" : "pill-offline"}`}>
-                                {sess.is_online ? "● Online" : "Offline"}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        {sessions.length === 0 && (
-                          <tr>
-                            <td colSpan={4} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
-                              Chưa có thiết bị nào gửi heartbeat.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Recent Telemetry Alerts */}
-                <div className="card-panel">
-                  <div className="card-panel-header">
-                    <div>
-                      <span className="card-panel-title">Cảnh Báo & Telemetry Gần Đây</span>
-                      <div className="card-panel-subtitle">Tự động thu thập từ Desktop tool</div>
-                    </div>
-                    <button type="button" className="btn-icon-action" onClick={() => setActiveMenu("telemetry")}>
-                      Xem chi tiết
-                    </button>
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-                    {logs.slice(0, 4).map((log) => (
-                      <div key={log.id} style={{ padding: "0.65rem 0.85rem", background: "#f8fafc", borderRadius: "6px", border: "1px solid var(--border-light)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.2rem" }}>
-                          <span className={`pill-status pill-${log.severity === "fatal" ? "fatal" : log.severity === "error" ? "blocked" : "warning"}`} style={{ fontSize: "0.68rem", padding: "0.15rem 0.45rem" }}>
-                            {log.severity.toUpperCase()}
+                      <div className="mf-donut-breakdown">
+                        <div className="mf-breakdown-row">
+                          <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <span style={{ color: "#10b981" }}>●</span> {t("donutStatusActive")}
                           </span>
-                          <strong style={{ fontSize: "0.8rem", color: "var(--text-dark)" }}>{log.event_name}</strong>
-                          <span style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginLeft: "auto" }}>v{log.app_version}</span>
+                          <strong style={{ color: "var(--text-dark)" }}>{activeLicensesCount}</strong>
                         </div>
-                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {log.message}
+                        <div className="mf-breakdown-row">
+                          <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <span style={{ color: "#9ca3af" }}>●</span> {t("donutStatusOther")}
+                          </span>
+                          <strong style={{ color: "var(--text-dark)" }}>{inactiveKeysCount}</strong>
+                        </div>
+                        <div className="mf-breakdown-row">
+                          <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <span style={{ color: "#f95738" }}>●</span> {t("donutStatusLifetime")}
+                          </span>
+                          <strong style={{ color: "var(--text-dark)" }}>{lifetimeKeysCount}</strong>
                         </div>
                       </div>
-                    ))}
-                    {logs.length === 0 && (
-                      <div style={{ textAlign: "center", padding: "2.5rem 1rem", color: "var(--text-muted)", fontSize: "0.82rem" }}>
-                        <Check size={16} color="var(--success)" style={{ verticalAlign: "middle", marginRight: "0.3rem" }} />
-                        Không có sự cố nào được ghi nhận. Hệ thống vận hành ổn định.
-                      </div>
-                    )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            );
+          })()}
 
           {/* ========================================================================= */}
           {/* VIEW: LICENSES MANAGEMENT */}
           {/* ========================================================================= */}
           {activeMenu === "licenses" && (
-            <div className="card-panel">
-              <div className="card-panel-header">
-                <div>
-                  <h2 className="card-panel-title">Danh Sách License Bản Quyền ({filteredLicenses.length})</h2>
-                  <div className="card-panel-subtitle">Quản lý cấp phát, khóa/mở khóa, gia hạn và đổi mã máy (HWID)</div>
+            <div className="mf-card-panel">
+              <div className="mf-card-header">
+                <div className="mf-card-title-group">
+                  <h3>{t("licensesTitle")} ({filteredLicenses.length})</h3>
+                  <p>{t("licensesSubtitle")}</p>
                 </div>
                 <button
                   type="button"
-                  className="btn-primary-action"
+                  className="btn-primary-orange"
                   onClick={() => setShowCreateModal(true)}
                 >
-                  <Plus size={16} /> Cấp License Mới
+                  <Plus size={16} /> {t("createLicense")}
                 </button>
               </div>
 
               {/* Search & Filter Bar */}
-              <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem" }}>
+              <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
                 <input
                   type="text"
-                  className="form-input-light"
-                  placeholder="Tìm kiếm theo tên khách hàng, email, Key Hint, Device ID..."
-                  style={{ flex: 1 }}
+                  className="form-input-mf"
+                  placeholder={language === "vi" ? "Tìm theo tên khách hàng, email, Key Hint, Device ID..." : "Search by customer name, email, key hint, HWID..."}
+                  style={{ flex: 1, minWidth: "240px" }}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
                 <select
-                  className="form-select-light"
-                  style={{ width: "200px" }}
+                  className="form-input-mf"
+                  style={{ width: "220px" }}
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                 >
-                  <option value="all">Tất cả trạng thái</option>
-                  <option value="active">Đang hoạt động (Active)</option>
-                  <option value="blocked">Đang bị khóa (Blocked)</option>
-                  <option value="expired">Đã hết hạn (Expired)</option>
+                  <option value="all">{t("allStatus")}</option>
+                  <option value="active">{t("statusActive")}</option>
+                  <option value="blocked">{t("statusBlocked")}</option>
+                  <option value="expired">{t("statusExpired")}</option>
                 </select>
               </div>
 
               <div className="table-responsive">
-                <table className="architect-table">
+                <table className="mf-table">
                   <thead>
                     <tr>
-                      <th>Khách hàng & Logo</th>
-                      <th>Key Hint & Device ID (HWID)</th>
-                      <th>Hạn Dùng & Giới Hạn</th>
-                      <th>Thiết Bị & Lần Cuối Online</th>
-                      <th>Trạng Thái</th>
-                      <th style={{ textAlign: "right" }}>Thao Tác</th>
+                      <th>{t("thCustomer")}</th>
+                      <th>{t("thKeyHwid")}</th>
+                      <th>{t("thExpiryLimits")}</th>
+                      <th>{t("thDeviceLastSeen")}</th>
+                      <th>{t("thStatus")}</th>
+                      <th style={{ textAlign: "right" }}>{t("thActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1280,7 +1738,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                                 onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}
                               />
                             ) : (
-                              <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: "#eff6ff", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 800 }}>
+                              <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: "#fff1ec", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 800 }}>
                                 {lic.customer_name.slice(0, 2).toUpperCase()}
                               </div>
                             )}
@@ -1300,17 +1758,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                             <span className="code-chip">{lic.key_hint}</span>
                             <button
                               type="button"
-                              className="btn-icon-action"
+                              className="btn-white-outline"
                               style={{ padding: "0.2rem 0.45rem", fontSize: "0.72rem" }}
                               onClick={() => void copyText(lic.key_hint, lic.id)}
                             >
                               {copiedItemId === lic.id ? (
                                 <>
-                                  <Check size={12} color="var(--success)" /> Đã copy
+                                  <Check size={12} color="var(--success)" /> {t("copied")}
                                 </>
                               ) : (
                                 <>
-                                  <Copy size={12} /> Copy
+                                  <Copy size={12} /> {t("copy")}
                                 </>
                               )}
                             </button>
@@ -1322,24 +1780,24 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         <td>
                           <div>
                             {lic.expires_at ? (
-                              <strong style={{ color: "var(--text-dark)" }}>{new Date(lic.expires_at).toLocaleDateString("vi-VN")}</strong>
+                              <strong style={{ color: "var(--text-dark)" }}>{new Date(lic.expires_at).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}</strong>
                             ) : (
-                              <span style={{ color: "var(--success-text)", fontWeight: 800, background: "var(--success-light)", padding: "0.15rem 0.45rem", borderRadius: "4px" }}>Vĩnh viễn</span>
+                              <span style={{ color: "var(--success-text)", fontWeight: 800, background: "var(--success-light)", padding: "0.15rem 0.45rem", borderRadius: "4px" }}>{t("lifetime")}</span>
                             )}
                           </div>
                           <small style={{ color: "var(--text-muted)", display: "block", marginTop: "0.15rem" }}>
-                            {lic.max_jobs_per_day} jobs/ngày {lic.premium_ai ? "· Premium AI" : ""}
+                            {lic.max_jobs_per_day} {language === "vi" ? "jobs/ngày" : "jobs/day"} {lic.premium_ai ? "· Premium AI" : ""}
                           </small>
                         </td>
                         <td>
                           <div>{lic.last_platform || "--"} {lic.last_app_version ? `· v${lic.last_app_version}` : ""}</div>
-                          <small style={{ color: "var(--text-muted)", display: "block" }}>{lic.last_ip || "Chưa có IP"}</small>
+                          <small style={{ color: "var(--text-muted)", display: "block" }}>{lic.last_ip || (language === "vi" ? "Chưa có IP" : "No IP")}</small>
                           <small style={{ color: lic.last_seen_at ? "var(--success)" : "var(--text-dim)", fontWeight: 600 }}>
-                            {lic.last_seen_at ? `Online: ${new Date(lic.last_seen_at).toLocaleTimeString("vi-VN")}` : "Chưa online"}
+                            {lic.last_seen_at ? `Online: ${new Date(lic.last_seen_at).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}` : (language === "vi" ? "Chưa online" : "Never")}
                           </small>
                         </td>
                         <td>
-                          <span className={`pill-status pill-${lic.status}`}>
+                          <span className={`pill-status pill-${lic.status === "active" ? "active" : lic.status === "blocked" ? "danger" : "warning"}`}>
                             ● {lic.status === "active" ? "Active" : lic.status === "blocked" ? "Blocked" : "Expired"}
                           </span>
                         </td>
@@ -1347,48 +1805,46 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                           <div style={{ display: "inline-flex", gap: "0.3rem" }}>
                             <button
                               type="button"
-                              className="btn-icon-action"
+                              className="btn-white-outline"
+                              style={{ padding: "0.3rem 0.6rem" }}
                               onClick={() => openEditModal(lic)}
-                              title="Sửa thông tin"
+                              title={t("edit")}
                             >
-                              <Pencil size={13} /> Sửa
+                              <Pencil size={13} /> {t("edit")}
                             </button>
                             <button
                               type="button"
-                              className="btn-icon-action"
+                              className="btn-white-outline"
+                              style={{ padding: "0.3rem 0.6rem" }}
                               onClick={() => openRenewModal(lic)}
-                              title="Gia hạn thêm hạn dùng"
+                              title={t("renew")}
                             >
-                              <Clock size={13} /> Gia hạn
+                              <Clock size={13} /> {t("renew")}
                             </button>
                             <button
                               type="button"
-                              className="btn-icon-action"
+                              className="btn-white-outline"
+                              style={{ padding: "0.3rem 0.6rem" }}
                               onClick={() => openResetHwidModal(lic)}
-                              title="Đổi mã máy tính"
+                              title={t("resetHwid")}
                             >
-                              <RotateCw size={13} /> Đổi máy
+                              <RotateCw size={13} /> {t("resetHwid")}
                             </button>
                             <button
                               type="button"
-                              className="btn-icon-action"
+                              className="btn-white-outline"
+                              style={{ padding: "0.3rem 0.6rem" }}
                               onClick={() => void toggleLicense(lic)}
+                              title={lic.status === "active" ? "Khóa" : "Mở khóa"}
                             >
-                              {lic.status === "active" ? (
-                                <>
-                                  <Lock size={13} /> Khóa
-                                </>
-                              ) : (
-                                <>
-                                  <Unlock size={13} /> Mở
-                                </>
-                              )}
+                              {lic.status === "active" ? <Lock size={13} /> : <Unlock size={13} />}
                             </button>
                             <button
                               type="button"
-                              className="btn-icon-action btn-danger-action"
+                              className="btn-white-outline"
+                              style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
                               onClick={() => setDeletingLicense(lic)}
-                              title="Xóa vĩnh viễn"
+                              title={t("delete")}
                             >
                               <Trash2 size={13} />
                             </button>
@@ -1399,7 +1855,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     {filteredLicenses.length === 0 && (
                       <tr>
                         <td colSpan={6} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                          Không tìm thấy license nào phù hợp với bộ lọc.
+                          {t("noLicensesFound")}
                         </td>
                       </tr>
                     )}
@@ -1413,28 +1869,29 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           {/* VIEW: DESKTOP SESSIONS */}
           {/* ========================================================================= */}
           {activeMenu === "sessions" && (
-            <div className="card-panel">
-              <div className="card-panel-header">
-                <div>
-                  <h2 className="card-panel-title">Phiên Làm Việc Desktop Realtime ({sessions.length})</h2>
-                  <div className="card-panel-subtitle">Theo dõi tín hiệu kết nối từ các máy cài đặt JACS Studio Desktop</div>
+            <div className="mf-card-panel">
+              <div className="mf-card-header">
+                <div className="mf-card-title-group">
+                  <h3>{t("sessionsTitle")} ({sessions.length})</h3>
+                  <p>{t("sessionsSubtitle")}</p>
                 </div>
-                <button type="button" className="btn-pill-action" onClick={() => void refresh()}>
-                  <RotateCw size={15} /> Làm mới danh sách
+                <button type="button" className="btn-white-outline" onClick={() => void refresh()}>
+                  <RotateCw size={15} /> {t("refresh")}
                 </button>
               </div>
 
               <div className="table-responsive">
-                <table className="architect-table">
+                <table className="mf-table">
                   <thead>
                     <tr>
-                      <th>Khách hàng</th>
+                      <th>{t("thCustomer")}</th>
                       <th>Key Hint</th>
                       <th>Device ID (HWID)</th>
-                      <th>Hệ Điều Hành / Bản Tool</th>
-                      <th>Địa Chỉ IP</th>
-                      <th>Trạng Thái</th>
-                      <th style={{ textAlign: "right" }}>Thao Tác</th>
+                      <th>{t("thOsVersion")}</th>
+                      <th>{t("thIp")}</th>
+                      <th>{t("thTime")}</th>
+                      <th>{t("thStatus")}</th>
+                      <th style={{ textAlign: "right" }}>{t("thActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1442,29 +1899,38 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                       <tr key={sess.license_id}>
                         <td><strong>{sess.customer_name}</strong></td>
                         <td><span className="code-chip">{sess.key_hint}</span></td>
-                        <td><span className="code-chip">{sess.hwid}</span></td>
-                        <td>{sess.last_platform || "--"} {sess.last_app_version ? `· v${sess.last_app_version}` : ""}</td>
-                        <td><code>{sess.last_ip || "--"}</code></td>
+                        <td><span className="code-chip" style={{ fontSize: "0.72rem" }}>{sess.hwid}</span></td>
+                        <td>{sess.last_platform || "Windows"} · v{sess.last_app_version || "0.3.17"}</td>
+                        <td><code>{sess.last_ip || "0.0.0.0"}</code></td>
+                        <td>
+                          {sess.last_seen_at ? (
+                            <span style={{ fontSize: "0.78rem" }}>{new Date(sess.last_seen_at).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}</span>
+                          ) : (
+                            <span style={{ color: "var(--text-dim)" }}>--</span>
+                          )}
+                        </td>
                         <td>
                           <span className={`pill-status ${sess.is_online ? "pill-online" : "pill-offline"}`}>
-                            ● {sess.is_online ? "Online" : "Offline"}
+                            {sess.is_online ? `● ${t("statusOnline")}` : t("statusOffline")}
                           </span>
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <button
                             type="button"
-                            className="btn-icon-action btn-danger-action"
-                            onClick={() => void terminateSession(sess.license_id)}
+                            className="btn-white-outline"
+                            style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
+                            onClick={() => void handleTerminateSession(sess.license_id)}
+                            title={t("terminateSession")}
                           >
-                            <Power size={13} /> Ngắt phiên
+                            {t("terminateSession")}
                           </button>
                         </td>
                       </tr>
                     ))}
                     {sessions.length === 0 && (
                       <tr>
-                        <td colSpan={7} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                          Chưa có thiết bị nào kết nối tới máy chủ.
+                        <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                          {t("noSessionsFound")}
                         </td>
                       </tr>
                     )}
@@ -1475,57 +1941,77 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           )}
 
           {/* ========================================================================= */}
-          {/* VIEW: BILLING & REVENUE */}
+          {/* VIEW: BILLING & TRANSACTIONS */}
           {/* ========================================================================= */}
           {activeMenu === "billing" && (
-            <div className="card-panel">
-              <div className="card-panel-header">
-                <div>
-                  <h2 className="card-panel-title">Lịch Sử Giao Dịch & Dòng Tiền Thu ({transactions.length})</h2>
-                  <div className="card-panel-subtitle">Tự động ghi nhận khi Cấp key mới hoặc Gia hạn hợp đồng</div>
+            <div className="mf-card-panel">
+              <div className="mf-card-header">
+                <div className="mf-card-title-group">
+                  <h3>{t("billingTitle")} ({transactions.length})</h3>
+                  <p>{t("billingSubtitle")}</p>
                 </div>
-                <span className="trend-badge trend-up" style={{ fontSize: "0.85rem", padding: "0.35rem 0.85rem" }}>
-                  Tổng Doanh Thu: {formatCurrency(totalRevenueVal)}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>
+                    {formatCurrency(totalRevenueVal)}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary-orange"
+                    onClick={() => setShowAddTransactionModal(true)}
+                  >
+                    <Plus size={16} /> {t("addTransaction")}
+                  </button>
+                </div>
               </div>
 
               <div className="table-responsive">
-                <table className="architect-table">
+                <table className="mf-table">
                   <thead>
                     <tr>
-                      <th>Thời Gian</th>
-                      <th>Khách Hàng</th>
-                      <th>Gói Bản Quyền</th>
-                      <th>Loại Giao Dịch</th>
-                      <th>Phương Thức</th>
-                      <th>Số Tiền</th>
-                      <th>Người Thực Hiện</th>
-                      <th>Ghi Chú</th>
+                      <th>{t("thTxId")}</th>
+                      <th>{t("thCustomer")}</th>
+                      <th>{t("thPlan")}</th>
+                      <th>{t("thTxType")}</th>
+                      <th>{t("thAmount")}</th>
+                      <th>{t("thMethod")}</th>
+                      <th>{t("thTime")}</th>
+                      <th style={{ textAlign: "right" }}>{t("thActions")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {transactions.map((tx) => (
                       <tr key={tx.id}>
-                        <td>{new Date(tx.created_at).toLocaleString("vi-VN")}</td>
-                        <td><strong>{tx.customer_name}</strong></td>
+                        <td><span className="code-chip">{tx.id.slice(0, 10)}...</span></td>
                         <td>
-                          <span className="code-chip">{tx.plan_type}</span>
+                          <strong>{tx.customer_name}</strong>
+                          {tx.notes && <div style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>{tx.notes}</div>}
                         </td>
+                        <td>{tx.plan_name}</td>
                         <td>
-                          <span className="pill-status pill-info">
-                            {tx.transaction_type === "new_key" ? "Cấp Key Mới" : "Gia Hạn"}
+                          <span className="pill-status pill-active" style={{ fontSize: "0.72rem" }}>
+                            {tx.transaction_type}
                           </span>
                         </td>
-                        <td>{tx.payment_method}</td>
-                        <td><strong style={{ color: "var(--success)", fontSize: "0.95rem" }}>{formatCurrency(tx.amount)}</strong></td>
-                        <td><small>{tx.actor}</small></td>
-                        <td><small style={{ color: "var(--text-muted)" }}>{tx.notes || "--"}</small></td>
+                        <td><strong style={{ color: "var(--primary)" }}>{formatCurrency(tx.amount)}</strong></td>
+                        <td>{tx.payment_method.toUpperCase()}</td>
+                        <td style={{ fontSize: "0.78rem" }}>{new Date(tx.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <button
+                            type="button"
+                            className="btn-white-outline"
+                            style={{ padding: "0.25rem 0.5rem", color: "var(--danger)" }}
+                            onClick={() => setDeletingTransaction(tx)}
+                            title={t("delete")}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                     {transactions.length === 0 && (
                       <tr>
                         <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                          Chưa có giao dịch thanh toán nào được ghi nhận.
+                          {t("noTransactionsFound")}
                         </td>
                       </tr>
                     )}
@@ -1536,126 +2022,157 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           )}
 
           {/* ========================================================================= */}
-          {/* VIEW: AI PROVIDERS */}
+          {/* VIEW: AI PROVIDERS GATEWAY */}
           {/* ========================================================================= */}
           {activeMenu === "providers" && (
-            <div className="card-panel">
-              <div className="card-panel-header">
-                <div>
-                  <h2 className="card-panel-title">Cấu Hình AI Providers Gateway ({providers.length})</h2>
-                  <div className="card-panel-subtitle">Quản lý các kết nối API OpenAI, Gemini, Claude và Text-to-Speech</div>
+            <div className="mf-two-col-grid">
+              <div className="mf-card-panel">
+                <div className="mf-card-header">
+                  <div className="mf-card-title-group">
+                    <h3>{t("providersTitle")} ({providers.length})</h3>
+                    <p>{t("providersSubtitle")}</p>
+                  </div>
                 </div>
-              </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: "1.5rem" }}>
-                {/* Providers List */}
-                <div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
                   {providers.map((prov) => (
-                    <div key={prov.id} className="card-panel" style={{ marginBottom: "1rem", background: "#f8fafc", boxShadow: "none", border: "1px solid var(--border-light)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                        <strong style={{ color: "var(--text-dark)", fontSize: "0.95rem" }}>{prov.name}</strong>
-                        <span className="code-chip">{prov.provider_type}</span>
+                    <div key={prov.id} style={{ padding: "1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                          <Bot size={18} color="var(--primary)" />
+                          <strong style={{ fontSize: "0.95rem", color: "var(--text-dark)" }}>{prov.name}</strong>
+                          <span className="code-chip">{prov.provider_type.toUpperCase()}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: "0.35rem" }}>
+                          <button
+                            type="button"
+                            className="btn-white-outline"
+                            style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}
+                            onClick={() => void handleTestProvider(prov)}
+                          >
+                            {t("testLatency")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-white-outline"
+                            style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}
+                            onClick={() => openEditProviderModal(prov)}
+                          >
+                            <Pencil size={12} /> {t("edit")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-white-outline"
+                            style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem", color: "var(--danger)" }}
+                            onClick={() => setDeletingProvider(prov)}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
-                      <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                        Model Vision/Analysis: <strong>{prov.model}</strong>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                        Base URL: <code>{prov.base_url}</code> · Model: <strong>{prov.model}</strong>
                       </div>
-                      {prov.tts_model && (
-                        <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>
-                          Model Text-To-Speech: <strong>{prov.tts_model}</strong>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "0.3rem" }}>
+                        {t("fieldCapabilities")}: {prov.capabilities.join(", ")}
+                      </div>
+                      {providerStatus[prov.id] && (
+                        <div style={{ marginTop: "0.5rem", fontSize: "0.78rem", fontWeight: 700, color: providerStatus[prov.id].startsWith("✓") ? "var(--success)" : "var(--danger)" }}>
+                          {providerStatus[prov.id]}
                         </div>
                       )}
-                      <div style={{ fontSize: "0.78rem", color: "var(--text-dim)", marginTop: "0.35rem" }}>
-                        Secret Key: <code>{prov.masked_key}</code>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.85rem", paddingTop: "0.65rem", borderTop: "1px solid var(--border-light)" }}>
-                        <span style={{ color: "var(--primary)", fontWeight: 700, fontSize: "0.78rem" }}>
-                          {providerStatus[prov.id] || "✓ Gateway sẵn sàng"}
-                        </span>
-                        <button
-                          type="button"
-                          className="btn-icon-action"
-                          onClick={() => void handleTestProvider(prov)}
-                        >
-                          <Cpu size={13} /> Kiểm tra Latency
-                        </button>
-                      </div>
                     </div>
                   ))}
                   {providers.length === 0 && (
                     <div style={{ textAlign: "center", padding: "2.5rem", color: "var(--text-muted)" }}>
-                      Chưa có AI Provider nào. Hãy tạo mới ở biểu mẫu bên phải.
+                      {t("noProvidersFound")}
                     </div>
                   )}
                 </div>
+              </div>
 
-                {/* Add Provider Form */}
-                <form onSubmit={(e) => void handleCreateProvider(e)} className="card-panel" style={{ background: "#ffffff" }}>
-                  <h3 style={{ fontSize: "1.05rem", fontWeight: 800, marginBottom: "1rem", color: "var(--text-dark)" }}>+ Thêm AI Gateway Mới</h3>
-                  <div className="form-group-light">
-                    <label className="form-label-light">Tên Provider *</label>
+              {/* Add Provider Form */}
+              <div className="mf-card-panel">
+                <div className="mf-card-header">
+                  <div className="mf-card-title-group">
+                    <h3>{t("modalAddProviderTitle")}</h3>
+                    <p>{language === "vi" ? "Kết nối thêm model OpenAI hoặc Gemini" : "Connect OpenAI or Gemini models"}</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleCreateProvider} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldProviderName")}</label>
                     <input
-                      required
-                      className="form-input-light"
+                      type="text"
+                      className="form-input-mf"
+                      placeholder="OpenAI Main"
                       value={providerForm.name}
                       onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
-                      placeholder="OpenAI Production 4o"
+                      required
                     />
                   </div>
-                  <div className="form-group-light">
-                    <label className="form-label-light">Loại Provider *</label>
+
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldType")}</label>
                     <select
-                      className="form-select-light"
+                      className="form-input-mf"
                       value={providerForm.provider_type}
-                      onChange={(e) => {
-                        const provider_type = e.target.value;
-                        const capabilities = ["openai", "openai-compatible"].includes(provider_type)
-                          ? "analysis, vision, transcription, tts"
-                          : provider_type === "custom"
-                          ? "analysis"
-                          : "analysis, vision";
-                        const tts_model = ["openai", "openai-compatible"].includes(provider_type) ? "tts-1" : "";
-                        setProviderForm({ ...providerForm, provider_type, capabilities, tts_model });
-                      }}
+                      onChange={(e) => setProviderForm({ ...providerForm, provider_type: e.target.value as "openai" | "gemini" | "custom" })}
                     >
-                      <option value="openai">OpenAI (Official)</option>
+                      <option value="openai">OpenAI Compatible</option>
                       <option value="gemini">Google Gemini</option>
-                      <option value="anthropic">Anthropic Claude</option>
-                      <option value="openai-compatible">OpenAI Compatible (Groq / OpenRouter)</option>
+                      <option value="custom">Custom Endpoint</option>
                     </select>
                   </div>
-                  <div className="form-group-light">
-                    <label className="form-label-light">Base URL *</label>
+
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldBaseUrl")}</label>
                     <input
-                      type="url"
-                      required
-                      className="form-input-light"
+                      type="text"
+                      className="form-input-mf"
                       value={providerForm.base_url}
                       onChange={(e) => setProviderForm({ ...providerForm, base_url: e.target.value })}
+                      required
                     />
                   </div>
-                  <div className="form-group-light">
-                    <label className="form-label-light">Model Name *</label>
+
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldModel")}</label>
                     <input
-                      required
-                      className="form-input-light"
+                      type="text"
+                      className="form-input-mf"
                       value={providerForm.model}
                       onChange={(e) => setProviderForm({ ...providerForm, model: e.target.value })}
-                      placeholder="gpt-4o-mini"
+                      required
                     />
                   </div>
-                  <div className="form-group-light">
-                    <label className="form-label-light">API Key (Secret) *</label>
+
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldApiKey")}</label>
                     <input
-                      required
                       type="password"
-                      className="form-input-light"
+                      className="form-input-mf"
+                      placeholder="sk-..."
                       value={providerForm.api_key}
                       onChange={(e) => setProviderForm({ ...providerForm, api_key: e.target.value })}
-                      placeholder="sk-..."
+                      required
                     />
                   </div>
-                  <button type="submit" className="btn-primary-action" style={{ width: "100%", justifyContent: "center", marginTop: "0.5rem" }} disabled={loading}>
-                    Lưu AI Provider
+
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldCapabilities")}</label>
+                    <input
+                      type="text"
+                      className="form-input-mf"
+                      value={providerForm.capabilities}
+                      onChange={(e) => setProviderForm({ ...providerForm, capabilities: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <button type="submit" className="btn-primary-orange" style={{ width: "100%", justifyContent: "center", marginTop: "0.5rem" }}>
+                    <Plus size={16} /> {t("addProvider")}
                   </button>
                 </form>
               </div>
@@ -1666,193 +2183,514 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           {/* VIEW: TELEMETRY & LOGS */}
           {/* ========================================================================= */}
           {activeMenu === "telemetry" && (
-            <div className="card-panel">
-              <div className="card-panel-header">
-                <div>
-                  <h2 className="card-panel-title">Nhật Ký Telemetry & Báo Cáo Sự Cố ({logs.length})</h2>
-                  <div className="card-panel-subtitle">Ghi nhận tự động lỗi crash, FFmpeg render fail từ các bản Desktop</div>
+            <div className="mf-card-panel">
+              <div className="mf-card-header">
+                <div className="mf-card-title-group">
+                  <h3>{t("telemetryTitle")} ({filteredLogs.length})</h3>
+                  <p>{t("telemetrySubtitle")}</p>
                 </div>
-                <button type="button" className="btn-pill-action" onClick={() => void refresh()}>
-                  <RotateCw size={15} /> Làm mới Logs
-                </button>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button type="button" className="btn-white-outline" onClick={() => setShowCreateLogModal(true)}>
+                    <Plus size={15} /> {t("createManualLog")}
+                  </button>
+                  <button type="button" className="btn-white-outline" style={{ color: "var(--danger)" }} onClick={() => setShowClearLogsModal(true)}>
+                    <Trash2 size={15} /> {t("clearLogs")}
+                  </button>
+                  <button type="button" className="btn-white-outline" onClick={() => void refresh()}>
+                    <RotateCw size={15} /> {t("refresh")}
+                  </button>
+                </div>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                {logs.map((log) => (
-                  <div key={log.id} style={{ padding: "1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.65rem", marginBottom: "0.35rem" }}>
-                      <span className={`pill-status pill-${log.severity === "fatal" ? "fatal" : log.severity === "error" ? "blocked" : "warning"}`}>
+              {/* Severity Filter */}
+              <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem" }}>
+                <select
+                  className="form-input-mf"
+                  style={{ width: "200px" }}
+                  value={logSeverityFilter}
+                  onChange={(e) => setLogSeverityFilter(e.target.value)}
+                >
+                  <option value="all">Tất cả mức độ (All Severities)</option>
+                  <option value="fatal">FATAL</option>
+                  <option value="error">ERROR</option>
+                  <option value="warning">WARNING</option>
+                  <option value="info">INFO</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                {filteredLogs.map((log) => (
+                  <div key={log.id} style={{ padding: "0.85rem 1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem" }}>
+                      <span className={`pill-status pill-${log.severity === "fatal" ? "danger" : log.severity === "error" ? "danger" : "warning"}`} style={{ fontSize: "0.68rem" }}>
                         {log.severity.toUpperCase()}
                       </span>
-                      <strong style={{ color: "var(--text-dark)", fontSize: "0.9rem" }}>{log.event_name}</strong>
-                      <span className="code-chip" style={{ fontSize: "0.72rem" }}>v{log.app_version}</span>
-                      {log.created_at && (
-                        <small style={{ marginLeft: "auto", color: "var(--text-dim)" }}>
-                          {new Date(log.created_at).toLocaleString("vi-VN")}
-                        </small>
-                      )}
+                      <strong style={{ fontSize: "0.85rem", color: "var(--text-dark)" }}>{log.event_name}</strong>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginLeft: "auto" }}>
+                        v{log.app_version} · {new Date(log.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-white-outline"
+                        style={{ padding: "0.2rem 0.45rem", color: "var(--danger)" }}
+                        onClick={() => void handleDeleteSingleLog(log.id)}
+                        title={t("delete")}
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
-                    <div style={{ fontSize: "0.84rem", color: "var(--text-main)", background: "#ffffff", padding: "0.65rem", borderRadius: "6px", border: "1px solid #edf2f7", fontFamily: "var(--font-mono)" }}>
+                    <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
                       {log.message}
                     </div>
                   </div>
                 ))}
-                {logs.length === 0 && (
-                  <div style={{ textAlign: "center", padding: "3.5rem", color: "var(--text-muted)" }}>
-                    <Check size={16} color="var(--success)" style={{ verticalAlign: "middle", marginRight: "0.3rem" }} />
-                    Không có sự cố nào được ghi nhận. Hệ thống vận hành hoàn toàn ổn định.
+                {filteredLogs.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                    {t("noLogsFound")}
                   </div>
                 )}
               </div>
             </div>
           )}
+
+          {/* ========================================================================= */}
+          {/* VIEW: SETTINGS */}
+          {/* ========================================================================= */}
+          {activeMenu === "settings" && (
+            <div className="mf-two-col-grid">
+              {/* Left Column: System Configuration */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                <div className="mf-card-panel">
+                  <div className="mf-card-header">
+                    <div className="mf-card-title-group">
+                      <h3>{language === "vi" ? "Cấu Hình Thương Hiệu & Mặc Định Cấp License" : "Studio Branding & License Defaults"}</h3>
+                      <p>{language === "vi" ? "Tùy chỉnh thông số mặc định khi sinh license và logo studio" : "Customize default parameters when issuing licenses and studio logo"}</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSaveSystemSettings} style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+                    <div className="mf-form-two-col">
+                      <div className="form-group-mf">
+                        <label className="form-label-mf">{language === "vi" ? "Tên Thương Hiệu Studio" : "Studio Brand Name"}</label>
+                        <input
+                          type="text"
+                          className="form-input-mf"
+                          value={systemSettings.studio_brand_name}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, studio_brand_name: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="form-group-mf">
+                        <label className="form-label-mf">{language === "vi" ? "Email Thông Báo Quản Trị" : "Admin Notification Email"}</label>
+                        <input
+                          type="email"
+                          className="form-input-mf"
+                          value={systemSettings.notification_email}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, notification_email: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group-mf">
+                      <label className="form-label-mf">{language === "vi" ? "Link Logo Thương Hiệu Chung (URL)" : "Global Studio Logo URL"}</label>
+                      <input
+                        type="url"
+                        className="form-input-mf"
+                        placeholder="https://example.com/logo.png"
+                        value={systemSettings.custom_logo_url}
+                        onChange={(e) => setSystemSettings({ ...systemSettings, custom_logo_url: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="mf-form-two-col">
+                      <div className="form-group-mf">
+                        <label className="form-label-mf">{language === "vi" ? "Số Ngày Mặc Định Cấp Key" : "Default License Duration (Days)"}</label>
+                        <input
+                          type="number"
+                          className="form-input-mf"
+                          value={systemSettings.default_days_valid}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, default_days_valid: parseInt(e.target.value) || 30 })}
+                          required
+                        />
+                      </div>
+                      <div className="form-group-mf">
+                        <label className="form-label-mf">{language === "vi" ? "Giới Hạn Render Jobs/Ngày Mặc Định" : "Default Daily Render Jobs Limit"}</label>
+                        <input
+                          type="number"
+                          className="form-input-mf"
+                          value={systemSettings.default_max_jobs}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, default_max_jobs: parseInt(e.target.value) || 200 })}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ padding: "0.85rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <strong style={{ fontSize: "0.85rem", color: "var(--text-dark)", display: "block" }}>
+                          {language === "vi" ? "Nhận Tín Hiệu Telemetry Từ Máy Khách Desktop" : "Accept Desktop Client Telemetry"}
+                        </strong>
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                          {language === "vi" ? "Cho phép thu thập nhật ký sự cố và phân tích từ tool Electron" : "Collect error logs and analysis telemetry from desktop apps"}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={systemSettings.telemetry_enabled}
+                        onChange={(e) => setSystemSettings({ ...systemSettings, telemetry_enabled: e.target.checked })}
+                        style={{ width: "18px", height: "18px", accentColor: "var(--primary)", cursor: "pointer" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+                      <button type="submit" className="btn-primary-orange">
+                        <Check size={16} /> {t("saveChanges")}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Backup & Restore Panel */}
+                <div className="mf-card-panel">
+                  <div className="mf-card-header">
+                    <div className="mf-card-title-group">
+                      <h3>{language === "vi" ? "Sao Lưu & Phục Hồi Dữ Liệu Toàn Hệ Thống" : "Full System Backup & Disaster Recovery"}</h3>
+                      <p>{language === "vi" ? "Xuất hoặc nhập toàn bộ dữ liệu License, Doanh thu, AI Providers dưới dạng JSON" : "Export or import full database snapshot containing licenses, billing, providers as JSON"}</p>
+                    </div>
+                  </div>
+
+                  <div className="mf-form-two-col">
+                    <div style={{ padding: "1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <Download size={18} color="var(--primary)" />
+                        <strong style={{ fontSize: "0.88rem", color: "var(--text-dark)" }}>{language === "vi" ? "Xuất Bản Sao Lưu" : "Export Backup"}</strong>
+                      </div>
+                      <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: 0 }}>
+                        {language === "vi" ? "Tải xuống file JSON chứa toàn bộ dữ liệu máy chủ để lưu trữ an toàn." : "Download a complete JSON database snapshot for safe offline storage."}
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-white-outline"
+                        style={{ marginTop: "auto" }}
+                        onClick={() => void handleExportBackup()}
+                      >
+                        <Download size={14} /> {language === "vi" ? "Tải File Backup (.json)" : "Download Backup (.json)"}
+                      </button>
+                    </div>
+
+                    <div style={{ padding: "1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <Upload size={18} color="var(--success)" />
+                        <strong style={{ fontSize: "0.88rem", color: "var(--text-dark)" }}>{language === "vi" ? "Khôi Phục Dữ Liệu" : "Restore Data"}</strong>
+                      </div>
+                      <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: 0 }}>
+                        {language === "vi" ? "Chọn file backup JSON đã lưu trước đó để nhập dữ liệu vào hệ thống." : "Select previously exported JSON backup file to restore records."}
+                      </p>
+                      <label className="btn-white-outline" style={{ marginTop: "auto", cursor: "pointer", textAlign: "center" }}>
+                        <Upload size={14} /> {language === "vi" ? "Chọn File Khôi Phục" : "Select Backup File"}
+                        <input
+                          type="file"
+                          accept=".json"
+                          style={{ display: "none" }}
+                          onChange={(e) => void handleImportBackupFile(e)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Runtime Diagnostics & System Information */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                <div className="mf-card-panel">
+                  <div className="mf-card-header">
+                    <div className="mf-card-title-group">
+                      <h3>{language === "vi" ? "Chuẩn Đoán Môi Trường Server" : "Runtime Environment Diagnostics"}</h3>
+                      <p>{language === "vi" ? "Trạng thái máy chủ API và kiến trúc thực thi" : "API server status and runtime architecture"}</p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0", borderBottom: "1px solid var(--border-light)" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        <Server size={15} color="var(--primary)" /> API Gateway Server
+                      </span>
+                      <span className="pill-status pill-online" style={{ fontSize: "0.72rem" }}>
+                        ● Online (Port 8000)
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0", borderBottom: "1px solid var(--border-light)" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        <Activity size={15} color="var(--primary)" /> Desktop Native Engine
+                      </span>
+                      <strong style={{ fontSize: "0.82rem", color: "var(--text-dark)" }}>
+                        v{systemInfo?.version || "0.3.17"} (Electron Native)
+                      </strong>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0", borderBottom: "1px solid var(--border-light)" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        <Database size={15} color="var(--primary)" /> Store Storage Backend
+                      </span>
+                      <strong style={{ fontSize: "0.82rem", color: "var(--text-dark)" }}>
+                        {systemInfo?.store_backend === "file" ? "Persistent JSON File" : "In-Memory Datastore"}
+                      </strong>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0", borderBottom: "1px solid var(--border-light)" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        <Shield size={15} color="var(--primary)" /> Python & Runtime Platform
+                      </span>
+                      <strong style={{ fontSize: "0.82rem", color: "var(--text-dark)" }}>
+                        Python {systemInfo?.python_version || "3.12"}
+                      </strong>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.6rem 0" }}>
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        <Key size={15} color="var(--primary)" /> {language === "vi" ? "Tổng License Đang Quản Lý" : "Total Managed Licenses"}
+                      </span>
+                      <strong style={{ fontSize: "0.88rem", color: "var(--primary)" }}>
+                        {licenses.length} keys
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* API Docs quicklink */}
+                <div className="mf-card-panel" style={{ background: "linear-gradient(135deg, #1a1d2e 0%, #262a40 100%)", color: "#fff" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem" }}>
+                    <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "rgba(249, 87, 56, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--primary)" }}>
+                      <Zap size={20} />
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: "0.95rem", color: "#fff", display: "block" }}>OpenAPI Interactive Docs</strong>
+                      <span style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.7)" }}>Swagger UI & Redoc Documentation</span>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: "0.78rem", color: "rgba(255,255,255,0.8)", margin: "0.5rem 0 1rem" }}>
+                    {language === "vi" ? "Truy cập tài liệu đặc tả API Swagger UI để kiểm thử trực tiếp các endpoint của hệ thống." : "Access interactive Swagger UI documentation to test server endpoints."}
+                  </p>
+                  <a
+                    href="http://localhost:8000/docs"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary-orange"
+                    style={{ textDecoration: "none", display: "inline-flex", width: "100%", justifyContent: "center" }}
+                  >
+                    <ArrowUpRight size={15} /> Mở Swagger API Docs (/docs)
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: RELEASES & OTA UPDATES */}
+          {activeMenu === "releases" && (
+            <ReleasesPage
+              releases={releases}
+              token={token}
+              onRefresh={refresh}
+              setMessage={setMessage}
+              setError={setError}
+            />
+          )}
         </main>
       </div>
-
-      {/* FLOATING ACTION BUTTON */}
-      <button
-        type="button"
-        className="floating-action-fab"
-        onClick={() => setShowCreateModal(true)}
-        title="Cấp License Mới"
-      >
-        <Settings size={22} />
-      </button>
 
       {/* ========================================================================= */}
       {/* MODALS */}
       {/* ========================================================================= */}
 
-      {/* MODAL: CREATE LICENSE */}
-      {showCreateModal && (
-        <div className="modal-backdrop-light">
-          <div className="modal-card-light" style={{ maxWidth: "600px" }}>
-            <div className="modal-header-light">
+      {/* MODAL: ACCOUNT & SECURITY */}
+      {showAccountModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box" style={{ maxWidth: "480px" }}>
+            <div className="modal-header-mf">
               <div>
-                <h3 className="modal-title-light">Cấp License Khách Hàng Mới</h3>
-                <span className="modal-subtitle-light">Sinh mã kích hoạt 12 ký tự duy nhất cho thiết bị</span>
+                <h3>{language === "vi" ? "Quản Lý Tài Khoản & Đổi Mật Khẩu" : "Account & Password Security"}</h3>
               </div>
-              <button type="button" className="sidebar-toggle-btn" onClick={() => setShowCreateModal(false)}>
+              <button type="button" className="btn-close-modal" onClick={() => setShowAccountModal(false)}>
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleCreateLicense(e)} className="modal-body-light">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div className="form-group-light">
-                  <label className="form-label-light">Tên khách hàng / Studio *</label>
+            <form onSubmit={handleChangePassword}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{language === "vi" ? "Email Quản Trị" : "Admin Email"}</label>
                   <input
+                    type="email"
+                    className="form-input-mf"
+                    value={accountEmail}
+                    onChange={(e) => setAccountEmail(e.target.value)}
                     required
-                    className="form-input-light"
-                    value={licenseForm.customer_name}
-                    onChange={(e) => setLicenseForm({ ...licenseForm, customer_name: e.target.value })}
-                    placeholder="Studio Media ABC"
                   />
                 </div>
-                <div className="form-group-light">
-                  <label className="form-label-light">Email / SĐT liên hệ *</label>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{language === "vi" ? "Mật Khẩu Hiện Tại *" : "Current Password *"}</label>
                   <input
+                    type="password"
+                    className="form-input-mf"
+                    placeholder="••••••••"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
                     required
-                    className="form-input-light"
-                    value={licenseForm.customer_contact}
-                    onChange={(e) => setLicenseForm({ ...licenseForm, customer_contact: e.target.value })}
-                    placeholder="contact@studio.vn"
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{language === "vi" ? "Mật Khẩu Mới (Tối thiểu 6 ký tự) *" : "New Password (Min 6 chars) *"}</label>
+                  <input
+                    type="password"
+                    className="form-input-mf"
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{language === "vi" ? "Xác Nhận Mật Khẩu Mới *" : "Confirm New Password *"}</label>
+                  <input
+                    type="password"
+                    className="form-input-mf"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
                   />
                 </div>
               </div>
 
-              <div className="form-group-light">
-                <label className="form-label-light">Device ID máy khách (HWID) *</label>
-                <input
-                  required
-                  className="form-input-light"
-                  value={licenseForm.hwid}
-                  onChange={(e) => setLicenseForm({ ...licenseForm, hwid: normalizeHwid(e.target.value) })}
-                  placeholder="JACS-WIN-11223344556677889900AABBCCDDEEFF"
-                />
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setShowAccountModal(false)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" className="btn-primary-orange">
+                  <KeyRound size={16} /> {language === "vi" ? "Cập Nhật Mật Khẩu" : "Update Password"}
+                </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div className="form-group-light">
-                  <label className="form-label-light">Ngày hết hạn (để trống nếu vĩnh viễn)</label>
-                  <input
-                    type="datetime-local"
-                    className="form-input-light"
-                    value={licenseForm.expires_at}
-                    onChange={(e) => setLicenseForm({ ...licenseForm, expires_at: e.target.value })}
-                  />
-                </div>
-                <div className="form-group-light">
-                  <label className="form-label-light">Giới hạn Job/ngày</label>
-                  <input
-                    type="number"
-                    min="1"
-                    className="form-input-light"
-                    value={licenseForm.max_jobs_per_day}
-                    onChange={(e) => setLicenseForm({ ...licenseForm, max_jobs_per_day: e.target.value })}
-                  />
-                </div>
+      {/* MODAL: CREATE LICENSE */}
+      {showCreateModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box" style={{ maxWidth: "580px" }}>
+            <div className="modal-header-mf">
+              <div>
+                <h3>{t("modalCreateLicenseTitle")}</h3>
               </div>
+              <button type="button" className="btn-close-modal" onClick={() => setShowCreateModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div className="form-group-light">
-                  <label className="form-label-light">Logo Branding URL</label>
-                  <input
-                    type="url"
-                    className="form-input-light"
-                    value={licenseForm.logo_url}
-                    onChange={(e) => setLicenseForm({ ...licenseForm, logo_url: e.target.value })}
-                    placeholder="https://example.com/logo.png"
-                  />
-                </div>
-                <div className="form-group-light">
-                  <label className="form-label-light">Ghi chú</label>
-                  <input
-                    className="form-input-light"
-                    value={licenseForm.notes}
-                    onChange={(e) => setLicenseForm({ ...licenseForm, notes: e.target.value })}
-                    placeholder="Hợp đồng doanh nghiệp..."
-                  />
-                </div>
-              </div>
-
-              <div style={{ background: "#f8fafc", padding: "1rem", borderRadius: "8px", marginTop: "0.5rem", border: "1px solid var(--border-light)" }}>
-                <span className="form-label-light" style={{ display: "block", marginBottom: "0.5rem", color: "var(--text-dark)" }}>Thông tin thanh toán & Doanh thu</span>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                  <div className="form-group-light" style={{ margin: 0 }}>
-                    <label className="form-label-light">Số tiền thu (VND)</label>
+            <form onSubmit={handleCreateLicense}>
+              <div className="modal-body-mf">
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldCustomerName")}</label>
                     <input
-                      type="number"
-                      min="0"
-                      step="10000"
-                      className="form-input-light"
-                      value={licenseForm.amount}
-                      onChange={(e) => setLicenseForm({ ...licenseForm, amount: e.target.value })}
+                      type="text"
+                      className="form-input-mf"
+                      placeholder="Nguyễn Văn A"
+                      value={createCustomerName}
+                      onChange={(e) => setCreateCustomerName(e.target.value)}
+                      required
                     />
                   </div>
-                  <div className="form-group-light" style={{ margin: 0 }}>
-                    <label className="form-label-light">Gói bản quyền</label>
-                    <select
-                      className="form-select-light"
-                      value={licenseForm.plan_type}
-                      onChange={(e) => setLicenseForm({ ...licenseForm, plan_type: e.target.value })}
-                    >
-                      <option value="1_month">1 Tháng</option>
-                      <option value="3_months">3 Tháng</option>
-                      <option value="6_months">6 Tháng</option>
-                      <option value="1_year">1 Năm</option>
-                      <option value="lifetime">Vĩnh viễn (Lifetime)</option>
-                    </select>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldContact")}</label>
+                    <input
+                      type="text"
+                      className="form-input-mf"
+                      placeholder="client@gmail.com"
+                      value={createCustomerContact}
+                      onChange={(e) => setCreateCustomerContact(e.target.value)}
+                      required
+                    />
                   </div>
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldHwid")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="JACS-WIN-4A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D"
+                    value={createHwid}
+                    onChange={(e) => setCreateHwid(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="mf-form-three-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldDays")}</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={createDays}
+                      onChange={(e) => setCreateDays(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldMaxJobs")}</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={createMaxJobs}
+                      onChange={(e) => setCreateMaxJobs(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldBillAmount")}</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={createBillAmount}
+                      onChange={(e) => setCreateBillAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldLogoUrl")}</label>
+                  <input
+                    type="url"
+                    className="form-input-mf"
+                    placeholder="https://example.com/logo.png"
+                    value={createLogoUrl}
+                    onChange={(e) => setCreateLogoUrl(e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldNotes")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="Creator Pro Plan"
+                    value={createNotes}
+                    onChange={(e) => setCreateNotes(e.target.value)}
+                  />
                 </div>
               </div>
 
-              <div className="modal-footer-light">
-                <button type="button" className="btn-secondary-light" onClick={() => setShowCreateModal(false)}>
-                  Hủy
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setShowCreateModal(false)}>
+                  {t("cancel")}
                 </button>
-                <button type="submit" className="btn-primary-action" disabled={loading}>
-                  Xác nhận Cấp Key
+                <button type="submit" className="btn-primary-orange">
+                  <Plus size={16} /> {t("confirm")}
                 </button>
               </div>
             </form>
@@ -1862,85 +2700,75 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
       {/* MODAL: EDIT LICENSE */}
       {editingLicense && (
-        <div className="modal-backdrop-light">
-          <div className="modal-card-light" style={{ maxWidth: "560px" }}>
-            <div className="modal-header-light">
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
               <div>
-                <h3 className="modal-title-light">Sửa License: {editingLicense.key_hint}</h3>
-                <span className="modal-subtitle-light">Khách hàng: {editingLicense.customer_name}</span>
+                <h3>{t("modalEditLicenseTitle")} ({editingLicense.key_hint})</h3>
               </div>
-              <button type="button" className="sidebar-toggle-btn" onClick={() => setEditingLicense(null)}>
+              <button type="button" className="btn-close-modal" onClick={() => setEditingLicense(null)}>
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleSaveEdit(e)} className="modal-body-light">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div className="form-group-light">
-                  <label className="form-label-light">Tên khách hàng</label>
+            <form onSubmit={handleSaveEdit}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldCustomerName")}</label>
                   <input
-                    className="form-input-light"
-                    value={editForm.customer_name}
-                    onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })}
+                    type="text"
+                    className="form-input-mf"
+                    value={editCustomerName}
+                    onChange={(e) => setEditCustomerName(e.target.value)}
+                    required
                   />
                 </div>
-                <div className="form-group-light">
-                  <label className="form-label-light">Liên hệ</label>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldContact")}</label>
                   <input
-                    className="form-input-light"
-                    value={editForm.customer_contact}
-                    onChange={(e) => setEditForm({ ...editForm, customer_contact: e.target.value })}
+                    type="text"
+                    className="form-input-mf"
+                    value={editCustomerContact}
+                    onChange={(e) => setEditCustomerContact(e.target.value)}
+                    required
                   />
                 </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div className="form-group-light">
-                  <label className="form-label-light">Hạn dùng</label>
-                  <input
-                    type="datetime-local"
-                    className="form-input-light"
-                    value={editForm.expires_at}
-                    onChange={(e) => setEditForm({ ...editForm, expires_at: e.target.value })}
-                  />
-                </div>
-                <div className="form-group-light">
-                  <label className="form-label-light">Giới hạn Job/ngày</label>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldMaxJobs")}</label>
                   <input
                     type="number"
-                    min="1"
-                    className="form-input-light"
-                    value={editForm.max_jobs_per_day}
-                    onChange={(e) => setEditForm({ ...editForm, max_jobs_per_day: Number(e.target.value) })}
+                    className="form-input-mf"
+                    value={editMaxJobs}
+                    onChange={(e) => setEditMaxJobs(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldLogoUrl")}</label>
+                  <input
+                    type="url"
+                    className="form-input-mf"
+                    value={editLogoUrl}
+                    onChange={(e) => setEditLogoUrl(e.target.value)}
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldNotes")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
                   />
                 </div>
               </div>
 
-              <div className="form-group-light">
-                <label className="form-label-light">Logo Branding URL</label>
-                <input
-                  type="url"
-                  className="form-input-light"
-                  value={editForm.logo_url}
-                  onChange={(e) => setEditForm({ ...editForm, logo_url: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group-light">
-                <label className="form-label-light">Ghi chú</label>
-                <input
-                  className="form-input-light"
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                />
-              </div>
-
-              <div className="modal-footer-light">
-                <button type="button" className="btn-secondary-light" onClick={() => setEditingLicense(null)}>
-                  Hủy
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setEditingLicense(null)}>
+                  {t("cancel")}
                 </button>
-                <button type="submit" className="btn-primary-action" disabled={loading}>
-                  Lưu Thay Đổi
+                <button type="submit" className="btn-primary-orange">
+                  {t("saveChanges")}
                 </button>
               </div>
             </form>
@@ -1948,75 +2776,53 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {/* MODAL: RENEW */}
+      {/* MODAL: RENEW LICENSE */}
       {renewingLicense && (
-        <div className="modal-backdrop-light">
-          <div className="modal-card-light" style={{ maxWidth: "500px" }}>
-            <div className="modal-header-light">
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
               <div>
-                <h3 className="modal-title-light">Gia hạn License: {renewingLicense.key_hint}</h3>
-                <span className="modal-subtitle-light">Khách hàng: {renewingLicense.customer_name}</span>
+                <h3>{t("modalRenewLicenseTitle")}</h3>
               </div>
-              <button type="button" className="sidebar-toggle-btn" onClick={() => setRenewingLicense(null)}>
+              <button type="button" className="btn-close-modal" onClick={() => setRenewingLicense(null)}>
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleRenewSubmit(e)} className="modal-body-light">
-              <div className="form-group-light">
-                <label className="form-label-light">Ngày hết hạn mới *</label>
-                <input
-                  type="datetime-local"
-                  required
-                  className="form-input-light"
-                  value={renewForm.expires_at}
-                  onChange={(e) => setRenewForm({ ...renewForm, expires_at: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group-light">
-                <label className="form-label-light">Lý do gia hạn *</label>
-                <input
-                  required
-                  className="form-input-light"
-                  value={renewForm.reason}
-                  onChange={(e) => setRenewForm({ ...renewForm, reason: e.target.value })}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                <div className="form-group-light">
-                  <label className="form-label-light">Số tiền thu (VND)</label>
+            <form onSubmit={handleRenewLicense}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldCustomerName")}</label>
+                  <input type="text" className="form-input-mf" value={renewingLicense.customer_name} disabled />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldDays")}</label>
                   <input
                     type="number"
-                    min="0"
-                    step="10000"
-                    className="form-input-light"
-                    value={renewForm.amount}
-                    onChange={(e) => setRenewForm({ ...renewForm, amount: e.target.value })}
+                    className="form-input-mf"
+                    value={renewDays}
+                    onChange={(e) => setRenewDays(e.target.value)}
+                    required
                   />
                 </div>
-                <div className="form-group-light">
-                  <label className="form-label-light">Gói gia hạn</label>
-                  <select
-                    className="form-select-light"
-                    value={renewForm.plan_type}
-                    onChange={(e) => setRenewForm({ ...renewForm, plan_type: e.target.value })}
-                  >
-                    <option value="1_month">1 Tháng</option>
-                    <option value="3_months">3 Tháng</option>
-                    <option value="6_months">6 Tháng</option>
-                    <option value="1_year">1 Năm</option>
-                  </select>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldBillAmount")}</label>
+                  <input
+                    type="number"
+                    className="form-input-mf"
+                    value={renewAmount}
+                    onChange={(e) => setRenewAmount(e.target.value)}
+                    required
+                  />
                 </div>
               </div>
 
-              <div className="modal-footer-light">
-                <button type="button" className="btn-secondary-light" onClick={() => setRenewingLicense(null)}>
-                  Hủy
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setRenewingLicense(null)}>
+                  {t("cancel")}
                 </button>
-                <button type="submit" className="btn-primary-action" disabled={loading}>
-                  Xác Nhận Gia Hạn
+                <button type="submit" className="btn-primary-orange">
+                  {t("confirm")}
                 </button>
               </div>
             </form>
@@ -2026,46 +2832,51 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
       {/* MODAL: RESET HWID */}
       {resettingHwidLicense && (
-        <div className="modal-backdrop-light">
-          <div className="modal-card-light" style={{ maxWidth: "520px" }}>
-            <div className="modal-header-light">
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
               <div>
-                <h3 className="modal-title-light">Đổi Device ID (Chuyển máy tính)</h3>
-                <span className="modal-subtitle-light">License: {resettingHwidLicense.key_hint}</span>
+                <h3>{t("modalResetHwidTitle")}</h3>
               </div>
-              <button type="button" className="sidebar-toggle-btn" onClick={() => setResettingHwidLicense(null)}>
+              <button type="button" className="btn-close-modal" onClick={() => setResettingHwidLicense(null)}>
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleResetHwidSubmit(e)} className="modal-body-light">
-              <div className="form-group-light">
-                <label className="form-label-light">Device ID máy mới *</label>
-                <input
-                  required
-                  className="form-input-light"
-                  value={hwidResetForm.hwid}
-                  onChange={(e) => setHwidResetForm({ ...hwidResetForm, hwid: normalizeHwid(e.target.value) })}
-                  placeholder="JACS-WIN-..."
-                />
+            <form onSubmit={handleResetHwid}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldOldHwid")}</label>
+                  <input type="text" className="form-input-mf" value={resettingHwidLicense.hwid} disabled />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldNewHwid")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="JACS-WIN-..."
+                    value={newHwid}
+                    onChange={(e) => setNewHwid(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldReason")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={hwidReason}
+                    onChange={(e) => setHwidReason(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <div className="form-group-light">
-                <label className="form-label-light">Lý do chuyển máy *</label>
-                <input
-                  required
-                  className="form-input-light"
-                  value={hwidResetForm.reason}
-                  onChange={(e) => setHwidResetForm({ ...hwidResetForm, reason: e.target.value })}
-                />
-              </div>
-
-              <div className="modal-footer-light">
-                <button type="button" className="btn-secondary-light" onClick={() => setResettingHwidLicense(null)}>
-                  Hủy
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setResettingHwidLicense(null)}>
+                  {t("cancel")}
                 </button>
-                <button type="submit" className="btn-primary-action" disabled={loading}>
-                  Xác Nhận Đổi Máy
+                <button type="submit" className="btn-primary-orange">
+                  {t("confirm")}
                 </button>
               </div>
             </form>
@@ -2073,78 +2884,430 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {/* MODAL: DELETE */}
+      {/* MODAL: DELETE CONFIRMATION */}
       {deletingLicense && (
-        <div className="modal-backdrop-light">
-          <div className="modal-card-light" style={{ maxWidth: "440px" }}>
-            <div className="modal-header-light">
-              <h3 className="modal-title-light" style={{ color: "var(--danger)" }}>Xác nhận Xóa License</h3>
-              <button type="button" className="sidebar-toggle-btn" onClick={() => setDeletingLicense(null)}>
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3 style={{ color: "var(--danger)" }}>{t("modalDeleteLicenseTitle")}</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setDeletingLicense(null)}>
                 <X size={18} />
               </button>
             </div>
-            <div className="modal-body-light">
-              <p>Bạn có chắc chắn muốn xóa vĩnh viễn license <strong>{deletingLicense.key_hint}</strong> của khách hàng <strong>{deletingLicense.customer_name}</strong>?</p>
-              <p style={{ color: "var(--danger)", fontSize: "0.82rem", marginTop: "0.5rem" }}>Client sử dụng key này sẽ bị ngắt quyền truy cập ngay lập tức.</p>
-              <div className="modal-footer-light">
-                <button type="button" className="btn-secondary-light" onClick={() => setDeletingLicense(null)}>
-                  Hủy
-                </button>
-                <button type="button" className="btn-primary-action" style={{ background: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => void handleDeleteLicense()}>
-                  Xóa Vĩnh Viễn
-                </button>
-              </div>
+
+            <div className="modal-body-mf">
+              <p>{t("modalDeleteConfirmText")}</p>
+              <p><strong>{deletingLicense.customer_name}</strong> ({deletingLicense.key_hint})</p>
+            </div>
+
+            <div className="modal-footer-mf">
+              <button type="button" className="btn-white-outline" onClick={() => setDeletingLicense(null)}>
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn-primary-orange"
+                style={{ background: "var(--danger)" }}
+                onClick={() => void handleDeleteLicense()}
+              >
+                {t("delete")}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: GENERATED KEY SUCCESS */}
-      {generatedKey && (
-        <div className="modal-backdrop-light">
-          <div className="modal-card-light" style={{ maxWidth: "520px" }}>
-            <div className="modal-header-light">
-              <h3 className="modal-title-light" style={{ color: "var(--success)" }}>
-                <Sparkles size={20} style={{ verticalAlign: "middle", marginRight: "0.4rem" }} />
-                Cấp License Thành Công!
-              </h3>
-              <button type="button" className="sidebar-toggle-btn" onClick={() => setGeneratedKey("")}>
+      {/* MODAL: DISPLAY CREATED RAW KEY */}
+      {createdKeyData && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3 style={{ color: "var(--success)" }}>{t("modalCreatedSuccessTitle")}</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setCreatedKeyData(null)}>
                 <X size={18} />
               </button>
             </div>
-            <div className="modal-body-light">
-              <p style={{ color: "var(--text-muted)", fontSize: "0.88rem" }}>
-                Hãy copy và gửi License Key này cho khách hàng để kích hoạt trên ứng dụng Desktop JACS Studio:
-              </p>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f8fafc", border: "1px solid var(--border-light)", padding: "0.85rem 1rem", borderRadius: "8px", margin: "1rem 0" }}>
-                <span style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)", letterSpacing: "0.05em", fontFamily: "var(--font-mono)" }}>
-                  {generatedKey}
-                </span>
+
+            <div className="modal-body-mf">
+              <p>{language === "vi" ? "Mã License Key kích hoạt cho khách hàng" : "License Key issued for customer"} <strong>{createdKeyData.customer_name}</strong>:</p>
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <input
+                  type="text"
+                  className="form-input-mf"
+                  value={createdKeyData.raw_key}
+                  readOnly
+                  style={{ fontFamily: "var(--font-mono)", fontWeight: 700, background: "#f8fafc" }}
+                />
                 <button
                   type="button"
-                  className="btn-primary-action"
-                  style={{ padding: "0.4rem 0.85rem", fontSize: "0.82rem" }}
-                  onClick={() => void copyText(generatedKey)}
+                  className="btn-primary-orange"
+                  onClick={() => void copyText(createdKeyData.raw_key, "created-raw-key")}
                 >
-                  {keyCopied ? (
-                    <>
-                      <Check size={14} /> Đã Copy
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={14} /> Copy Key
-                    </>
-                  )}
+                  {copiedItemId === "created-raw-key" ? <Check size={16} /> : <Copy size={16} />}
                 </button>
               </div>
-              <small style={{ color: "var(--text-muted)", display: "block" }}>
-                🔒 Key chỉ hiển thị một lần duy nhất lúc tạo. Hệ thống không lưu plaintext key.
+              <small style={{ color: "var(--text-muted)", display: "block", marginTop: "0.5rem" }}>
+                🔒 {language === "vi" ? "Key chỉ hiển thị một lần duy nhất lúc tạo. Hệ thống không lưu trữ plaintext key." : "Key is displayed only once upon generation. The system does not store plaintext keys."}
               </small>
-              <div className="modal-footer-light">
-                <button type="button" className="btn-primary-action" onClick={() => setGeneratedKey("")}>
-                  Đã Lưu Mã Key
+            </div>
+
+            <div className="modal-footer-mf">
+              <button type="button" className="btn-primary-orange" onClick={() => setCreatedKeyData(null)}>
+                {t("close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD TRANSACTION */}
+      {showAddTransactionModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3>{t("modalAddTransactionTitle")}</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setShowAddTransactionModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTransaction}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldCustomerName")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="Studio Media ABC"
+                    value={txCustomerName}
+                    onChange={(e) => setTxCustomerName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldPlanName")}</label>
+                    <input
+                      type="text"
+                      className="form-input-mf"
+                      value={txPlanName}
+                      onChange={(e) => setTxPlanName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldBillAmount")}</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={txAmount}
+                      onChange={(e) => setTxAmount(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldPaymentMethod")}</label>
+                    <select
+                      className="form-input-mf"
+                      value={txPaymentMethod}
+                      onChange={(e) => setTxPaymentMethod(e.target.value)}
+                    >
+                      <option value="bank_transfer">Chuyển Khoản (Bank)</option>
+                      <option value="momo">Ví MoMo</option>
+                      <option value="zalopay">ZaloPay</option>
+                      <option value="crypto">USDT / Crypto</option>
+                      <option value="cash">Tiền mặt (Cash)</option>
+                    </select>
+                  </div>
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldTxType")}</label>
+                    <select
+                      className="form-input-mf"
+                      value={txType}
+                      onChange={(e) => setTxType(e.target.value as "new_key" | "renewal" | "upgrade" | "adjustment")}
+                    >
+                      <option value="new_key">Cấp Key Mới</option>
+                      <option value="renewal">Gia Hạn Dịch Vụ</option>
+                      <option value="upgrade">Nâng Cấp Gói</option>
+                      <option value="adjustment">Điều Chỉnh Dòng Tiền</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldNotes")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="Mã tham chiếu ngân hàng..."
+                    value={txNotes}
+                    onChange={(e) => setTxNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setShowAddTransactionModal(false)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" className="btn-primary-orange">
+                  <Plus size={16} /> {t("confirm")}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE TRANSACTION */}
+      {deletingTransaction && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3 style={{ color: "var(--danger)" }}>Hủy Giao Dịch</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setDeletingTransaction(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body-mf">
+              <p>{t("modalDeleteConfirmText")}</p>
+              <p><strong>{deletingTransaction.customer_name}</strong> - {formatCurrency(deletingTransaction.amount)}</p>
+            </div>
+
+            <div className="modal-footer-mf">
+              <button type="button" className="btn-white-outline" onClick={() => setDeletingTransaction(null)}>
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn-primary-orange"
+                style={{ background: "var(--danger)" }}
+                onClick={() => void handleDeleteTransaction()}
+              >
+                {t("delete")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT AI PROVIDER */}
+      {editingProvider && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3>{t("modalEditProviderTitle")} ({editingProvider.name})</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setEditingProvider(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditProvider}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldProviderName")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={editProviderForm.name}
+                    onChange={(e) => setEditProviderForm({ ...editProviderForm, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldBaseUrl")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={editProviderForm.base_url}
+                    onChange={(e) => setEditProviderForm({ ...editProviderForm, base_url: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldModel")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={editProviderForm.model}
+                    onChange={(e) => setEditProviderForm({ ...editProviderForm, model: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldApiKey")} (Để trống nếu không đổi)</label>
+                  <input
+                    type="password"
+                    className="form-input-mf"
+                    placeholder="••••••••"
+                    value={editProviderForm.api_key}
+                    onChange={(e) => setEditProviderForm({ ...editProviderForm, api_key: e.target.value })}
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldCapabilities")}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={editProviderForm.capabilities}
+                    onChange={(e) => setEditProviderForm({ ...editProviderForm, capabilities: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setEditingProvider(null)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" className="btn-primary-orange">
+                  {t("saveChanges")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DELETE AI PROVIDER */}
+      {deletingProvider && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3 style={{ color: "var(--danger)" }}>Xóa AI Provider</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setDeletingProvider(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body-mf">
+              <p>{t("modalDeleteConfirmText")}</p>
+              <p><strong>{deletingProvider.name}</strong> ({deletingProvider.model})</p>
+            </div>
+
+            <div className="modal-footer-mf">
+              <button type="button" className="btn-white-outline" onClick={() => setDeletingProvider(null)}>
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn-primary-orange"
+                style={{ background: "var(--danger)" }}
+                onClick={() => void handleDeleteProvider()}
+              >
+                {t("delete")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CREATE MANUAL TEST LOG */}
+      {showCreateLogModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3>{t("createManualLog")}</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setShowCreateLogModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualLog}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Tên Sự Kiện (Event Name)</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={manualLogForm.event_name}
+                    onChange={(e) => setManualLogForm({ ...manualLogForm, event_name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Mức Độ Nghiêm Trọng (Severity)</label>
+                  <select
+                    className="form-input-mf"
+                    value={manualLogForm.severity}
+                    onChange={(e) => setManualLogForm({ ...manualLogForm, severity: e.target.value as "info" | "warning" | "error" | "fatal" })}
+                  >
+                    <option value="info">INFO</option>
+                    <option value="warning">WARNING</option>
+                    <option value="error">ERROR</option>
+                    <option value="fatal">FATAL</option>
+                  </select>
+                </div>
+                <div className="form-group-mf">
+                  <label className="form-label-mf">Nội Dung Thông Báo (Message)</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    value={manualLogForm.message}
+                    onChange={(e) => setManualLogForm({ ...manualLogForm, message: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setShowCreateLogModal(false)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" className="btn-primary-orange">
+                  <Plus size={16} /> {t("confirm")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CLEAR ALL LOGS */}
+      {showClearLogsModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box">
+            <div className="modal-header-mf">
+              <div>
+                <h3 style={{ color: "var(--danger)" }}>{t("clearLogs")}</h3>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setShowClearLogsModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body-mf">
+              <p>Bạn có chắc chắn muốn xóa sạch toàn bộ ({logs.length}) nhật ký telemetry không? Hành động này sẽ dọn dẹp toàn bộ dữ liệu log sự cố.</p>
+            </div>
+
+            <div className="modal-footer-mf">
+              <button type="button" className="btn-white-outline" onClick={() => setShowClearLogsModal(false)}>
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn-primary-orange"
+                style={{ background: "var(--danger)" }}
+                onClick={() => void handleClearAllLogs()}
+              >
+                {t("clearLogs")}
+              </button>
             </div>
           </div>
         </div>

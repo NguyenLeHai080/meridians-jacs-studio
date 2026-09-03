@@ -1,0 +1,17 @@
+// 1. Custom SCSS Design System Modules
+@use 'variables';
+@use 'base';
+@use 'sidebar';
+@use 'navbar';
+@use 'search';
+@use 'popovers';
+@use 'cards';
+@use 'tables';
+@use 'modals';
+@use 'auth';
+@use 'responsive';
+
+// 2. Tailwind Core Directives
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

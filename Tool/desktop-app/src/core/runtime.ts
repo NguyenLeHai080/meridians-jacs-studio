@@ -53,9 +53,23 @@ const browserRuntime: DesktopRuntime = {
     detail: "Hãy chạy bản Electron để kiểm tra provider qua secure network bridge",
     latencyMs: 0,
   }),
-  checkForUpdate: async () => ({ update_available: false, release: null }),
+  checkForUpdate: async (channel = "stable") => {
+    try {
+      const platform = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac") ? "macos" : "windows";
+      const currentVersion = "v0.3.17";
+      const apiBase = "http://localhost:8000";
+      const res = await fetch(`${apiBase}/api/v1/releases/check?platform=${platform}&current_version=${currentVersion}&channel=${channel}`);
+      if (!res.ok) return { update_available: false, release: null };
+      const data = await res.json();
+      return data.data || data;
+    } catch {
+      return { update_available: false, release: null };
+    }
+  },
   downloadUpdate: async () => {
-    throw new Error("Cập nhật cần chạy bản Electron đã cài đặt.");
+    await new Promise((r) => setTimeout(r, 1200));
+    window.location.reload();
+    return { status: "installing" };
   },
   openExternal: async () => undefined,
   pickVideo: async () => null,

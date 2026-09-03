@@ -1,0 +1,124 @@
+/* ========================================================================= */
+/* DESIGN TOKENS & SCSS VARIABLES - MINTFORGE BUSINESS SUITE                 */
+/* ========================================================================= */
+
+// Color Palette
+$primary: #f95738;
+$primary-hover: #e04426;
+$primary-light: #fff1ec;
+$primary-gradient: linear-gradient(135deg, #f95738 0%, #ee4d2d 100%);
+
+$bg-app: #f4f6f9;
+$bg-sidebar: #1a1d2e;
+$bg-navbar: #ffffff;
+$bg-card: #ffffff;
+$bg-input: #f8fafc;
+
+$text-dark: #0f172a;
+$text-body: #334155;
+$text-muted: #64748b;
+$text-dim: #94a3b8;
+
+$sidebar-item: #94a3b8;
+$sidebar-active: #ffffff;
+$sidebar-heading: #64748b;
+$border-sidebar: rgba(255, 255, 255, 0.08);
+
+$success: #10b981;
+$success-light: #ecfdf5;
+$success-text: #065f46;
+
+$warning: #f59e0b;
+$warning-light: #fffbeb;
+$warning-text: #92400e;
+
+$danger: #ef4444;
+$danger-light: #fef2f2;
+$danger-text: #991b1b;
+
+$info: #3b82f6;
+$info-light: #eff6ff;
+$info-text: #1e40af;
+
+$border-light: #e2e8f0;
+
+$squircle-orange-bg: #fff1ec;
+$squircle-orange-icon: #f95738;
+$squircle-green-bg: #ecfdf5;
+$squircle-green-icon: #10b981;
+$squircle-blue-bg: #eff6ff;
+$squircle-blue-icon: #3b82f6;
+$squircle-purple-bg: #f5f3ff;
+$squircle-purple-icon: #8b5cf6;
+
+// Typography
+$font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+$font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, monospace;
+
+// Radii
+$radius-sm: 6px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 14px;
+$radius-full: 9999px;
+
+// Shadows
+$shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+$shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+$shadow-card: 0 4px 12px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+$shadow-card-hover: 0 8px 24px -4px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+$shadow-modal: 0 20px 40px -8px rgba(0, 0, 0, 0.25), 0 10px 20px -4px rgba(0, 0, 0, 0.15);
+
+// Root CSS Custom Properties
+:root {
+  --primary: #{$primary};
+  --primary-hover: #{$primary-hover};
+  --primary-light: #{$primary-light};
+  --primary-gradient: #{$primary-gradient};
+  --bg-app: #{$bg-app};
+  --bg-sidebar: #{$bg-sidebar};
+  --bg-navbar: #{$bg-navbar};
+  --bg-card: #{$bg-card};
+  --bg-input: #{$bg-input};
+  --text-dark: #{$text-dark};
+  --text-body: #{$text-body};
+  --text-muted: #{$text-muted};
+  --text-dim: #{$text-dim};
+  --sidebar-item: #{$sidebar-item};
+  --sidebar-active: #{$sidebar-active};
+  --sidebar-heading: #{$sidebar-heading};
+  --border-sidebar: #{$border-sidebar};
+  --border-light: #{$border-light};
+  --success: #{$success};
+  --success-light: #{$success-light};
+  --success-text: #{$success-text};
+  --warning: #{$warning};
+  --warning-light: #{$warning-light};
+  --warning-text: #{$warning-text};
+  --danger: #{$danger};
+  --danger-light: #{$danger-light};
+  --danger-text: #{$danger-text};
+  --info: #{$info};
+  --info-light: #{$info-light};
+  --info-text: #{$info-text};
+  --squircle-orange-bg: #{$squircle-orange-bg};
+  --squircle-orange-icon: #{$squircle-orange-icon};
+  --squircle-green-bg: #{$squircle-green-bg};
+  --squircle-green-icon: #{$squircle-green-icon};
+  --squircle-blue-bg: #{$squircle-blue-bg};
+  --squircle-blue-icon: #{$squircle-blue-icon};
+  --squircle-purple-bg: #{$squircle-purple-bg};
+  --squircle-purple-icon: #{$squircle-purple-icon};
+  --font-sans: #{$font-sans};
+  --font-mono: #{$font-mono};
+  --radius-sm: #{$radius-sm};
+  --radius-md: #{$radius-md};
+  --radius-lg: #{$radius-lg};
+  --radius-xl: #{$radius-xl};
+  --radius-full: #{$radius-full};
+  --shadow-xs: #{$shadow-xs};
+  --shadow-sm: #{$shadow-sm};
+  --shadow-card: #{$shadow-card};
+  --shadow-card-hover: #{$shadow-card-hover};
+  --shadow-modal: #{$shadow-modal};
+}
