@@ -40,6 +40,7 @@ import { SettingsPage } from "./modules/settings/SettingsPage";
 import { StoryPage } from "./modules/story/StoryPage";
 import { BrandPage } from "./modules/brand/BrandPage";
 import { SourcesPage } from "./modules/sources/SourcesPage";
+import { LicenseRenewalModal } from "./modules/renewal/LicenseRenewalModal";
 import "./styles.css";
 
 type PageProps = {
@@ -369,6 +370,7 @@ function App() {
   const [activated, setActivated] = useState<boolean | null>(null);
   const [analysisSourceId, setAnalysisSourceId] = useState<string | undefined>();
   const [timelineSourceId, setTimelineSourceId] = useState<string | undefined>();
+  const [showRenewalModal, setShowRenewalModal] = useState(false);
   const processingJob = useRef("");
   const syncingJobs = useRef(new Set<string>());
 
@@ -1015,6 +1017,32 @@ function App() {
           {renderNav(systemItems)}
         </nav>
 
+        <div style={{ padding: "0 0.75rem", margin: "0.4rem 0" }}>
+          <button
+            type="button"
+            onClick={() => setShowRenewalModal(true)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+              padding: "0.55rem 0.75rem",
+              borderRadius: "8px",
+              background: "linear-gradient(135deg, rgba(249, 115, 22, 0.12) 0%, rgba(234, 88, 12, 0.22) 100%)",
+              border: "1px solid rgba(249, 115, 22, 0.35)",
+              color: "#fb923c",
+              fontWeight: 700,
+              fontSize: "0.78rem",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <Icon name="zap" size={14} />
+            Gia hạn / Nâng cấp gói
+          </button>
+        </div>
+
         <div className="sidebar-bottom">
           <div className="system-status">
             <span className="pulse" />
@@ -1044,6 +1072,29 @@ function App() {
             <strong>{current.label}</strong>
           </div>
           <div className="topbar-actions">
+            <button
+              className="topbar-renew-btn"
+              type="button"
+              title="Gia hạn bản quyền & Quét mã VietQR"
+              onClick={() => setShowRenewalModal(true)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                background: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                padding: "0.35rem 0.85rem",
+                fontSize: "0.82rem",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(249, 115, 22, 0.35)",
+              }}
+            >
+              <Icon name="zap" size={14} />
+              Gia Hạn Bản Quyền
+            </button>
             <button
               className="topbar-link"
               type="button"
@@ -1100,13 +1151,7 @@ function App() {
                       style={{ width: `${Math.max(5, updateProgress)}%` }}
                     />
                   </div>
-                  <span className="ota-progress-text">
-                    {updateStage === "verifying"
-                      ? "Đang xác thực..."
-                      : updateStage === "installing"
-                      ? "Đang áp dụng..."
-                      : `Đang tải ${updateProgress}%`}
-                  </span>
+                  <span>{updateProgress}%</span>
                 </div>
               ) : (
                 <>
@@ -1152,6 +1197,21 @@ function App() {
             analysisSource={analysisSource}
           />
         </div>
+
+        <LicenseRenewalModal
+          isOpen={showRenewalModal}
+          onClose={() => setShowRenewalModal(false)}
+          onSuccess={() => {
+            void (async () => {
+              const runtime = getRuntime();
+              const key = await runtime.readLicense();
+              if (key) {
+                const machine = await runtime.getMachineInfo();
+                void heartbeatLicense(key, machine.machineId, machine.appVersion, machine.platform);
+              }
+            })();
+          }}
+        />
       </section>
     </main>
   );

@@ -36,6 +36,8 @@ import {
   Upload,
   VolumeUp,
   ShieldCheck,
+  LightningCharge,
+  XLg,
 } from "react-bootstrap-icons";
 
 export type IconName =
@@ -75,7 +77,9 @@ export type IconName =
   | "alert"
   | "scissors"
   | "copy"
-  | "shield";
+  | "shield"
+  | "zap"
+  | "x";
 
 const ICONS = {
   grid: Grid,
@@ -115,9 +119,20 @@ const ICONS = {
   scissors: Scissors,
   copy: Clipboard,
   shield: ShieldCheck,
+  zap: LightningCharge,
+  x: XLg,
 } as const;
 
-export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+export function Icon({
+  name,
+  size = 18,
+  className = "",
+}: {
+  name: IconName;
+  size?: number;
+  className?: string;
+}) {
   const Component = ICONS[name] || ICONS.grid;
-  return <Component size={size} aria-hidden="true" focusable="false" />;
+  return <Component size={size} className={className} aria-hidden="true" focusable="false" />;
 }
+

@@ -7,8 +7,8 @@ import { useI18n } from "../../core/i18n";
 
 export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) {
   const { language, setLanguage, t } = useI18n();
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("change-me");
+  const [email, setEmail] = useState((import.meta.env.VITE_ADMIN_EMAIL as string) || (import.meta.env.DEV ? "admin@example.com" : ""));
+  const [password, setPassword] = useState(import.meta.env.DEV ? "change-me" : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -128,9 +128,11 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem", marginBottom: "0.5rem", color: "#34d399", fontSize: "0.75rem", fontWeight: 700 }}>
             <ShieldCheck size={14} /> {t("loginSecurityBadge")}
           </div>
-          <span className="auth-hint">
-            Local credentials: <code>admin@example.com</code> / <code>change-me</code>
-          </span>
+          {import.meta.env.DEV && (
+            <span className="auth-hint">
+              Local credentials: <code>admin@example.com</code> / <code>change-me</code>
+            </span>
+          )}
         </div>
       </div>
     </div>

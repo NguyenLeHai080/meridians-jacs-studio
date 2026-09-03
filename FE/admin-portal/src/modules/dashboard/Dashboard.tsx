@@ -38,11 +38,38 @@ import {
   User,
   KeyRound,
   Rocket,
+  QrCode,
+  Building2,
+  RotateCcw,
+  TrendingUp,
+  ArrowDownLeft,
 } from "lucide-react";
 import { ApiRequestError, apiRequest } from "../../core/api";
 import { clearToken, getToken, setToken } from "../../core/session";
 import { useI18n } from "../../core/i18n";
 import { ReleasesPage, type Release } from "../releases/ReleasesPage";
+import { DatePicker } from "../../components/common/DatePicker";
+import { Pagination } from "../../components/common/Pagination";
+
+export const VIETNAMESE_BANKS = [
+  { bin: "970422", name: "MB Bank (Ngân hàng Quân Đội)", short: "MB" },
+  { bin: "970436", name: "Vietcombank (Ngoại thương Việt Nam)", short: "VCB" },
+  { bin: "970407", name: "Techcombank (Kỹ thương Việt Nam)", short: "TCB" },
+  { bin: "970416", name: "ACB (Ngân hàng Á Châu)", short: "ACB" },
+  { bin: "970432", name: "VPBank (Việt Nam Thịnh Vượng)", short: "VPB" },
+  { bin: "970423", name: "TPBank (Tiên Phong)", short: "TPB" },
+  { bin: "970418", name: "BIDV (Đầu tư và Phát triển)", short: "BIDV" },
+  { bin: "970415", name: "VietinBank (Công thương Việt Nam)", short: "CTG" },
+  { bin: "970403", name: "Sacombank (Sài Gòn Thương Tín)", short: "STB" },
+  { bin: "970437", name: "HDBank (Phát triển TP.HCM)", short: "HDB" },
+  { bin: "970448", name: "OCB (Phương Đông)", short: "OCB" },
+  { bin: "970441", name: "VIB (Quốc tế)", short: "VIB" },
+  { bin: "970443", name: "SHB (Sài Gòn - Hà Nội)", short: "SHB" },
+  { bin: "970440", name: "SeABank (Đông Nam Á)", short: "SEAB" },
+  { bin: "970426", name: "MSB (Hàng Hải)", short: "MSB" },
+  { bin: "970449", name: "LPBank (Lộc Phát Việt Nam)", short: "LPB" },
+  { bin: "970405", name: "Agribank (Nông nghiệp & PTNT)", short: "VBA" },
+];
 
 export type License = {
   id: string;
@@ -50,17 +77,17 @@ export type License = {
   customer_name: string;
   customer_contact: string;
   hwid: string;
-  status: "active" | "blocked" | "expired" | string;
+  status: "active" | "blocked" | "expired";
   expires_at?: string | null;
+  max_jobs_per_day: number;
+  premium_ai: boolean;
+  logo_url?: string | null;
+  notes?: string | null;
+  created_at: string;
   last_seen_at?: string | null;
   last_app_version?: string | null;
   last_platform?: string | null;
   last_ip?: string | null;
-  max_jobs_per_day?: number;
-  premium_ai?: boolean;
-  logo_url?: string | null;
-  notes?: string | null;
-  created_at?: string;
 };
 
 export type Provider = {
@@ -76,7 +103,6 @@ export type Provider = {
 
 export type TelemetryLog = {
   id: string;
-  machine_id: string;
   app_version: string;
   event_name: string;
   severity: "info" | "warning" | "error" | "fatal";
@@ -87,24 +113,39 @@ export type TelemetryLog = {
 
 export type BillingTransaction = {
   id: string;
-  license_id?: string;
+  license_id?: string | null;
   customer_name: string;
-  plan_name: string;
+  plan_name?: string;
+  plan_type?: string;
   amount: number;
-  currency: string;
+  currency?: string;
   payment_method: string;
-  transaction_type: "new_key" | "renewal" | "upgrade" | "adjustment";
-  notes?: string;
+  transaction_type: string;
+  notes?: string | null;
   created_at: string;
+  actor?: string;
   created_by?: string;
 };
 
 export type BillingSummary = {
   total_revenue: number;
   this_month_revenue: number;
+  total_deposits?: number;
+  total_refunds?: number;
+  net_revenue?: number;
   total_transactions: number;
   revenue_by_plan: Record<string, number>;
   revenue_by_method: Record<string, number>;
+};
+
+export type BankConfig = {
+  bank_name: string;
+  bank_bin: string;
+  account_number: string;
+  account_name: string;
+  qr_template: string;
+  plans_pricing: Record<string, number>;
+  updated_at?: string | null;
 };
 
 export type ClientSession = {
@@ -255,6 +296,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [logSeverityFilter, setLogSeverityFilter] = useState("all");
+
+  // Table Pagination States
+  const [licensePage, setLicensePage] = useState(1);
+  const [licensePageSize, setLicensePageSize] = useState(10);
+  const [sessionPage, setSessionPage] = useState(1);
+  const [sessionPageSize, setSessionPageSize] = useState(10);
+  const [billingPage, setBillingPage] = useState(1);
+  const [billingPageSize, setBillingPageSize] = useState(10);
+  const [telemetryPage, setTelemetryPage] = useState(1);
+  const [telemetryPageSize, setTelemetryPageSize] = useState(10);
   
   // Account & Security Modal
   const [showAccountModal, setShowAccountModal] = useState(false);
@@ -271,8 +322,35 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [deletingLicense, setDeletingLicense] = useState<License | null>(null);
   const [createdKeyData, setCreatedKeyData] = useState<{ raw_key: string; key_hint: string; customer_name: string } | null>(null);
 
-  // Billing Modal
+  // Expiration Pickers
+  const defaultCreateExpiry = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    d.setHours(23, 59, 59, 999);
+    return d.toISOString();
+  };
+  const [createExpiresAt, setCreateExpiresAt] = useState<string | null>(defaultCreateExpiry());
+  const [editExpiresAt, setEditExpiresAt] = useState<string | null>(null);
+  const [renewExpiresAt, setRenewExpiresAt] = useState<string | null>(null);
+
+  // Billing & Bank Config States
+  const [billingTab, setBillingTab] = useState<"transactions" | "bank_config">("transactions");
+  const [bankConfig, setBankConfig] = useState<BankConfig>({
+    bank_name: "MB Bank (Ngân hàng Quân Đội)",
+    bank_bin: "970422",
+    account_number: "0988888888",
+    account_name: "JACS STUDIO ADMIN",
+    qr_template: "compact2",
+    plans_pricing: {
+      "1_month": 500000,
+      "3_months": 1350000,
+      "6_months": 2500000,
+      "1_year": 4500000,
+    },
+  });
+  const [isSavingBank, setIsSavingBank] = useState(false);
   const [showAddTransactionModal, setShowAddTransactionModal] = useState(false);
+  const [showRefundModal, setShowRefundModal] = useState(false);
   const [deletingTransaction, setDeletingTransaction] = useState<BillingTransaction | null>(null);
   const [txCustomerName, setTxCustomerName] = useState("");
   const [txPlanName, setTxPlanName] = useState("Standard Monthly");
@@ -280,6 +358,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [txPaymentMethod, setTxPaymentMethod] = useState("bank_transfer");
   const [txType, setTxType] = useState<"new_key" | "renewal" | "upgrade" | "adjustment">("new_key");
   const [txNotes, setTxNotes] = useState("");
+  const [refundCustomerName, setRefundCustomerName] = useState("");
+  const [refundAmount, setRefundAmount] = useState("350000");
+  const [refundReason, setRefundReason] = useState("Khách yêu cầu hoàn tiền dịch vụ");
 
   // AI Provider Modals
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
@@ -389,7 +470,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     setLoading(true);
     setError("");
     try {
-      const [lics, provs, tlogs, txs, bsum, sess, sysSet, sysInf, rels] = await Promise.all([
+      const [lics, provs, tlogs, txs, bsum, sess, sysSet, sysInf, rels, bcfg] = await Promise.all([
         apiRequest<License[]>("/api/v1/licenses", {}, token),
         apiRequest<Provider[]>("/api/v1/ai-providers", {}, token),
         apiRequest<TelemetryLog[]>("/api/v1/telemetry/logs", {}, token),
@@ -399,6 +480,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         apiRequest<SystemSettings>("/api/v1/system/settings", {}, token).catch(() => systemSettings),
         apiRequest<SystemInfo>("/api/v1/system/info", {}, token).catch(() => null as unknown as SystemInfo),
         apiRequest<Release[]>("/api/v1/releases", {}, token).catch(() => []),
+        apiRequest<BankConfig>("/api/v1/billing/bank-config", {}, token).catch(() => null),
       ]);
       setLicenses(lics);
       setProviders(provs);
@@ -407,6 +489,9 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       setBillingSummary(bsum);
       setSessions(sess);
       setReleases(rels || []);
+      if (bcfg) {
+        setBankConfig(bcfg);
+      }
       if (sysSet) {
         const unwrapped = (sysSet && typeof sysSet === "object" && "data" in sysSet && (sysSet as any).data !== sysSet ? (sysSet as any).data : sysSet) as SystemSettings;
         if (unwrapped) setSystemSettings(unwrapped);
@@ -439,23 +524,19 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
 
     try {
-      const res = await apiRequest<{ data: { access_token: string; message: string } }>("/api/v1/auth/change-password", {
-        method: "POST",
+      await apiRequest("/api/v1/auth/password", {
+        method: "PUT",
         body: JSON.stringify({
           current_password: currentPassword,
           new_password: newPassword,
-          new_email: accountEmail.trim(),
+          new_email: accountEmail.trim() || undefined,
         }),
       }, token);
-
-      if (res.data.access_token) {
-        setToken(res.data.access_token);
-      }
       setShowAccountModal(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setMessage(res.data.message || (language === "vi" ? "Đã cập nhật tài khoản quản trị thành công" : "Admin account updated successfully"));
+      setMessage(language === "vi" ? "Đổi mật khẩu thành công!" : "Password updated successfully!");
     } catch (reason) {
       if (handleRequestError(reason)) return;
       setError(reason instanceof Error ? reason.message : "Không đổi được mật khẩu");
@@ -478,6 +559,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
 
     try {
+      const expiryIso = createExpiresAt ? new Date(createExpiresAt).toISOString() : null;
       const res = await apiRequest<{
         raw_key: string;
         license: License;
@@ -487,13 +569,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           customer_name: createCustomerName.trim(),
           customer_contact: createCustomerContact.trim(),
           hwid: normHwid,
-          days_valid: parseInt(createDays) || 30,
+          expires_at: expiryIso,
           max_jobs_per_day: parseInt(createMaxJobs) || 200,
           premium_ai: createPremiumAi,
           notes: createNotes.trim() || undefined,
           logo_url: createLogoUrl.trim() || undefined,
-          bill_amount: parseFloat(createBillAmount) || 0,
-          plan_name: createPlanName.trim() || "Standard License",
+          amount: parseFloat(createBillAmount) || 0,
+          plan_type: createPlanName.trim() || "Standard License",
+          payment_method: "bank_transfer",
         }),
       }, token);
 
@@ -513,6 +596,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       setCreateHwid("");
       setCreateNotes("");
       setCreateLogoUrl("");
+      setCreateExpiresAt(defaultCreateExpiry());
 
       setMessage(`Đã cấp license thành công cho ${custName}`);
       await refresh();
@@ -530,6 +614,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     setEditPremiumAi(Boolean(lic.premium_ai));
     setEditNotes(lic.notes || "");
     setEditLogoUrl(lic.logo_url || "");
+    setEditExpiresAt(lic.expires_at || null);
   }
 
   async function handleSaveEdit(event: FormEvent) {
@@ -537,6 +622,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     if (!editingLicense) return;
     setError("");
     try {
+      const expiryIso = editExpiresAt ? new Date(editExpiresAt).toISOString() : null;
       await apiRequest(`/api/v1/licenses/${editingLicense.id}`, {
         method: "PUT",
         body: JSON.stringify({
@@ -546,6 +632,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           premium_ai: editPremiumAi,
           notes: editNotes.trim() || null,
           logo_url: editLogoUrl.trim() || null,
+          expires_at: expiryIso,
         }),
       }, token);
       setEditingLicense(null);
@@ -558,8 +645,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   function openRenewModal(lic: License) {
+    const currentExpiry = lic.expires_at ? new Date(lic.expires_at) : new Date();
+    const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+    baseDate.setDate(baseDate.getDate() + 30);
+    baseDate.setHours(23, 59, 59, 999);
+
     setRenewingLicense(lic);
-    setRenewDays("30");
+    setRenewExpiresAt(baseDate.toISOString());
     setRenewAmount("500000");
     setRenewPlanName("Gia hạn 30 ngày");
   }
@@ -569,13 +661,17 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     if (!renewingLicense) return;
     setError("");
     try {
+      if (!renewExpiresAt) {
+        throw new Error("Vui lòng chọn ngày hết hạn mới để gia hạn.");
+      }
       await apiRequest(`/api/v1/licenses/${renewingLicense.id}/renew`, {
         method: "POST",
         body: JSON.stringify({
-          additional_days: parseInt(renewDays) || 30,
-          bill_amount: parseFloat(renewAmount) || 0,
-          plan_name: renewPlanName.trim(),
-          notes: `Gia hạn ${renewDays} ngày cho ${renewingLicense.customer_name}`,
+          expires_at: new Date(renewExpiresAt).toISOString(),
+          amount: parseFloat(renewAmount) || 0,
+          plan_type: renewPlanName.trim(),
+          reason: `Gia hạn bản quyền cho ${renewingLicense.customer_name}`,
+          payment_method: "bank_transfer",
         }),
       }, token);
       setRenewingLicense(null);
@@ -667,7 +763,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* BILLING CRUD HANDLERS                                                     */
+  /* BILLING CRUD & BANK CONFIG HANDLERS                                       */
   /* -------------------------------------------------------------------------- */
   async function handleCreateTransaction(event: FormEvent) {
     event.preventDefault();
@@ -677,8 +773,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         method: "POST",
         body: JSON.stringify({
           customer_name: txCustomerName.trim(),
-          plan_name: txPlanName.trim(),
-          amount: parseFloat(txAmount) || 0,
+          plan_type: txPlanName.trim(),
+          amount: Math.abs(parseFloat(txAmount) || 0),
           payment_method: txPaymentMethod,
           transaction_type: txType,
           notes: txNotes.trim() || undefined,
@@ -692,6 +788,51 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
     } catch (reason) {
       if (handleRequestError(reason)) return;
       setError(reason instanceof Error ? reason.message : "Không thêm được giao dịch");
+    }
+  }
+
+  async function handleCreateRefund(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    try {
+      await apiRequest("/api/v1/billing/transactions", {
+        method: "POST",
+        body: JSON.stringify({
+          customer_name: refundCustomerName.trim(),
+          amount: -Math.abs(parseFloat(refundAmount) || 0),
+          plan_type: "refund",
+          payment_method: "bank_transfer",
+          transaction_type: "refund",
+          notes: refundReason.trim() || "Hoàn tiền cho khách hàng",
+        }),
+      }, token);
+      setShowRefundModal(false);
+      setRefundCustomerName("");
+      setRefundReason("Khách yêu cầu hoàn tiền dịch vụ");
+      setMessage(`Đã ghi nhận hoàn tiền thành công cho ${refundCustomerName}`);
+      await refresh();
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Không ghi nhận được hoàn tiền");
+    }
+  }
+
+  async function handleSaveBankConfig(event: FormEvent) {
+    event.preventDefault();
+    setIsSavingBank(true);
+    setError("");
+    try {
+      const updated = await apiRequest<BankConfig>("/api/v1/billing/bank-config", {
+        method: "PUT",
+        body: JSON.stringify(bankConfig),
+      }, token);
+      setBankConfig(updated);
+      setMessage(language === "vi" ? "Đã lưu cấu hình tài khoản ngân hàng & VietQR thành công!" : "Saved bank configuration successfully!");
+    } catch (reason) {
+      if (handleRequestError(reason)) return;
+      setError(reason instanceof Error ? reason.message : "Lỗi khi lưu cấu hình ngân hàng");
+    } finally {
+      setIsSavingBank(false);
     }
   }
 
@@ -1674,350 +1815,692 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           {/* ========================================================================= */}
           {/* VIEW: LICENSES MANAGEMENT */}
           {/* ========================================================================= */}
-          {activeMenu === "licenses" && (
-            <div className="mf-card-panel">
-              <div className="mf-card-header">
-                <div className="mf-card-title-group">
-                  <h3>{t("licensesTitle")} ({filteredLicenses.length})</h3>
-                  <p>{t("licensesSubtitle")}</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn-primary-orange"
-                  onClick={() => setShowCreateModal(true)}
-                >
-                  <Plus size={16} /> {t("createLicense")}
-                </button>
-              </div>
+          {activeMenu === "licenses" && (() => {
+            const totalLicensePages = Math.ceil(filteredLicenses.length / licensePageSize) || 1;
+            const paginatedLicenses = filteredLicenses.slice((licensePage - 1) * licensePageSize, licensePage * licensePageSize);
 
-              {/* Search & Filter Bar */}
-              <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-                <input
-                  type="text"
-                  className="form-input-mf"
-                  placeholder={language === "vi" ? "Tìm theo tên khách hàng, email, Key Hint, Device ID..." : "Search by customer name, email, key hint, HWID..."}
-                  style={{ flex: 1, minWidth: "240px" }}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-                <select
-                  className="form-input-mf"
-                  style={{ width: "220px" }}
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="all">{t("allStatus")}</option>
-                  <option value="active">{t("statusActive")}</option>
-                  <option value="blocked">{t("statusBlocked")}</option>
-                  <option value="expired">{t("statusExpired")}</option>
-                </select>
-              </div>
-
-              <div className="table-responsive">
-                <table className="mf-table">
-                  <thead>
-                    <tr>
-                      <th>{t("thCustomer")}</th>
-                      <th>{t("thKeyHwid")}</th>
-                      <th>{t("thExpiryLimits")}</th>
-                      <th>{t("thDeviceLastSeen")}</th>
-                      <th>{t("thStatus")}</th>
-                      <th style={{ textAlign: "right" }}>{t("thActions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLicenses.map((lic) => (
-                      <tr key={lic.id}>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
-                            {lic.logo_url ? (
-                              <img
-                                src={lic.logo_url}
-                                alt="logo"
-                                style={{ width: "32px", height: "32px", borderRadius: "6px", objectFit: "contain", background: "#f8fafc", border: "1px solid var(--border-light)" }}
-                                onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}
-                              />
-                            ) : (
-                              <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: "#fff1ec", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 800 }}>
-                                {lic.customer_name.slice(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <strong style={{ color: "var(--text-dark)", display: "block" }}>{lic.customer_name}</strong>
-                              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{lic.customer_contact}</span>
-                              {lic.notes && (
-                                <span style={{ display: "block", color: "var(--text-dim)", fontSize: "0.72rem", fontStyle: "italic" }}>
-                                  {lic.notes}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                            <span className="code-chip">{lic.key_hint}</span>
-                            <button
-                              type="button"
-                              className="btn-white-outline"
-                              style={{ padding: "0.2rem 0.45rem", fontSize: "0.72rem" }}
-                              onClick={() => void copyText(lic.key_hint, lic.id)}
-                            >
-                              {copiedItemId === lic.id ? (
-                                <>
-                                  <Check size={12} color="var(--success)" /> {t("copied")}
-                                </>
-                              ) : (
-                                <>
-                                  <Copy size={12} /> {t("copy")}
-                                </>
-                              )}
-                            </button>
-                          </div>
-                          <div style={{ marginTop: "0.25rem" }}>
-                            <span className="code-chip" style={{ background: "#f8fafc", color: "#475569", fontSize: "0.72rem" }}>{lic.hwid}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <div>
-                            {lic.expires_at ? (
-                              <strong style={{ color: "var(--text-dark)" }}>{new Date(lic.expires_at).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}</strong>
-                            ) : (
-                              <span style={{ color: "var(--success-text)", fontWeight: 800, background: "var(--success-light)", padding: "0.15rem 0.45rem", borderRadius: "4px" }}>{t("lifetime")}</span>
-                            )}
-                          </div>
-                          <small style={{ color: "var(--text-muted)", display: "block", marginTop: "0.15rem" }}>
-                            {lic.max_jobs_per_day} {language === "vi" ? "jobs/ngày" : "jobs/day"} {lic.premium_ai ? "· Premium AI" : ""}
-                          </small>
-                        </td>
-                        <td>
-                          <div>{lic.last_platform || "--"} {lic.last_app_version ? `· v${lic.last_app_version}` : ""}</div>
-                          <small style={{ color: "var(--text-muted)", display: "block" }}>{lic.last_ip || (language === "vi" ? "Chưa có IP" : "No IP")}</small>
-                          <small style={{ color: lic.last_seen_at ? "var(--success)" : "var(--text-dim)", fontWeight: 600 }}>
-                            {lic.last_seen_at ? `Online: ${new Date(lic.last_seen_at).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}` : (language === "vi" ? "Chưa online" : "Never")}
-                          </small>
-                        </td>
-                        <td>
-                          <span className={`pill-status pill-${lic.status === "active" ? "active" : lic.status === "blocked" ? "danger" : "warning"}`}>
-                            ● {lic.status === "active" ? "Active" : lic.status === "blocked" ? "Blocked" : "Expired"}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <div style={{ display: "inline-flex", gap: "0.3rem" }}>
-                            <button
-                              type="button"
-                              className="btn-white-outline"
-                              style={{ padding: "0.3rem 0.6rem" }}
-                              onClick={() => openEditModal(lic)}
-                              title={t("edit")}
-                            >
-                              <Pencil size={13} /> {t("edit")}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-white-outline"
-                              style={{ padding: "0.3rem 0.6rem" }}
-                              onClick={() => openRenewModal(lic)}
-                              title={t("renew")}
-                            >
-                              <Clock size={13} /> {t("renew")}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-white-outline"
-                              style={{ padding: "0.3rem 0.6rem" }}
-                              onClick={() => openResetHwidModal(lic)}
-                              title={t("resetHwid")}
-                            >
-                              <RotateCw size={13} /> {t("resetHwid")}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-white-outline"
-                              style={{ padding: "0.3rem 0.6rem" }}
-                              onClick={() => void toggleLicense(lic)}
-                              title={lic.status === "active" ? "Khóa" : "Mở khóa"}
-                            >
-                              {lic.status === "active" ? <Lock size={13} /> : <Unlock size={13} />}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-white-outline"
-                              style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
-                              onClick={() => setDeletingLicense(lic)}
-                              title={t("delete")}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredLicenses.length === 0 && (
-                      <tr>
-                        <td colSpan={6} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                          {t("noLicensesFound")}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* VIEW: DESKTOP SESSIONS */}
-          {/* ========================================================================= */}
-          {activeMenu === "sessions" && (
-            <div className="mf-card-panel">
-              <div className="mf-card-header">
-                <div className="mf-card-title-group">
-                  <h3>{t("sessionsTitle")} ({sessions.length})</h3>
-                  <p>{t("sessionsSubtitle")}</p>
-                </div>
-                <button type="button" className="btn-white-outline" onClick={() => void refresh()}>
-                  <RotateCw size={15} /> {t("refresh")}
-                </button>
-              </div>
-
-              <div className="table-responsive">
-                <table className="mf-table">
-                  <thead>
-                    <tr>
-                      <th>{t("thCustomer")}</th>
-                      <th>Key Hint</th>
-                      <th>Device ID (HWID)</th>
-                      <th>{t("thOsVersion")}</th>
-                      <th>{t("thIp")}</th>
-                      <th>{t("thTime")}</th>
-                      <th>{t("thStatus")}</th>
-                      <th style={{ textAlign: "right" }}>{t("thActions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessions.map((sess) => (
-                      <tr key={sess.license_id}>
-                        <td><strong>{sess.customer_name}</strong></td>
-                        <td><span className="code-chip">{sess.key_hint}</span></td>
-                        <td><span className="code-chip" style={{ fontSize: "0.72rem" }}>{sess.hwid}</span></td>
-                        <td>{sess.last_platform || "Windows"} · v{sess.last_app_version || "0.3.17"}</td>
-                        <td><code>{sess.last_ip || "0.0.0.0"}</code></td>
-                        <td>
-                          {sess.last_seen_at ? (
-                            <span style={{ fontSize: "0.78rem" }}>{new Date(sess.last_seen_at).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}</span>
-                          ) : (
-                            <span style={{ color: "var(--text-dim)" }}>--</span>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`pill-status ${sess.is_online ? "pill-online" : "pill-offline"}`}>
-                            {sess.is_online ? `● ${t("statusOnline")}` : t("statusOffline")}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <button
-                            type="button"
-                            className="btn-white-outline"
-                            style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
-                            onClick={() => void handleTerminateSession(sess.license_id)}
-                            title={t("terminateSession")}
-                          >
-                            {t("terminateSession")}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {sessions.length === 0 && (
-                      <tr>
-                        <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                          {t("noSessionsFound")}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* VIEW: BILLING & TRANSACTIONS */}
-          {/* ========================================================================= */}
-          {activeMenu === "billing" && (
-            <div className="mf-card-panel">
-              <div className="mf-card-header">
-                <div className="mf-card-title-group">
-                  <h3>{t("billingTitle")} ({transactions.length})</h3>
-                  <p>{t("billingSubtitle")}</p>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--primary)" }}>
-                    {formatCurrency(totalRevenueVal)}
+            return (
+              <div className="mf-card-panel">
+                <div className="mf-card-header">
+                  <div className="mf-card-title-group">
+                    <h3>{t("licensesTitle")} ({filteredLicenses.length})</h3>
+                    <p>{t("licensesSubtitle")}</p>
                   </div>
                   <button
                     type="button"
                     className="btn-primary-orange"
-                    onClick={() => setShowAddTransactionModal(true)}
+                    onClick={() => setShowCreateModal(true)}
                   >
-                    <Plus size={16} /> {t("addTransaction")}
+                    <Plus size={16} /> {t("createLicense")}
                   </button>
                 </div>
+
+                {/* Search & Filter Bar */}
+                <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder={language === "vi" ? "Tìm theo tên khách hàng, email, Key Hint, Device ID..." : "Search by customer name, email, key hint, HWID..."}
+                    style={{ flex: 1, minWidth: "240px" }}
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setLicensePage(1);
+                    }}
+                  />
+                  <select
+                    className="form-input-mf"
+                    style={{ width: "220px" }}
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setLicensePage(1);
+                    }}
+                  >
+                    <option value="all">{t("allStatus")}</option>
+                    <option value="active">{t("statusActive")}</option>
+                    <option value="blocked">{t("statusBlocked")}</option>
+                    <option value="expired">{t("statusExpired")}</option>
+                  </select>
+                </div>
+
+                <div className="table-responsive">
+                  <table className="mf-table">
+                    <thead>
+                      <tr>
+                        <th>{t("thCustomer")}</th>
+                        <th>{t("thKeyHwid")}</th>
+                        <th>{t("thExpiryLimits")}</th>
+                        <th>{t("thDeviceLastSeen")}</th>
+                        <th>{t("thStatus")}</th>
+                        <th style={{ textAlign: "right" }}>{t("thActions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedLicenses.map((lic) => (
+                        <tr key={lic.id}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                              {lic.logo_url ? (
+                                <img
+                                  src={lic.logo_url}
+                                  alt="logo"
+                                  style={{ width: "32px", height: "32px", borderRadius: "6px", objectFit: "contain", background: "#f8fafc", border: "1px solid var(--border-light)" }}
+                                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}
+                                />
+                              ) : (
+                                <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: "#fff1ec", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 800 }}>
+                                  {lic.customer_name.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div>
+                                <strong style={{ color: "var(--text-dark)", display: "block" }}>{lic.customer_name}</strong>
+                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{lic.customer_contact}</span>
+                                {lic.notes && (
+                                  <span style={{ display: "block", color: "var(--text-dim)", fontSize: "0.72rem", fontStyle: "italic" }}>
+                                    {lic.notes}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                              <span className="code-chip">{lic.key_hint}</span>
+                              <button
+                                type="button"
+                                className="btn-white-outline"
+                                style={{ padding: "0.2rem 0.45rem", fontSize: "0.72rem" }}
+                                onClick={() => void copyText(lic.key_hint, lic.id)}
+                              >
+                                {copiedItemId === lic.id ? (
+                                  <>
+                                    <Check size={12} color="var(--success)" /> {t("copied")}
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy size={12} /> {t("copy")}
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            <div style={{ marginTop: "0.25rem" }}>
+                              <span className="code-chip" style={{ background: "#f8fafc", color: "#475569", fontSize: "0.72rem" }}>{lic.hwid}</span>
+                            </div>
+                          </td>
+                          <td>
+                            <div>
+                              {lic.expires_at ? (
+                                <strong style={{ color: "var(--text-dark)" }}>{new Date(lic.expires_at).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}</strong>
+                              ) : (
+                                <span style={{ color: "var(--success-text)", fontWeight: 800, background: "var(--success-light)", padding: "0.15rem 0.45rem", borderRadius: "4px" }}>{t("lifetime")}</span>
+                              )}
+                            </div>
+                            <small style={{ color: "var(--text-muted)", display: "block", marginTop: "0.15rem" }}>
+                              {lic.max_jobs_per_day} {language === "vi" ? "jobs/ngày" : "jobs/day"} {lic.premium_ai ? "· Premium AI" : ""}
+                            </small>
+                          </td>
+                          <td>
+                            <div>{lic.last_platform || "--"} {lic.last_app_version ? `· v${lic.last_app_version}` : ""}</div>
+                            <small style={{ color: "var(--text-muted)", display: "block" }}>{lic.last_ip || (language === "vi" ? "Chưa có IP" : "No IP")}</small>
+                            <small style={{ color: lic.last_seen_at ? "var(--success)" : "var(--text-dim)", fontWeight: 600 }}>
+                              {lic.last_seen_at ? `Online: ${new Date(lic.last_seen_at).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}` : (language === "vi" ? "Chưa online" : "Never")}
+                            </small>
+                          </td>
+                          <td>
+                            <span className={`pill-status pill-${lic.status === "active" ? "active" : lic.status === "blocked" ? "danger" : "warning"}`}>
+                              ● {lic.status === "active" ? "Active" : lic.status === "blocked" ? "Blocked" : "Expired"}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <div style={{ display: "inline-flex", gap: "0.3rem" }}>
+                              <button
+                                type="button"
+                                className="btn-white-outline"
+                                style={{ padding: "0.3rem 0.6rem" }}
+                                onClick={() => openEditModal(lic)}
+                                title={t("edit")}
+                              >
+                                <Pencil size={13} /> {t("edit")}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-white-outline"
+                                style={{ padding: "0.3rem 0.6rem" }}
+                                onClick={() => openRenewModal(lic)}
+                                title={t("renew")}
+                              >
+                                <Clock size={13} /> {t("renew")}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-white-outline"
+                                style={{ padding: "0.3rem 0.6rem" }}
+                                onClick={() => openResetHwidModal(lic)}
+                                title={t("resetHwid")}
+                              >
+                                <RotateCw size={13} /> {t("resetHwid")}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-white-outline"
+                                style={{ padding: "0.3rem 0.6rem" }}
+                                onClick={() => void toggleLicense(lic)}
+                                title={lic.status === "active" ? "Khóa" : "Mở khóa"}
+                              >
+                                {lic.status === "active" ? <Lock size={13} /> : <Unlock size={13} />}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-white-outline"
+                                style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
+                                onClick={() => setDeletingLicense(lic)}
+                                title={t("delete")}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredLicenses.length === 0 && (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                            {t("noLicensesFound")}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <Pagination
+                  currentPage={licensePage}
+                  totalPages={totalLicensePages}
+                  onPageChange={setLicensePage}
+                  totalItems={filteredLicenses.length}
+                  pageSize={licensePageSize}
+                  pageSizeOptions={[5, 10, 20, 50, 100]}
+                  onPageSizeChange={(size) => {
+                    setLicensePageSize(size);
+                    setLicensePage(1);
+                  }}
+                />
+              </div>
+            );
+          })()}
+
+          {/* ========================================================================= */}
+          {/* VIEW: DESKTOP SESSIONS */}
+          {/* ========================================================================= */}
+          {activeMenu === "sessions" && (() => {
+            const totalSessionPages = Math.ceil(sessions.length / sessionPageSize) || 1;
+            const paginatedSessions = sessions.slice((sessionPage - 1) * sessionPageSize, sessionPage * sessionPageSize);
+
+            return (
+              <div className="mf-card-panel">
+                <div className="mf-card-header">
+                  <div className="mf-card-title-group">
+                    <h3>{t("sessionsTitle")} ({sessions.length})</h3>
+                    <p>{t("sessionsSubtitle")}</p>
+                  </div>
+                  <button type="button" className="btn-white-outline" onClick={() => void refresh()}>
+                    <RotateCw size={15} /> {t("refresh")}
+                  </button>
+                </div>
+
+                <div className="table-responsive">
+                  <table className="mf-table">
+                    <thead>
+                      <tr>
+                        <th>{t("thCustomer")}</th>
+                        <th>Key Hint</th>
+                        <th>Device ID (HWID)</th>
+                        <th>{t("thOsVersion")}</th>
+                        <th>{t("thIp")}</th>
+                        <th>{t("thTime")}</th>
+                        <th>{t("thStatus")}</th>
+                        <th style={{ textAlign: "right" }}>{t("thActions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedSessions.map((sess) => (
+                        <tr key={sess.license_id}>
+                          <td><strong>{sess.customer_name}</strong></td>
+                          <td><span className="code-chip">{sess.key_hint}</span></td>
+                          <td><span className="code-chip" style={{ fontSize: "0.72rem" }}>{sess.hwid}</span></td>
+                          <td>{sess.last_platform || "Windows"} · v{sess.last_app_version || "0.3.17"}</td>
+                          <td><code>{sess.last_ip || "0.0.0.0"}</code></td>
+                          <td>
+                            {sess.last_seen_at ? (
+                              <span style={{ fontSize: "0.78rem" }}>{new Date(sess.last_seen_at).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}</span>
+                            ) : (
+                              <span style={{ color: "var(--text-dim)" }}>--</span>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`pill-status ${sess.is_online ? "pill-online" : "pill-offline"}`}>
+                              {sess.is_online ? `● ${t("statusOnline")}` : t("statusOffline")}
+                            </span>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              type="button"
+                              className="btn-white-outline"
+                              style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
+                              onClick={() => void handleTerminateSession(sess.license_id)}
+                              title={t("terminateSession")}
+                            >
+                              {t("terminateSession")}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {sessions.length === 0 && (
+                        <tr>
+                          <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                            {t("noSessionsFound")}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <Pagination
+                  currentPage={sessionPage}
+                  totalPages={totalSessionPages}
+                  onPageChange={setSessionPage}
+                  totalItems={sessions.length}
+                  pageSize={sessionPageSize}
+                  pageSizeOptions={[5, 10, 20, 50]}
+                  onPageSizeChange={(size) => {
+                    setSessionPageSize(size);
+                    setSessionPage(1);
+                  }}
+                />
+              </div>
+            );
+          })()}
+
+          {/* ========================================================================= */}
+          {/* VIEW: BILLING & REVENUE & BANK CONFIG */}
+          {/* ========================================================================= */}
+          {activeMenu === "billing" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* Top Sub-tabs */}
+              <div style={{ display: "flex", gap: "0.5rem", borderBottom: "1px solid var(--border-light)", paddingBottom: "0.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setBillingTab("transactions")}
+                  className={`btn-white-outline ${billingTab === "transactions" ? "active" : ""}`}
+                  style={{
+                    background: billingTab === "transactions" ? "var(--primary)" : "transparent",
+                    color: billingTab === "transactions" ? "#fff" : "var(--text-dark)",
+                    borderColor: billingTab === "transactions" ? "var(--primary)" : "var(--border-light)",
+                    fontWeight: 700,
+                  }}
+                >
+                  <CreditCard size={15} /> {language === "vi" ? "💰 Dòng Tiền & Doanh Thu" : "💰 Cashflow & Revenue"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingTab("bank_config")}
+                  className={`btn-white-outline ${billingTab === "bank_config" ? "active" : ""}`}
+                  style={{
+                    background: billingTab === "bank_config" ? "var(--primary)" : "transparent",
+                    color: billingTab === "bank_config" ? "#fff" : "var(--text-dark)",
+                    borderColor: billingTab === "bank_config" ? "var(--primary)" : "var(--border-light)",
+                    fontWeight: 700,
+                  }}
+                >
+                  <Building2 size={15} /> {language === "vi" ? "🏦 Cấu Hình Ngân Hàng & VietQR" : "🏦 Bank Config & VietQR"}
+                </button>
               </div>
 
-              <div className="table-responsive">
-                <table className="mf-table">
-                  <thead>
-                    <tr>
-                      <th>{t("thTxId")}</th>
-                      <th>{t("thCustomer")}</th>
-                      <th>{t("thPlan")}</th>
-                      <th>{t("thTxType")}</th>
-                      <th>{t("thAmount")}</th>
-                      <th>{t("thMethod")}</th>
-                      <th>{t("thTime")}</th>
-                      <th style={{ textAlign: "right" }}>{t("thActions")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transactions.map((tx) => (
-                      <tr key={tx.id}>
-                        <td><span className="code-chip">{tx.id.slice(0, 10)}...</span></td>
-                        <td>
-                          <strong>{tx.customer_name}</strong>
-                          {tx.notes && <div style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>{tx.notes}</div>}
-                        </td>
-                        <td>{tx.plan_name}</td>
-                        <td>
-                          <span className="pill-status pill-active" style={{ fontSize: "0.72rem" }}>
-                            {tx.transaction_type}
-                          </span>
-                        </td>
-                        <td><strong style={{ color: "var(--primary)" }}>{formatCurrency(tx.amount)}</strong></td>
-                        <td>{tx.payment_method.toUpperCase()}</td>
-                        <td style={{ fontSize: "0.78rem" }}>{new Date(tx.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}</td>
-                        <td style={{ textAlign: "right" }}>
+              {billingTab === "transactions" && (() => {
+                const totalBillingPages = Math.ceil(transactions.length / billingPageSize) || 1;
+                const paginatedTransactions = transactions.slice((billingPage - 1) * billingPageSize, billingPage * billingPageSize);
+
+                const netRev = billingSummary?.net_revenue ?? billingSummary?.total_revenue ?? 0;
+                const totalDep = billingSummary?.total_deposits ?? billingSummary?.total_revenue ?? 0;
+                const totalRef = billingSummary?.total_refunds ?? 0;
+                const monthRev = billingSummary?.this_month_revenue ?? 0;
+
+                return (
+                  <>
+                    {/* Stat Cards Grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
+                      <div className="mf-card-panel" style={{ padding: "1.1rem", background: "linear-gradient(135deg, #064e3b 0%, #065f46 100%)", color: "#fff" }}>
+                        <div style={{ fontSize: "0.8rem", color: "rgba(255,255,255,0.8)", fontWeight: 600 }}>
+                          {language === "vi" ? "DÒNG TIỀN THỰC THU (NET REVENUE)" : "NET CASHFLOW"}
+                        </div>
+                        <div style={{ fontSize: "1.45rem", fontWeight: 800, marginTop: "0.35rem", color: "#a7f3d0" }}>
+                          {formatCurrency(netRev)}
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.7)", marginTop: "0.35rem" }}>
+                          = {formatCurrency(totalDep)} (Nạp) - {formatCurrency(totalRef)} (Hoàn)
+                        </div>
+                      </div>
+
+                      <div className="mf-card-panel" style={{ padding: "1.1rem" }}>
+                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                          {language === "vi" ? "TỔNG NẠP (GROSS DEPOSITS)" : "GROSS DEPOSITS"}
+                        </div>
+                        <div style={{ fontSize: "1.45rem", fontWeight: 800, marginTop: "0.35rem", color: "var(--primary)" }}>
+                          {formatCurrency(totalDep)}
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginTop: "0.35rem" }}>
+                          {transactions.filter(t => t.amount > 0).length} {language === "vi" ? "lần thu vào" : "deposits"}
+                        </div>
+                      </div>
+
+                      <div className="mf-card-panel" style={{ padding: "1.1rem" }}>
+                        <div style={{ fontSize: "0.8rem", color: "var(--danger)", fontWeight: 600 }}>
+                          {language === "vi" ? "ĐÃ HOÀN TIỀN (REFUNDS / BACK)" : "TOTAL REFUNDS"}
+                        </div>
+                        <div style={{ fontSize: "1.45rem", fontWeight: 800, marginTop: "0.35rem", color: "var(--danger)" }}>
+                          {formatCurrency(totalRef)}
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginTop: "0.35rem" }}>
+                          {transactions.filter(t => t.amount < 0 || t.transaction_type === "refund").length} {language === "vi" ? "lần hoàn trả" : "refunds"}
+                        </div>
+                      </div>
+
+                      <div className="mf-card-panel" style={{ padding: "1.1rem" }}>
+                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>
+                          {language === "vi" ? "DOANH THU THÁNG NÀY" : "THIS MONTH"}
+                        </div>
+                        <div style={{ fontSize: "1.45rem", fontWeight: 800, marginTop: "0.35rem", color: "var(--text-dark)" }}>
+                          {formatCurrency(monthRev)}
+                        </div>
+                        <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginTop: "0.35rem" }}>
+                          {language === "vi" ? "Tháng hiện tại" : "Current month"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Table Panel */}
+                    <div className="mf-card-panel">
+                      <div className="mf-card-header">
+                        <div className="mf-card-title-group">
+                          <h3>{t("billingTitle")} ({transactions.length})</h3>
+                          <p>{t("billingSubtitle")}</p>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
                           <button
                             type="button"
                             className="btn-white-outline"
-                            style={{ padding: "0.25rem 0.5rem", color: "var(--danger)" }}
-                            onClick={() => setDeletingTransaction(tx)}
-                            title={t("delete")}
+                            style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+                            onClick={() => setShowRefundModal(true)}
                           >
-                            <Trash2 size={13} />
+                            <RotateCcw size={15} /> {language === "vi" ? "↩️ Ghi nhận Hoàn tiền" : "↩️ Refund"}
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {transactions.length === 0 && (
-                      <tr>
-                        <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                          {t("noTransactionsFound")}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                          <button
+                            type="button"
+                            className="btn-primary-orange"
+                            onClick={() => setShowAddTransactionModal(true)}
+                          >
+                            <Plus size={16} /> {language === "vi" ? "+ Ghi nhận Nạp tiền" : "+ Deposit"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="table-responsive">
+                        <table className="mf-table">
+                          <thead>
+                            <tr>
+                              <th>{t("thTxId")}</th>
+                              <th>{t("thCustomer")}</th>
+                              <th>{t("thPlan")}</th>
+                              <th>{t("thTxType")}</th>
+                              <th>{t("thAmount")}</th>
+                              <th>{t("thMethod")}</th>
+                              <th>{t("thTime")}</th>
+                              <th style={{ textAlign: "right" }}>{t("thActions")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paginatedTransactions.map((tx) => {
+                              const isNegative = tx.amount < 0 || tx.transaction_type === "refund";
+                              return (
+                                <tr key={tx.id}>
+                                  <td><span className="code-chip">{tx.id.slice(0, 10)}...</span></td>
+                                  <td>
+                                    <strong>{tx.customer_name}</strong>
+                                    {tx.notes && <div style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>{tx.notes}</div>}
+                                  </td>
+                                  <td>{tx.plan_name || tx.plan_type || "--"}</td>
+                                  <td>
+                                    <span
+                                      className={`pill-status ${isNegative ? "pill-danger" : tx.transaction_type === "new_key" ? "pill-active" : "pill-online"}`}
+                                      style={{ fontSize: "0.72rem" }}
+                                    >
+                                      {isNegative ? "↩️ HOÀN TIỀN" : tx.transaction_type === "new_key" ? "+ CẤP KEY" : tx.transaction_type === "renewal" ? "+ GIA HẠN" : "+ NẠP TIỀN"}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <strong style={{ color: isNegative ? "var(--danger)" : "var(--success-text)", fontSize: "0.95rem" }}>
+                                      {isNegative ? `-${formatCurrency(Math.abs(tx.amount))}` : `+${formatCurrency(tx.amount)}`}
+                                    </strong>
+                                  </td>
+                                  <td>{(tx.payment_method || "bank_transfer").toUpperCase()}</td>
+                                  <td style={{ fontSize: "0.78rem" }}>{new Date(tx.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}</td>
+                                  <td style={{ textAlign: "right" }}>
+                                    <button
+                                      type="button"
+                                      className="btn-white-outline"
+                                      style={{ padding: "0.25rem 0.5rem", color: "var(--danger)" }}
+                                      onClick={() => setDeletingTransaction(tx)}
+                                      title={t("delete")}
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {transactions.length === 0 && (
+                              <tr>
+                                <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                                  {t("noTransactionsFound")}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <Pagination
+                        currentPage={billingPage}
+                        totalPages={totalBillingPages}
+                        onPageChange={setBillingPage}
+                        totalItems={transactions.length}
+                        pageSize={billingPageSize}
+                        pageSizeOptions={[5, 10, 20, 50]}
+                        onPageSizeChange={(size) => {
+                          setBillingPageSize(size);
+                          setBillingPage(1);
+                        }}
+                      />
+                    </div>
+                  </>
+                );
+              })()}
+
+              {billingTab === "bank_config" && (
+                <div className="mf-two-col-grid">
+                  {/* Bank Config Form */}
+                  <div className="mf-card-panel">
+                    <div className="mf-card-header">
+                      <div className="mf-card-title-group">
+                        <h3>{language === "vi" ? "Cấu Hình Tài Khoản Ngân Hàng Nhận Tiền" : "Beneficiary Bank Configuration"}</h3>
+                        <p>{language === "vi" ? "Thông tin tài khoản để tự động tạo mã QR VietQR khi khách gia hạn trên Tool Desktop" : "Beneficiary account info for generating dynamic VietQR in Desktop app"}</p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleSaveBankConfig} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                      <div className="form-group-mf">
+                        <label className="form-label-mf">{language === "vi" ? "Ngân Hàng Thụ Hưởng *" : "Beneficiary Bank *"}</label>
+                        <select
+                          className="form-input-mf"
+                          value={bankConfig.bank_bin}
+                          onChange={(e) => {
+                            const selected = VIETNAMESE_BANKS.find(b => b.bin === e.target.value);
+                            setBankConfig({
+                              ...bankConfig,
+                              bank_bin: e.target.value,
+                              bank_name: selected?.name || bankConfig.bank_name,
+                            });
+                          }}
+                        >
+                          {VIETNAMESE_BANKS.map((b) => (
+                            <option key={b.bin} value={b.bin}>
+                              {b.name} ({b.short} - BIN {b.bin})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="mf-form-two-col">
+                        <div className="form-group-mf">
+                          <label className="form-label-mf">{language === "vi" ? "Số Tài Khoản (STK) *" : "Account Number *"}</label>
+                          <input
+                            type="text"
+                            className="form-input-mf"
+                            placeholder="VD: 0988888888"
+                            value={bankConfig.account_number}
+                            onChange={(e) => setBankConfig({ ...bankConfig, account_number: e.target.value.trim() })}
+                            required
+                          />
+                        </div>
+                        <div className="form-group-mf">
+                          <label className="form-label-mf">{language === "vi" ? "Tên Chủ Tài Khoản (IN HOA) *" : "Account Holder Name *"}</label>
+                          <input
+                            type="text"
+                            className="form-input-mf"
+                            placeholder="VD: NGUYEN VAN A"
+                            value={bankConfig.account_name}
+                            onChange={(e) => setBankConfig({ ...bankConfig, account_name: e.target.value.toUpperCase() })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="form-group-mf">
+                        <label className="form-label-mf">{language === "vi" ? "Mẫu Giao Diện VietQR" : "VietQR Template"}</label>
+                        <select
+                          className="form-input-mf"
+                          value={bankConfig.qr_template}
+                          onChange={(e) => setBankConfig({ ...bankConfig, qr_template: e.target.value })}
+                        >
+                          <option value="compact2">Compact 2 (Chuẩn nhỏ gọn - Đẹp nhất)</option>
+                          <option value="compact">Compact (Đơn giản)</option>
+                          <option value="qr_only">QR Only (Chỉ có mã QR không khung)</option>
+                        </select>
+                      </div>
+
+                      <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "1rem", marginTop: "0.5rem" }}>
+                        <h4 style={{ fontSize: "0.92rem", color: "var(--text-dark)", marginBottom: "0.75rem" }}>
+                          💵 {language === "vi" ? "Bảng Giá Các Gói Bản Quyền (VNĐ)" : "Plan Pricing Configuration (VND)"}
+                        </h4>
+                        <div className="mf-form-two-col">
+                          <div className="form-group-mf">
+                            <label className="form-label-mf">Gói 1 Tháng (30 ngày)</label>
+                            <input
+                              type="number"
+                              className="form-input-mf"
+                              value={bankConfig.plans_pricing?.["1_month"] ?? 500000}
+                              onChange={(e) => setBankConfig({
+                                ...bankConfig,
+                                plans_pricing: { ...bankConfig.plans_pricing, "1_month": parseFloat(e.target.value) || 0 }
+                              })}
+                            />
+                          </div>
+                          <div className="form-group-mf">
+                            <label className="form-label-mf">Gói 3 Tháng (90 ngày)</label>
+                            <input
+                              type="number"
+                              className="form-input-mf"
+                              value={bankConfig.plans_pricing?.["3_months"] ?? 1350000}
+                              onChange={(e) => setBankConfig({
+                                ...bankConfig,
+                                plans_pricing: { ...bankConfig.plans_pricing, "3_months": parseFloat(e.target.value) || 0 }
+                              })}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mf-form-two-col" style={{ marginTop: "0.75rem" }}>
+                          <div className="form-group-mf">
+                            <label className="form-label-mf">Gói 6 Tháng (180 ngày)</label>
+                            <input
+                              type="number"
+                              className="form-input-mf"
+                              value={bankConfig.plans_pricing?.["6_months"] ?? 2500000}
+                              onChange={(e) => setBankConfig({
+                                ...bankConfig,
+                                plans_pricing: { ...bankConfig.plans_pricing, "6_months": parseFloat(e.target.value) || 0 }
+                              })}
+                            />
+                          </div>
+                          <div className="form-group-mf">
+                            <label className="form-label-mf">Gói 1 Năm (365 ngày)</label>
+                            <input
+                              type="number"
+                              className="form-input-mf"
+                              value={bankConfig.plans_pricing?.["1_year"] ?? 4500000}
+                              onChange={(e) => setBankConfig({
+                                ...bankConfig,
+                                plans_pricing: { ...bankConfig.plans_pricing, "1_year": parseFloat(e.target.value) || 0 }
+                              })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="btn-primary-orange"
+                        disabled={isSavingBank}
+                        style={{ marginTop: "1rem", justifyContent: "center" }}
+                      >
+                        {isSavingBank ? <RotateCw size={16} className="animate-spin" /> : <Check size={16} />}
+                        {language === "vi" ? "Lưu Cấu Hình Ngân Hàng & Bảng Giá" : "Save Bank Configuration"}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Live VietQR Preview */}
+                  <div className="mf-card-panel" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "1.75rem" }}>
+                    <div style={{ width: "100%", maxWidth: "340px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                        <QrCode size={20} color="var(--primary)" />
+                        <strong style={{ fontSize: "1rem", color: "var(--text-dark)" }}>Live VietQR Preview</strong>
+                      </div>
+
+                      <div style={{ background: "#f8fafc", padding: "1.25rem", borderRadius: "12px", border: "1px solid var(--border-light)", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
+                        {bankConfig.bank_bin && bankConfig.account_number ? (
+                          <img
+                            src={`https://img.vietqr.io/image/${bankConfig.bank_bin}-${bankConfig.account_number}-${bankConfig.qr_template || "compact2"}.png?amount=${bankConfig.plans_pricing?.["1_month"] || 500000}&addInfo=JACS%20DEMO&accountName=${encodeURIComponent(bankConfig.account_name)}`}
+                            alt="VietQR Live Preview"
+                            style={{ width: "100%", height: "auto", borderRadius: "8px" }}
+                          />
+                        ) : (
+                          <div style={{ padding: "3rem 1rem", color: "var(--text-muted)" }}>
+                            Vui lòng chọn ngân hàng và nhập số tài khoản
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ marginTop: "1rem", textAlign: "left", fontSize: "0.78rem", color: "var(--text-muted)", background: "#fff1ec", padding: "0.75rem", borderRadius: "8px", border: "1px solid #fed7aa" }}>
+                        <div style={{ color: "var(--primary)", fontWeight: 700, marginBottom: "0.25rem" }}>💡 Hướng dẫn hoạt động:</div>
+                        <div>Khi người dùng Desktop bấm <strong>"Gia hạn bản quyền"</strong> trên tool, hệ thống sẽ tự động hiển thị mã QR trên kèm số tiền và cú pháp <code>JACS &lt;KEY&gt;</code> để khách quét chuyển khoản.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2218,38 +2701,60 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </select>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-                {filteredLogs.map((log) => (
-                  <div key={log.id} style={{ padding: "0.85rem 1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem" }}>
-                      <span className={`pill-status pill-${log.severity === "fatal" ? "danger" : log.severity === "error" ? "danger" : "warning"}`} style={{ fontSize: "0.68rem" }}>
-                        {log.severity.toUpperCase()}
-                      </span>
-                      <strong style={{ fontSize: "0.85rem", color: "var(--text-dark)" }}>{log.event_name}</strong>
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginLeft: "auto" }}>
-                        v{log.app_version} · {new Date(log.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn-white-outline"
-                        style={{ padding: "0.2rem 0.45rem", color: "var(--danger)" }}
-                        onClick={() => void handleDeleteSingleLog(log.id)}
-                        title={t("delete")}
-                      >
-                        <Trash2 size={12} />
-                      </button>
+              {(() => {
+                const totalTelemetryPages = Math.ceil(filteredLogs.length / telemetryPageSize) || 1;
+                const paginatedLogs = filteredLogs.slice((telemetryPage - 1) * telemetryPageSize, telemetryPage * telemetryPageSize);
+
+                return (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                      {paginatedLogs.map((log) => (
+                        <div key={log.id} style={{ padding: "0.85rem 1rem", background: "#f8fafc", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.3rem" }}>
+                            <span className={`pill-status pill-${log.severity === "fatal" ? "danger" : log.severity === "error" ? "danger" : "warning"}`} style={{ fontSize: "0.68rem" }}>
+                              {log.severity.toUpperCase()}
+                            </span>
+                            <strong style={{ fontSize: "0.85rem", color: "var(--text-dark)" }}>{log.event_name}</strong>
+                            <span style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginLeft: "auto" }}>
+                              v{log.app_version} · {new Date(log.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-white-outline"
+                              style={{ padding: "0.2rem 0.45rem", color: "var(--danger)" }}
+                              onClick={() => void handleDeleteSingleLog(log.id)}
+                              title={t("delete")}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                          <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                            {log.message}
+                          </div>
+                        </div>
+                      ))}
+                      {filteredLogs.length === 0 && (
+                        <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                          {t("noLogsFound")}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                      {log.message}
-                    </div>
-                  </div>
-                ))}
-                {filteredLogs.length === 0 && (
-                  <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                    {t("noLogsFound")}
-                  </div>
-                )}
-              </div>
+
+                    <Pagination
+                      currentPage={telemetryPage}
+                      totalPages={totalTelemetryPages}
+                      onPageChange={setTelemetryPage}
+                      totalItems={filteredLogs.length}
+                      pageSize={telemetryPageSize}
+                      pageSizeOptions={[5, 10, 20, 50]}
+                      onPageSizeChange={(size) => {
+                        setTelemetryPageSize(size);
+                        setTelemetryPage(1);
+                      }}
+                    />
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -2632,25 +3137,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                   />
                 </div>
 
-                <div className="mf-form-three-col">
-                  <div className="form-group-mf">
-                    <label className="form-label-mf">{t("fieldDays")}</label>
-                    <input
-                      type="number"
-                      className="form-input-mf"
-                      value={createDays}
-                      onChange={(e) => setCreateDays(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group-mf">
-                    <label className="form-label-mf">{t("fieldMaxJobs")}</label>
-                    <input
-                      type="number"
-                      className="form-input-mf"
-                      value={createMaxJobs}
-                      onChange={(e) => setCreateMaxJobs(e.target.value)}
-                    />
-                  </div>
+                <div className="mf-form-two-col">
+                  <DatePicker
+                    label={language === "vi" ? "Thời Hạn Bản Quyền" : "License Expiry Date"}
+                    value={createExpiresAt || null}
+                    onChange={(iso) => setCreateExpiresAt(iso || "")}
+                    allowLifetime
+                  />
                   <div className="form-group-mf">
                     <label className="form-label-mf">{t("fieldBillAmount")}</label>
                     <input
@@ -2660,6 +3153,16 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                       onChange={(e) => setCreateBillAmount(e.target.value)}
                     />
                   </div>
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{t("fieldMaxJobs")}</label>
+                  <input
+                    type="number"
+                    className="form-input-mf"
+                    value={createMaxJobs}
+                    onChange={(e) => setCreateMaxJobs(e.target.value)}
+                  />
                 </div>
 
                 <div className="form-group-mf">
@@ -2733,14 +3236,22 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     required
                   />
                 </div>
-                <div className="form-group-mf">
-                  <label className="form-label-mf">{t("fieldMaxJobs")}</label>
-                  <input
-                    type="number"
-                    className="form-input-mf"
-                    value={editMaxJobs}
-                    onChange={(e) => setEditMaxJobs(e.target.value)}
-                    required
+                <div className="mf-form-two-col">
+                  <div className="form-group-mf">
+                    <label className="form-label-mf">{t("fieldMaxJobs")}</label>
+                    <input
+                      type="number"
+                      className="form-input-mf"
+                      value={editMaxJobs}
+                      onChange={(e) => setEditMaxJobs(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <DatePicker
+                    label={language === "vi" ? "Ngày Hết Hạn" : "Expiry Date"}
+                    value={editExpiresAt || null}
+                    onChange={(iso) => setEditExpiresAt(iso || "")}
+                    allowLifetime
                   />
                 </div>
                 <div className="form-group-mf">
@@ -2795,17 +3306,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                   <label className="form-label-mf">{t("fieldCustomerName")}</label>
                   <input type="text" className="form-input-mf" value={renewingLicense.customer_name} disabled />
                 </div>
-                <div className="form-group-mf">
-                  <label className="form-label-mf">{t("fieldDays")}</label>
-                  <input
-                    type="number"
-                    className="form-input-mf"
-                    value={renewDays}
-                    onChange={(e) => setRenewDays(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="form-group-mf">
+                <DatePicker
+                  label={language === "vi" ? "Hạn Sử Dụng Mới Sau Khi Gia Hạn" : "New Expiry Date"}
+                  value={renewExpiresAt || null}
+                  onChange={(iso) => setRenewExpiresAt(iso || "")}
+                  allowLifetime={false}
+                />
+                <div className="form-group-mf" style={{ marginTop: "0.85rem" }}>
                   <label className="form-label-mf">{t("fieldBillAmount")}</label>
                   <input
                     type="number"
@@ -2970,7 +3477,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           <div className="modal-dialog-box">
             <div className="modal-header-mf">
               <div>
-                <h3>{t("modalAddTransactionTitle")}</h3>
+                <h3>{language === "vi" ? "+ Ghi Nhận Giao Dịch Nạp Tiền" : "+ Add Deposit Transaction"}</h3>
               </div>
               <button type="button" className="btn-close-modal" onClick={() => setShowAddTransactionModal(false)}>
                 <X size={18} />
@@ -3059,6 +3566,77 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 </button>
                 <button type="submit" className="btn-primary-orange">
                   <Plus size={16} /> {t("confirm")}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RECORD REFUND / BACK TIEN */}
+      {showRefundModal && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog-box" style={{ maxWidth: "520px" }}>
+            <div className="modal-header-mf">
+              <div>
+                <h3 style={{ color: "var(--danger)" }}>
+                  <RotateCcw size={18} style={{ display: "inline", verticalAlign: "middle", marginRight: "6px" }} />
+                  {language === "vi" ? "Ghi Nhận Hoàn Tiền (Refund / Back Tiền)" : "Record Refund Transaction"}
+                </h3>
+                <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                  {language === "vi" ? "Ghi nhận khoản tiền hoàn trả lại cho khách hàng và giảm trừ doanh thu ròng." : "Record refund back to customer and deduct net revenue."}
+                </p>
+              </div>
+              <button type="button" className="btn-close-modal" onClick={() => setShowRefundModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateRefund}>
+              <div className="modal-body-mf">
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{language === "vi" ? "Tên Khách Hàng / Studio Nhận Hoàn Tiền *" : "Customer Name *"}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="VD: Nguyễn Văn A / Studio Media"
+                    value={refundCustomerName}
+                    onChange={(e) => setRefundCustomerName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{language === "vi" ? "Số Tiền Hoàn Lại (VNĐ) *" : "Refund Amount (VND) *"}</label>
+                  <input
+                    type="number"
+                    className="form-input-mf"
+                    placeholder="350000"
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group-mf">
+                  <label className="form-label-mf">{language === "vi" ? "Lý Do Hoàn Tiền / Ghi Chú *" : "Refund Reason *"}</label>
+                  <input
+                    type="text"
+                    className="form-input-mf"
+                    placeholder="VD: Khách đổi máy không dùng nữa, hoàn tiền thừa..."
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer-mf">
+                <button type="button" className="btn-white-outline" onClick={() => setShowRefundModal(false)}>
+                  {t("cancel")}
+                </button>
+                <button type="submit" className="btn-primary-orange" style={{ background: "var(--danger)" }}>
+                  <RotateCcw size={16} /> {language === "vi" ? "Xác Nhận Hoàn Tiền" : "Confirm Refund"}
                 </button>
               </div>
             </form>
