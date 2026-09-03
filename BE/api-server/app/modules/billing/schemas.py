@@ -12,6 +12,8 @@ class BankConfigBase(BaseModel):
     account_number: str = Field(default="0988888888", min_length=1, max_length=64)
     account_name: str = Field(default="JACS STUDIO ADMIN", min_length=1, max_length=160)
     qr_template: str = Field(default="compact2", max_length=32)
+    custom_qr_url: str | None = Field(default=None, max_length=1000)
+    sepay_api_key: str | None = Field(default=None, max_length=255)
     plans_pricing: dict[str, float] = Field(
         default_factory=lambda: {
             "1_month": 500000.0,

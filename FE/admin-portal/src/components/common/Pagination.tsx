@@ -57,41 +57,43 @@ export function Pagination({
         alignItems: "center",
         justifyContent: "space-between",
         flexWrap: "wrap",
-        gap: "1rem",
+        gap: "0.75rem",
         marginTop: "1.25rem",
-        padding: "0.85rem 1rem",
-        background: "rgba(255, 255, 255, 0.02)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
+        padding: "0.75rem 1rem",
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
         borderRadius: "10px",
       }}
     >
       {/* Left: Summary and Page Size */}
       <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
         {totalItems !== undefined && (
-          <span style={{ fontSize: "0.84rem", color: "rgba(255, 255, 255, 0.65)" }}>
-            Hiển thị <strong style={{ color: "#fff" }}>{start}-{end}</strong> trong tổng số{" "}
-            <strong style={{ color: "var(--primary)" }}>{totalItems}</strong> bản ghi
+          <span style={{ fontSize: "0.84rem", color: "#475569" }}>
+            Hiển thị <strong style={{ color: "#0f172a", fontWeight: 700 }}>{start}-{end}</strong> trong tổng số{" "}
+            <strong style={{ color: "#f95738", fontWeight: 800 }}>{totalItems}</strong> bản ghi
           </span>
         )}
 
         {onPageSizeChange && (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.84rem", color: "rgba(255, 255, 255, 0.65)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", fontSize: "0.82rem", color: "#64748b" }}>
             <span>Số dòng:</span>
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
               style={{
-                background: "rgba(255, 255, 255, 0.06)",
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                color: "#fff",
+                background: "#ffffff",
+                border: "1px solid #cbd5e1",
+                color: "#0f172a",
                 borderRadius: "6px",
-                padding: "3px 6px",
+                padding: "3px 8px",
                 fontSize: "0.82rem",
+                fontWeight: 600,
                 cursor: "pointer",
+                outline: "none",
               }}
             >
               {pageSizeOptions.map((opt) => (
-                <option key={opt} value={opt} style={{ background: "#1a1d2e", color: "#fff" }}>
+                <option key={opt} value={opt} style={{ background: "#ffffff", color: "#0f172a" }}>
                   {opt} / trang
                 </option>
               ))}
@@ -105,19 +107,19 @@ export function Pagination({
         {/* First Page */}
         <button
           type="button"
-          className="btn-ghost-sm"
           disabled={currentPage <= 1}
           onClick={() => onPageChange(1)}
           title="Trang đầu"
           style={{
             padding: "5px 7px",
-            background: "rgba(255, 255, 255, 0.05)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
             borderRadius: "6px",
-            color: currentPage <= 1 ? "rgba(255,255,255,0.2)" : "#fff",
+            color: currentPage <= 1 ? "#cbd5e1" : "#334155",
             cursor: currentPage <= 1 ? "not-allowed" : "pointer",
             display: "flex",
             alignItems: "center",
+            transition: "all 0.15s ease",
           }}
         >
           <ChevronsLeft size={15} />
@@ -126,19 +128,19 @@ export function Pagination({
         {/* Previous Page */}
         <button
           type="button"
-          className="btn-ghost-sm"
           disabled={currentPage <= 1}
           onClick={() => onPageChange(currentPage - 1)}
           title="Trang trước"
           style={{
             padding: "5px 7px",
-            background: "rgba(255, 255, 255, 0.05)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
             borderRadius: "6px",
-            color: currentPage <= 1 ? "rgba(255,255,255,0.2)" : "#fff",
+            color: currentPage <= 1 ? "#cbd5e1" : "#334155",
             cursor: currentPage <= 1 ? "not-allowed" : "pointer",
             display: "flex",
             alignItems: "center",
+            transition: "all 0.15s ease",
           }}
         >
           <ChevronLeft size={15} />
@@ -148,7 +150,7 @@ export function Pagination({
         {getPageNumbers().map((num, i) => {
           if (num === "...") {
             return (
-              <span key={`dots-${i}`} style={{ padding: "0 4px", color: "rgba(255,255,255,0.3)" }}>
+              <span key={`dots-${i}`} style={{ padding: "0 4px", color: "#94a3b8", fontSize: "0.82rem" }}>
                 ...
               </span>
             );
@@ -166,12 +168,13 @@ export function Pagination({
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: "0.82rem",
-                fontWeight: isAct ? 700 : 500,
-                background: isAct ? "#f95738" : "rgba(255, 255, 255, 0.05)",
-                border: isAct ? "1px solid #f95738" : "1px solid rgba(255, 255, 255, 0.08)",
+                fontWeight: isAct ? 800 : 600,
+                background: isAct ? "#f95738" : "#ffffff",
+                border: isAct ? "1px solid #f95738" : "1px solid #e2e8f0",
                 borderRadius: "6px",
-                color: "#fff",
+                color: isAct ? "#ffffff" : "#334155",
                 cursor: "pointer",
+                boxShadow: isAct ? "0 2px 6px rgba(249, 87, 56, 0.35)" : "none",
                 transition: "all 0.15s ease",
               }}
             >
@@ -183,19 +186,19 @@ export function Pagination({
         {/* Next Page */}
         <button
           type="button"
-          className="btn-ghost-sm"
           disabled={currentPage >= totalPages}
           onClick={() => onPageChange(currentPage + 1)}
           title="Trang sau"
           style={{
             padding: "5px 7px",
-            background: "rgba(255, 255, 255, 0.05)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
             borderRadius: "6px",
-            color: currentPage >= totalPages ? "rgba(255,255,255,0.2)" : "#fff",
+            color: currentPage >= totalPages ? "#cbd5e1" : "#334155",
             cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
             display: "flex",
             alignItems: "center",
+            transition: "all 0.15s ease",
           }}
         >
           <ChevronRight size={15} />
@@ -204,19 +207,19 @@ export function Pagination({
         {/* Last Page */}
         <button
           type="button"
-          className="btn-ghost-sm"
           disabled={currentPage >= totalPages}
           onClick={() => onPageChange(totalPages)}
           title="Trang cuối"
           style={{
             padding: "5px 7px",
-            background: "rgba(255, 255, 255, 0.05)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            background: "#ffffff",
+            border: "1px solid #e2e8f0",
             borderRadius: "6px",
-            color: currentPage >= totalPages ? "rgba(255,255,255,0.2)" : "#fff",
+            color: currentPage >= totalPages ? "#cbd5e1" : "#334155",
             cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
             display: "flex",
             alignItems: "center",
+            transition: "all 0.15s ease",
           }}
         >
           <ChevronsRight size={15} />

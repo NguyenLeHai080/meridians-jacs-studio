@@ -20,20 +20,25 @@ code, pre {
   font-family: $font-mono;
 }
 
-// Custom Scrollbar
-::-webkit-scrollbar {
+// Custom Sleek Scrollbar
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+}
+
+*::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
-::-webkit-scrollbar-thumb {
-  background: rgba(156, 163, 175, 0.4);
+*::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.35);
   border-radius: 9999px;
 
   &:hover {
-    background: rgba(156, 163, 175, 0.7);
+    background: rgba(249, 87, 56, 0.7);
   }
 }
 
