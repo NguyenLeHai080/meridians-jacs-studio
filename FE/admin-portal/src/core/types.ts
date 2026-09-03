@@ -27,7 +27,7 @@ export type BillingTransaction = {
   currency: string;
   plan_type: string;
   payment_method: string;
-  transaction_type: string;
+  transaction_type: string; // "income", "deposit", "refund", "renewal"
   notes?: string | null;
   actor: string;
   created_at: string;
@@ -36,9 +36,38 @@ export type BillingTransaction = {
 export type BillingSummary = {
   total_revenue: number;
   this_month_revenue: number;
+  total_deposits: number;
+  total_refunds: number;
+  net_revenue: number;
   total_transactions: number;
   revenue_by_plan: Record<string, number>;
   revenue_by_method: Record<string, number>;
+};
+
+export type BankConfig = {
+  bank_name: string;
+  bank_bin: string;
+  account_number: string;
+  account_name: string;
+  qr_template: string;
+  plans_pricing: Record<string, number>;
+  updated_at?: string | null;
+};
+
+export type RenewQrInfo = {
+  license_key: string;
+  customer_name?: string | null;
+  current_expires_at?: string | null;
+  plan_type: string;
+  plan_name: string;
+  amount: number;
+  duration_days: number;
+  bank_name: string;
+  bank_bin: string;
+  account_number: string;
+  account_name: string;
+  transfer_content: string;
+  qr_url: string;
 };
 
 export type ClientSession = {
@@ -94,4 +123,5 @@ export type AdminMenuKey =
   | "billing"
   | "clients"
   | "logs"
-  | "providers";
+  | "providers"
+  | "releases";

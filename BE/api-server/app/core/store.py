@@ -237,6 +237,13 @@ class PostgresStore:
                 )
                 """
             )
+            # Automatic schema migration for existing databases
+            conn.execute(
+                "ALTER TABLE jacs_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            )
+            conn.execute(
+                "ALTER TABLE jacs_records ALTER COLUMN id TYPE VARCHAR(64) USING id::text"
+            )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_jacs_records_collection ON jacs_records(collection, created_at DESC)"
             )

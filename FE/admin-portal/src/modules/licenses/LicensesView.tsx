@@ -8,6 +8,7 @@ import { Modal } from "../../components/common/Modal";
 import { CopyButton } from "../../components/common/CopyButton";
 import { Pagination } from "../../components/common/Pagination";
 import { Toast } from "../../components/common/Toast";
+import { DatePicker } from "../../components/common/DatePicker";
 
 interface LicensesViewProps {
   licenses: License[];
@@ -69,7 +70,7 @@ export function LicensesView({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 8;
+  const [pageSize, setPageSize] = useState(10);
 
   // Feedback state
   const [message, setMessage] = useState("");
@@ -77,12 +78,19 @@ export function LicensesView({
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
   // Form states for Create Modal
+  const defaultCreateExpiry = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    d.setHours(23, 59, 59, 999);
+    return d.toISOString();
+  };
+
   const [createForm, setCreateForm] = useState({
     customer_name: "",
     customer_contact: "",
     hwid: "",
     plan_preset: "1_month",
-    custom_expires_at: "",
+    custom_expires_at: defaultCreateExpiry(),
     amount: "500000",
     payment_method: "bank_transfer",
     max_jobs_per_day: "100",
@@ -106,8 +114,9 @@ export function LicensesView({
   // Renew Modal
   const [renewingLicense, setRenewingLicense] = useState<License | null>(null);
   const [renewForm, setRenewForm] = useState({
-    months_to_add: "1",
+    expires_at: "",
     amount: "500000",
+    plan_type: "1_month",
     payment_method: "bank_transfer",
     reason: "Gia hạn hợp đồng định kỳ",
   });
@@ -162,29 +171,15 @@ export function LicensesView({
         throw new Error("Mã máy HWID không hợp lệ. Vui lòng lấy từ bản Desktop.");
       }
 
-      // Calculate expiry based on preset
-      let expiryDate: Date | null = null;
-      if (createForm.plan_preset === "1_month") {
-        expiryDate = new Date();
-        expiryDate.setMonth(expiryDate.getMonth() + 1);
-      } else if (createForm.plan_preset === "3_months") {
-        expiryDate = new Date();
-        expiryDate.setMonth(expiryDate.getMonth() + 3);
-      } else if (createForm.plan_preset === "6_months") {
-        expiryDate = new Date();
-        expiryDate.setMonth(expiryDate.getMonth() + 6);
-      } else if (createForm.plan_preset === "1_year") {
-        expiryDate = new Date();
-        expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-      } else if (createForm.plan_preset === "custom" && createForm.custom_expires_at) {
-        expiryDate = new Date(createForm.custom_expires_at);
-      }
+      const expiryIso = createForm.custom_expires_at
+        ? new Date(createForm.custom_expires_at).toISOString()
+        : null;
 
       const result = await onCreateLicense({
         customer_name: createForm.customer_name.trim(),
         customer_contact: createForm.customer_contact.trim(),
         hwid: cleanHwid,
-        expires_at: expiryDate ? expiryDate.toISOString() : null,
+        expires_at: expiryIso,
         max_jobs_per_day: parseInt(createForm.max_jobs_per_day, 10) || 100,
         premium_ai: createForm.premium_ai,
         logo_url: createForm.logo_url.trim() || undefined,
@@ -201,7 +196,7 @@ export function LicensesView({
         customer_contact: "",
         hwid: "",
         plan_preset: "1_month",
-        custom_expires_at: "",
+        custom_expires_at: defaultCreateExpiry(),
         amount: "500000",
         payment_method: "bank_transfer",
         max_jobs_per_day: "100",
@@ -223,7 +218,7 @@ export function LicensesView({
       premium_ai: license.premium_ai,
       logo_url: license.logo_url || "",
       notes: license.notes || "",
-      expires_at: license.expires_at ? license.expires_at.slice(0, 16) : "",
+      expires_at: license.expires_at || "",
     });
   }
 
@@ -248,10 +243,16 @@ export function LicensesView({
   }
 
   function handleOpenRenew(license: License) {
+    const currentExpiry = license.expires_at ? new Date(license.expires_at) : new Date();
+    const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+    baseDate.setDate(baseDate.getDate() + 30);
+    baseDate.setHours(23, 59, 59, 999);
+
     setRenewingLicense(license);
     setRenewForm({
-      months_to_add: "1",
+      expires_at: baseDate.toISOString(),
       amount: "500000",
+      plan_type: "1_month",
       payment_method: "bank_transfer",
       reason: "Gia hạn hợp đồng định kỳ",
     });
@@ -261,22 +262,19 @@ export function LicensesView({
     e.preventDefault();
     if (!renewingLicense) return;
     try {
-      const currentExpiry = renewingLicense.expires_at
-        ? new Date(renewingLicense.expires_at)
-        : new Date();
-      const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
-      const months = parseInt(renewForm.months_to_add, 10) || 1;
-      baseDate.setMonth(baseDate.getMonth() + months);
+      if (!renewForm.expires_at) {
+        throw new Error("Vui lòng chọn ngày hết hạn mới để gia hạn.");
+      }
 
       await onRenewLicense(renewingLicense.id, {
-        expires_at: baseDate.toISOString(),
+        expires_at: new Date(renewForm.expires_at).toISOString(),
         reason: renewForm.reason.trim(),
         amount: parseFloat(renewForm.amount) || 0,
-        plan_type: `${months}_months`,
+        plan_type: renewForm.plan_type,
         payment_method: renewForm.payment_method,
       });
 
-      setMessage(`Đã gia hạn thành công key ${renewingLicense.key_hint} thêm ${months} tháng`);
+      setMessage(`Đã gia hạn thành công key ${renewingLicense.key_hint}`);
       setRenewingLicense(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lỗi gia hạn license");
@@ -507,6 +505,11 @@ export function LicensesView({
           onPageChange={setCurrentPage}
           totalItems={filteredLicenses.length}
           pageSize={pageSize}
+          pageSizeOptions={[5, 8, 10, 20, 50, 100]}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setCurrentPage(1);
+          }}
         />
       </div>
 
@@ -569,37 +572,21 @@ export function LicensesView({
             />
 
             <div className="grid grid-cols-2 gap-4">
-              <Select
-                label="Gói Thời Hạn"
-                value={createForm.plan_preset}
-                onChange={(e) => setCreateForm({ ...createForm, plan_preset: e.target.value })}
-              >
-                <option value="1_month">1 Tháng (30 ngày)</option>
-                <option value="3_months">3 Tháng (90 ngày)</option>
-                <option value="6_months">6 Tháng (180 ngày)</option>
-                <option value="1_year">1 Năm (365 ngày)</option>
-                <option value="lifetime">Vĩnh Viễn (Không hết hạn)</option>
-                <option value="custom">Tự chọn ngày cụ thể</option>
-              </Select>
+              <DatePicker
+                label="Thời Hạn Bản Quyền"
+                value={createForm.custom_expires_at || null}
+                onChange={(iso) => setCreateForm({ ...createForm, custom_expires_at: iso || "" })}
+                allowLifetime
+              />
 
-              {createForm.plan_preset === "custom" ? (
-                <Input
-                  label="Ngày Hết Hạn"
-                  type="datetime-local"
-                  required
-                  value={createForm.custom_expires_at}
-                  onChange={(e) => setCreateForm({ ...createForm, custom_expires_at: e.target.value })}
-                />
-              ) : (
-                <Input
-                  label="Số Tiền Thu (VNĐ)"
-                  type="number"
-                  value={createForm.amount}
-                  onChange={(e) => setCreateForm({ ...createForm, amount: e.target.value })}
-                  placeholder="500000"
-                  helper="Tự động ghi nhận vào Dòng Tiền Gia Hạn"
-                />
-              )}
+              <Input
+                label="Số Tiền Thu (VNĐ)"
+                type="number"
+                value={createForm.amount}
+                onChange={(e) => setCreateForm({ ...createForm, amount: e.target.value })}
+                placeholder="500000"
+                helper="Tự động ghi nhận vào Dòng Tiền Gia Hạn"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -679,12 +666,11 @@ export function LicensesView({
               value={editForm.max_jobs_per_day}
               onChange={(e) => setEditForm({ ...editForm, max_jobs_per_day: e.target.value })}
             />
-            <Input
+            <DatePicker
               label="Ngày Hết Hạn"
-              type="datetime-local"
-              value={editForm.expires_at}
-              onChange={(e) => setEditForm({ ...editForm, expires_at: e.target.value })}
-              helper="Để trống nếu vĩnh viễn"
+              value={editForm.expires_at || null}
+              onChange={(iso) => setEditForm({ ...editForm, expires_at: iso || "" })}
+              allowLifetime
             />
           </div>
 
@@ -721,24 +707,33 @@ export function LicensesView({
         maxWidth="540px"
       >
         <form onSubmit={handleRenewSubmit} className="space-y-4">
-          <Select
-            label="Thời Gian Gia Hạn Thêm"
-            value={renewForm.months_to_add}
-            onChange={(e) => setRenewForm({ ...renewForm, months_to_add: e.target.value })}
-          >
-            <option value="1">+ 1 Tháng (30 ngày)</option>
-            <option value="3">+ 3 Tháng (90 ngày)</option>
-            <option value="6">+ 6 Tháng (180 ngày)</option>
-            <option value="12">+ 1 Năm (365 ngày)</option>
-          </Select>
-
-          <Input
-            label="Số Tiền Thu Gia Hạn (VNĐ)"
-            type="number"
-            value={renewForm.amount}
-            onChange={(e) => setRenewForm({ ...renewForm, amount: e.target.value })}
-            helper="Khoản tiền này sẽ được tự động cộng vào Báo cáo Dòng Tiền"
+          <DatePicker
+            label="Hạn Sử Dụng Mới Sau Khi Gia Hạn"
+            value={renewForm.expires_at || null}
+            onChange={(iso) => setRenewForm({ ...renewForm, expires_at: iso || "" })}
+            allowLifetime={false}
           />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Số Tiền Thu Gia Hạn (VNĐ)"
+              type="number"
+              value={renewForm.amount}
+              onChange={(e) => setRenewForm({ ...renewForm, amount: e.target.value })}
+              helper="Tự động cộng vào Báo cáo Dòng Tiền"
+            />
+
+            <Select
+              label="Gói Gia Hạn"
+              value={renewForm.plan_type}
+              onChange={(e) => setRenewForm({ ...renewForm, plan_type: e.target.value })}
+            >
+              <option value="1_month">1 Tháng (30 ngày)</option>
+              <option value="3_months">3 Tháng (90 ngày)</option>
+              <option value="6_months">6 Tháng (180 ngày)</option>
+              <option value="1_year">1 Năm (365 ngày)</option>
+            </Select>
+          </div>
 
           <Select
             label="Phương Thức Thanh Toán"
