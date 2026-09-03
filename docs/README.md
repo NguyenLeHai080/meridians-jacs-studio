@@ -29,6 +29,14 @@ Luồng nghiệp vụ Desktop mới xem tại
 macOS/Windows tại [desktop-runtime-design.md](architecture/desktop-runtime-design.md)
 và Product Backlog Scrum tại [product-backlog.md](planning/product-backlog.md).
 
+Đặc tả luồng biến video dài thành video ngắn có kể chuyện, voice, chọn cảnh từ
+video gốc, phụ đề và logo xem tại
+[video-story-production-workflow.md](requirements/video-story-production-workflow.md).
+
+Ma trận đối chiếu proposal với mã nguồn, các khoảng cách còn lại và tiêu chí
+nghiệm thu production xem tại
+[ai-video-pipeline-gap-analysis.md](requirements/ai-video-pipeline-gap-analysis.md).
+
 Mô hình hệ thống và quy mô xem tại [c4-model.md](architecture/c4-model.md),
 [deployment-model.md](architecture/deployment-model.md) và [scale](scale/).
 

@@ -16,11 +16,23 @@ const child = spawn(electronBinary, [projectRoot, ...process.argv.slice(2)], {
   windowsHide: false,
 });
 
+let stopping = false;
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.once(signal, () => {
+    stopping = true;
+    child.kill(signal);
+  });
+}
+
 child.once("error", (error) => {
   console.error(`Không thể khởi động JACS Studio: ${error.message}`);
   process.exitCode = 1;
 });
 child.once("exit", (code, signal) => {
+  if (stopping) {
+    process.exitCode = 0;
+    return;
+  }
   if (signal) {
     process.kill(process.pid, signal);
     return;

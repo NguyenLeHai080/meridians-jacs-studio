@@ -38,6 +38,10 @@ quản trị; mật khẩu luôn phải nhập thủ công và không được l
 pnpm dev:electron
 ```
 
+Trong chế độ phát triển, thay đổi trong `Tool/desktop-app/src` được Vite cập
+nhật ngay; thay đổi trong `Tool/desktop-app/electron` sẽ tự khởi động lại shell
+Electron.
+
 Desktop có shell điều hướng theo module, activation UI, Device ID dẫn xuất,
 secure storage qua Electron, file picker, hàng đợi job bền vững, phân tích frame
 qua provider BYOK và render FFmpeg có tiến trình. `pnpm dev:desktop` chỉ dùng để
