@@ -22,10 +22,24 @@ class LicenseBase(BaseModel):
     expires_at: datetime | None = None
     max_jobs_per_day: int = Field(default=100, ge=1, le=100000)
     premium_ai: bool = False
+    logo_url: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=1000)
 
 
 class CreateLicenseRequest(LicenseBase):
-    pass
+    amount: float = Field(default=0.0, ge=0)
+    plan_type: str | None = Field(default=None, max_length=64)
+    payment_method: str | None = Field(default=None, max_length=64)
+
+
+class LicenseUpdateRequest(BaseModel):
+    customer_name: str | None = Field(default=None, min_length=1, max_length=160)
+    customer_contact: str | None = Field(default=None, min_length=1, max_length=160)
+    max_jobs_per_day: int | None = Field(default=None, ge=1, le=100000)
+    premium_ai: bool | None = None
+    logo_url: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=1000)
+    expires_at: datetime | None = None
 
 
 class LicenseResponse(LicenseBase):
@@ -36,6 +50,7 @@ class LicenseResponse(LicenseBase):
     last_seen_at: datetime | None = None
     last_app_version: str | None = None
     last_platform: str | None = None
+    last_ip: str | None = None
 
 
 class LicenseCreatedResponse(LicenseResponse):
@@ -61,6 +76,9 @@ class LicenseStatusUpdate(BaseModel):
 class LicenseRenewRequest(BaseModel):
     expires_at: datetime
     reason: str = Field(min_length=3, max_length=500)
+    amount: float = Field(default=0.0, ge=0)
+    plan_type: str | None = Field(default=None, max_length=64)
+    payment_method: str | None = Field(default=None, max_length=64)
 
 
 class HwidResetRequest(BaseModel):

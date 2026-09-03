@@ -19,8 +19,21 @@ class DesktopJobUpdate(BaseModel):
     stage: str | None = Field(default=None, max_length=40)
     error: str | None = Field(default=None, max_length=1000)
     output_path: str | None = Field(default=None, max_length=1000)
+    parent_job_id: str | None = Field(default=None, min_length=1, max_length=128)
+    scene_id: str | None = Field(default=None, min_length=1, max_length=128)
+    split_scenes: bool | None = None
+    analysis_only: bool | None = None
+    clip_start_seconds: float | None = Field(default=None, ge=0)
+    clip_end_seconds: float | None = Field(default=None, ge=0)
+    output_file_name: str | None = Field(default=None, max_length=180)
+    timeline_clips: list[dict] | None = Field(default=None, max_length=500)
     tokens_used: int | None = Field(default=None, ge=0)
     credits_used: int | None = Field(default=None, ge=0)
+    subtitles_enabled: bool | None = None
+    subtitle_style: str | None = Field(default=None, pattern=r"^(bottom|center|top)$")
+    subtitle_text: str | None = Field(default=None, max_length=12000)
+    logo_position: str | None = Field(default=None, pattern=r"^(top-left|top-right|bottom-left|bottom-right)$")
+    logo_opacity: float | None = Field(default=None, ge=0.1, le=1)
 
 
 def _license_from_headers(
@@ -101,6 +114,24 @@ async def update_desktop_job(
     values = payload.model_dump(exclude_none=True)
     updated = store.update("jobs", job["id"], values)
     return updated or job
+
+
+@router.delete("/jobs/{client_job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_desktop_job(
+    client_job_id: str,
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+) -> None:
+    """Remove one desktop job owned by the activated license.
+
+    The desktop queue is local-first, but deleting the remote snapshot as well
+    prevents a removed job from reappearing during the next synchronization.
+    """
+    license_record = _license_from_headers(license_key, device_id)
+    job = next((item for item in store.list("jobs") if item.get("license_id") == license_record["id"] and item.get("client_job_id") == client_job_id), None)
+    if not job:
+        raise AppError("CLIENT_JOB_NOT_FOUND", "Không tìm thấy job của thiết bị", 404)
+    store.delete("jobs", job["id"])
 
 
 @router.get("/metrics")

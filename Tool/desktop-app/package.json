@@ -1,40 +1,87 @@
 {
   "name": "@jacs/desktop-app",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.3.17",
   "description": "JACS Studio desktop video analysis and rendering tool",
   "author": "NexoraTech",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "dev:electron": "pnpm build && node electron/launch.cjs",
+    "dev:electron": "node scripts/dev-electron.cjs",
+    "dev:electron:build": "pnpm build && node electron/launch.cjs",
     "build": "tsc -b && vite build",
     "test": "pnpm test:native",
     "test:native": "node --test tests/*.test.cjs",
     "prepare:media": "node scripts/prepare-media-binaries.cjs",
-    "dist": "pnpm prepare:media && pnpm build && electron-builder",
-    "dist:mac": "pnpm prepare:media && pnpm build && electron-builder --mac dmg zip",
-    "dist:mac:universal": "pnpm prepare:media && pnpm build && node scripts/build-mac-universal.cjs",
-    "dist:win": "pnpm prepare:media && pnpm build && electron-builder --win nsis --x64"
+    "prepare:voice": "node scripts/build-voice-worker.cjs",
+    "dist": "pnpm prepare:media && pnpm prepare:voice && pnpm build && electron-builder",
+    "dist:mac": "pnpm prepare:media && pnpm prepare:voice && pnpm build && electron-builder --mac dmg zip",
+    "dist:mac:universal": "pnpm prepare:media && pnpm prepare:voice && pnpm build && node scripts/build-mac-universal.cjs",
+    "dist:win": "pnpm prepare:media && pnpm prepare:voice && pnpm build && electron-builder --win nsis --x64"
   },
-  "dependencies": { "react": "^18.3.1", "react-dom": "^18.3.1" },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-bootstrap-icons": "^1.11.6",
+    "react-dom": "^18.3.1"
+  },
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.5.4",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "postcss": "^8.5.26",
+    "tailwindcss": "3.4.17",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   },
   "build": {
     "appId": "vn.nexoratech.jacs.studio",
     "productName": "JACS Studio",
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
-    "extraResources": [{ "from": "bin", "to": "bin", "filter": ["**/*"] }],
-    "mac": { "target": ["dmg", "zip"], "category": "public.app-category.video" },
-    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "voice-runtime",
+        "to": "voice-runtime",
+        "filter": [
+          "voice_worker.py",
+          "jacs-voice-worker",
+          "jacs-voice-worker.exe"
+        ]
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.video"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }
