@@ -1,7 +1,7 @@
 {
   "name": "@jacs/desktop-app",
   "private": true,
-  "version": "0.3.17",
+  "version": "0.3.18",
   "description": "JACS Studio desktop video analysis and rendering tool",
   "author": "NexoraTech",
   "type": "module",
