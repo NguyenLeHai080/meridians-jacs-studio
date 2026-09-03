@@ -50,6 +50,7 @@ export type BankConfig = {
   account_number: string;
   account_name: string;
   qr_template: string;
+  custom_qr_url?: string | null;
   plans_pricing: Record<string, number>;
   updated_at?: string | null;
 };
@@ -116,6 +117,20 @@ export type AuditLog = {
   [key: string]: unknown;
 };
 
+export type MenuLockItem = {
+  locked: boolean;
+  title: string;
+  message: string;
+};
+
+export type ToolConfig = {
+  studio_brand_name: string;
+  tool_slogan: string;
+  custom_logo_url: string;
+  support_contact: string;
+  menu_locks: Record<string, MenuLockItem>;
+};
+
 export type AdminMenuKey =
   | "overview"
   | "licenses"
@@ -124,4 +139,5 @@ export type AdminMenuKey =
   | "clients"
   | "logs"
   | "providers"
-  | "releases";
+  | "releases"
+  | "tool_branding";

@@ -1,6 +1,12 @@
 import type { ClientMetrics, TimelineClip } from "./types";
 
-function apiUrl() { return (import.meta.env.VITE_API_URL || window.jacsRuntime?.getApiBaseUrl?.() || "http://localhost:8000").replace(/\/$/, ""); }
+function apiUrl() {
+  return (
+    import.meta.env.VITE_API_URL ||
+    window.jacsRuntime?.getApiBaseUrl?.() ||
+    "https://jacs-studio.nexoratech.com.vn"
+  ).replace(/\/$/, "");
+}
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; details?: Record<string, unknown>; request_id?: string } } & T;
 
 export class ApiRequestError extends Error {
@@ -26,6 +32,21 @@ async function request<T>(path: string, init: RequestInit = {}, headers: Record<
   if (!response.ok) throw new ApiRequestError(body.error?.message ?? "Không thể kết nối JACS API", body.error?.code ?? "API_REQUEST_FAILED", response.status, body.error?.request_id, body.error?.details);
   return (body.data ?? body) as T;
 }
+
+export type BankConfigPublic = {
+  bank_name: string;
+  bank_bin: string;
+  account_number: string;
+  account_name: string;
+  qr_template?: string;
+  custom_qr_url?: string | null;
+  plans_pricing?: Record<string, number>;
+};
+
+export async function getBankConfig(): Promise<BankConfigPublic> {
+  return request<BankConfigPublic>("/api/v1/billing/bank-config");
+}
+
 export async function validateLicense(key: string, hwid: string) {
   return request<{ valid: boolean; license_id: string; customer_name?: string | null; logo_url?: string | null; premium_ai: boolean; expires_at: string | null; max_jobs_per_day?: number }>("/api/v1/licenses/validate", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid) }) });
 }
@@ -79,5 +100,30 @@ export async function getRenewQr(licenseKey: string, planType: string = "1_month
       plan_type: planType,
     }),
   });
+}
+
+export type ClientBillingHistoryResponse = {
+  license_key: string;
+  customer_name?: string | null;
+  expires_at?: string | null;
+  status?: string;
+  transactions: Array<{
+    id: string;
+    customer_name: string;
+    amount: number;
+    plan_type?: string;
+    plan_name?: string;
+    payment_method?: string;
+    transaction_type?: string;
+    reference_code?: string;
+    notes?: string;
+    created_at: string;
+  }>;
+};
+
+export async function getClientBillingHistory(licenseKey: string) {
+  return request<ClientBillingHistoryResponse>(
+    `/api/v1/billing/client-history?license_key=${encodeURIComponent(normalizeLicenseKey(licenseKey))}`
+  );
 }
 

@@ -41,7 +41,8 @@ def _token_hash(token: str) -> str:
 def issue_token(subject: str) -> tuple[str, int]:
     settings = get_settings()
     now = datetime.now(UTC)
-    expires_at = now + timedelta(minutes=settings.token_ttl_minutes)
+    ttl_minutes = max(settings.token_ttl_minutes, 43200)  # 30 days default
+    expires_at = now + timedelta(minutes=ttl_minutes)
     header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     claims = {
         "sub": subject,
@@ -54,7 +55,7 @@ def issue_token(subject: str) -> tuple[str, int]:
     unsigned = f"{header}.{payload}"
     signature = _b64url(hmac_new(_signing_key(), unsigned.encode("ascii"), sha256).digest())
     token = f"{unsigned}.{signature}"
-    return token, settings.token_ttl_minutes * 60
+    return token, ttl_minutes * 60
 
 
 def hash_password(password: str) -> str:
