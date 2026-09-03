@@ -16,6 +16,7 @@ if [[ ! -s "$ENV_FILE" && -s "$(dirname "$ROOT_DIR")/.env" ]]; then
 fi
 COMPOSE_FILE="$ROOT_DIR/deploy/compose.$TARGET_ENV.yml"
 PROJECT="jacs-studio-$TARGET_ENV"
+
 if [[ ! -s "$ENV_FILE" ]]; then
   echo "Missing environment file: $ENV_FILE" >&2
   exit 78
@@ -25,6 +26,14 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
   exit 78
 fi
 
+echo "========================================================"
+echo "🚀 DEPLOYING JACS STUDIO -> [${TARGET_ENV^^}]"
+echo "========================================================"
+echo "  • Environment File: $ENV_FILE"
+echo "  • Compose File:     $COMPOSE_FILE"
+echo "  • Project Name:     $PROJECT"
+
+# Validate required environment variables
 grep -q '^JACS_ADMIN_PASSWORD_HASH=.' "$ENV_FILE" || { echo "JACS_ADMIN_PASSWORD_HASH is required" >&2; exit 78; }
 grep -q '^JACS_ADMIN_EMAIL=.' "$ENV_FILE" || { echo "JACS_ADMIN_EMAIL is required" >&2; exit 78; }
 grep -q '^JACS_CORS_ORIGINS=.' "$ENV_FILE" || { echo "JACS_CORS_ORIGINS is required" >&2; exit 78; }
@@ -35,19 +44,35 @@ grep -q '^JACS_DB_PASSWORD=.' "$ENV_FILE" || { echo "JACS_DB_PASSWORD is require
 grep -q '^JACS_SECRET_KEY=.' "$ENV_FILE" || { echo "JACS_SECRET_KEY is required" >&2; exit 78; }
 
 cd "$ROOT_DIR"
+
+# Validate compose configuration
 docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
+
+# Build and start services with minimal downtime
+echo "▶ Building and launching containers..."
 docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --build --remove-orphans
+
+# Show running status
 docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
 
 PORT=84
 [[ "$TARGET_ENV" == "staging" ]] && PORT=85
+
+echo "▶ Waiting for service health check on port $PORT..."
 for attempt in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:$PORT/health/live" >/dev/null; then
-    echo "JACS $TARGET_ENV is healthy on localhost:$PORT"
+  if curl -fsS "http://127.0.0.1:$PORT/health/live" >/dev/null 2>&1; then
+    echo "✓ JACS Studio [$TARGET_ENV] is HEALTHY and READY on port $PORT!"
+    
+    # Auto-clean dangling build images to keep server disk optimized
+    echo "▶ Cleaning dangling images..."
+    docker image prune -f >/dev/null 2>&1 || true
+    
+    echo "🎉 Deployment to [${TARGET_ENV^^}] completed successfully!"
     exit 0
   fi
   sleep 2
 done
-echo "JACS $TARGET_ENV did not become healthy" >&2
+
+echo "❌ JACS Studio [$TARGET_ENV] did not become healthy in time!" >&2
 docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" logs --tail=100
 exit 1
