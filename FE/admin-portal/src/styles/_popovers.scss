@@ -1,0 +1,112 @@
+@use 'variables' as *;
+
+.topbar-popover-card {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 12px);
+  background: #1a1d2e;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
+  z-index: 150;
+  overflow: hidden;
+  animation: scaleIn 0.15s ease-out;
+}
+
+.user-popover-width {
+  width: 280px;
+}
+
+.notif-popover-width {
+  width: 360px;
+}
+
+.popover-user-header {
+  padding: 1.1rem 1.25rem;
+  background: #151827;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.popover-menu-list {
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.popover-menu-action {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1.25rem;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+  }
+
+  &.danger:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+  }
+}
+
+.popover-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0.4rem 0;
+}
+
+// Notifications popover list
+.notif-header-row {
+  padding: 0.85rem 1.15rem;
+  background: #151827;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  strong {
+    font-size: 0.85rem;
+    color: #ffffff;
+  }
+}
+
+.notif-item {
+  padding: 0.75rem 1.15rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.12s ease;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+}
+
+.notif-footer-link {
+  padding: 0.75rem 1.15rem;
+  text-align: center;
+  background: #151827;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: $primary;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: block;
+  text-decoration: none;
+
+  &:hover {
+    background: #121524;
+  }
+}

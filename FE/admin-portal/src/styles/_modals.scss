@@ -1,0 +1,108 @@
+@use 'variables' as *;
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal-dialog-box {
+  background: #ffffff;
+  border-radius: $radius-xl;
+  width: 100%;
+  max-width: 520px;
+  box-shadow: $shadow-modal;
+  overflow: hidden;
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header-mf {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid $border-light;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: $text-dark;
+    letter-spacing: -0.3px;
+  }
+}
+
+.btn-close-modal {
+  background: none;
+  border: none;
+  color: $text-dim;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: $text-dark;
+    background: #f1f5f9;
+  }
+}
+
+.modal-body-mf {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.modal-footer-mf {
+  padding: 1rem 1.5rem;
+  background: #f8fafc;
+  border-top: 1px solid $border-light;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  border-radius: 0 0 $radius-xl $radius-xl;
+}
+
+// Form Controls
+.form-group-mf {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-label-mf {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: $text-dark;
+}
+
+.form-input-mf {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid $border-light;
+  border-radius: 8px;
+  background-color: $bg-input;
+  font-size: 0.88rem;
+  color: $text-dark;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.15s ease;
+
+  &:focus {
+    background-color: #ffffff;
+    border-color: $primary;
+    box-shadow: 0 0 0 3px rgba(249, 87, 56, 0.12);
+  }
+}

@@ -116,12 +116,12 @@ async def update_desktop_job(
     return updated or job
 
 
-@router.delete("/jobs/{client_job_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/jobs/{client_job_id}")
 async def delete_desktop_job(
     client_job_id: str,
     license_key: str | None = Header(default=None, alias="X-License-Key"),
     device_id: str | None = Header(default=None, alias="X-Device-Id"),
-) -> None:
+):
     """Remove one desktop job owned by the activated license.
 
     The desktop queue is local-first, but deleting the remote snapshot as well
@@ -132,6 +132,7 @@ async def delete_desktop_job(
     if not job:
         raise AppError("CLIENT_JOB_NOT_FOUND", "Không tìm thấy job của thiết bị", 404)
     store.delete("jobs", job["id"])
+    return {"data": {"success": True, "message": "Đã xóa job thành công"}}
 
 
 @router.get("/metrics")

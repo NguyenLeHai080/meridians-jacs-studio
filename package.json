@@ -8,6 +8,7 @@
     "dev:desktop": "pnpm --dir Tool/desktop-app dev",
     "dev:electron": "pnpm --dir Tool/desktop-app dev:electron",
     "build:desktop": "pnpm --dir Tool/desktop-app build",
+    "build:release": "node scripts/build-and-release.cjs",
     "test:desktop": "pnpm --dir Tool/desktop-app test:native",
     "verify:api": "make test-api && make compile-api && make export-openapi"
   }

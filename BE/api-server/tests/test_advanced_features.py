@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.core.store import store
 from app.main import app
 
@@ -15,7 +16,8 @@ def client():
 
 def test_crud_license_and_billing_integration(client: TestClient):
     # 1. Login
-    login_res = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "change-me"})
+    pwd = get_settings().admin_password
+    login_res = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": pwd})
     assert login_res.status_code == 200
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}

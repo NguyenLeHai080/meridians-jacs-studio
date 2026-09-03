@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 import secrets
 from datetime import UTC, datetime
@@ -217,6 +215,7 @@ async def renew_license(license_id: UUID, payload: LicenseRenewRequest, user: di
 
 
 @router.post("/{license_id}/reset-hwid", response_model=LicenseResponse)
+@router.put("/{license_id}/hwid", response_model=LicenseResponse)
 async def reset_hwid(license_id: UUID, payload: HwidResetRequest, user: dict = Depends(require_auth)):
     updated = store.update("licenses", UUID(str(license_id)), {"hwid": _validate_hwid(payload.hwid)})
     if not updated:

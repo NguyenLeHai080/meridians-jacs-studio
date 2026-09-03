@@ -19,8 +19,7 @@ Tool/desktop-app/bin/darwin-x64/ffmpeg
 Tool/desktop-app/bin/darwin-x64/ffprobe
 Tool/desktop-app/bin/win32-x64/ffmpeg.exe
 Tool/desktop-app/bin/win32-x64/ffprobe.exe
-Tool/desktop-app/voice-runtime/jacs-voice-worker
-Tool/desktop-app/voice-runtime/jacs-voice-worker.exe
+Tool/desktop-app/voice-runtime/
 .pnpm-store/
 .vite/
 *.tsbuildinfo

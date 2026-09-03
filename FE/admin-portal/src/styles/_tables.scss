@@ -1,0 +1,87 @@
+@use 'variables' as *;
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mf-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.82rem;
+
+  th {
+    padding: 0.85rem 1rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: $text-muted;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1.5px solid $border-light;
+    background-color: #f8fafc;
+    white-space: nowrap;
+
+    &:first-child {
+      border-top-left-radius: 8px;
+    }
+    &:last-child {
+      border-top-right-radius: 8px;
+    }
+  }
+
+  td {
+    padding: 1rem;
+    border-bottom: 1px solid $border-light;
+    color: $text-body;
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background-color: rgba(248, 250, 252, 0.6);
+  }
+}
+
+.code-chip {
+  background-color: #f1f5f9;
+  border: 1px solid $border-light;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-family: $font-mono;
+  font-size: 0.75rem;
+  color: $text-dark;
+  font-weight: 600;
+}
+
+.pill-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: $radius-full;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+
+  &.pill-active,
+  &.pill-online {
+    background-color: $success-light;
+    color: $success-text;
+  }
+
+  &.pill-warning {
+    background-color: $warning-light;
+    color: $warning-text;
+  }
+
+  &.pill-danger,
+  &.pill-offline {
+    background-color: $danger-light;
+    color: $danger-text;
+  }
+}
