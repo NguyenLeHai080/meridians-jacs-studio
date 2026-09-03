@@ -23,7 +23,7 @@ function loadTypeScriptModule(relativePath) {
   return module.exports;
 }
 
-const { highlightRange, normalizePastedUrl, resolveReadyProvider, sourceNameFromUrl, timestampSeconds } = loadTypeScriptModule("src/core/job-utils.ts");
+const { approveSceneMatches, hasUnreviewedSceneMatches, highlightRange, normalizePastedUrl, replaceSceneMatch, resolveReadyProvider, shouldResumeJob, sourceNameFromUrl, timestampSeconds } = loadTypeScriptModule("src/core/job-utils.ts");
 
 test("normalizes copied TikTok Markdown links and names their video id", () => {
   const url = normalizePastedUrl("[TikTok](https://www.tiktok.com/@demo/video/7677523402785164557?\\_r=1). ");
@@ -63,4 +63,37 @@ test("recovers a retry from a stale provider id", () => {
   ];
   assert.equal(resolveReadyProvider(providers, "stale", "analysis")?.id, "ready");
   assert.equal(resolveReadyProvider(providers, undefined, "tts", ["openai", "openai-compatible"]), undefined);
+});
+
+test("accepts a minimal OpenAI-compatible profile for analysis and TTS", () => {
+  const provider = { id: "gateway", providerType: "openai-compatible", enabled: true, hasApiKey: true, capabilities: [] };
+  assert.equal(resolveReadyProvider([provider], undefined, "analysis")?.id, "gateway");
+  assert.equal(resolveReadyProvider([provider], undefined, "tts", ["openai", "openai-compatible"])?.id, "gateway");
+});
+
+test("resumes interrupted jobs but not review gates or split parents", () => {
+  assert.equal(shouldResumeJob({ status: "running", stage: "rendering", localPath: "/tmp/video.mp4" }), true);
+  assert.equal(shouldResumeJob({ status: "running", stage: "script_review", localPath: "/tmp/video.mp4" }), false);
+  assert.equal(shouldResumeJob({ status: "running", stage: "timeline_review", localPath: "/tmp/video.mp4", childJobIds: ["child-1"] }), false);
+  assert.equal(shouldResumeJob({ status: "queued", stage: "queued", sourceType: "url" }), true);
+  assert.equal(shouldResumeJob({ status: "completed", stage: "completed", localPath: "/tmp/video.mp4" }), false);
+});
+
+test("requires timeline review when a scene match is uncertain", () => {
+  assert.equal(hasUnreviewedSceneMatches([{ needsReview: false }]), false);
+  assert.equal(hasUnreviewedSceneMatches([{ needsReview: true }]), true);
+  assert.equal(hasUnreviewedSceneMatches(undefined), false);
+});
+
+test("approves and replaces scene matches immutably", () => {
+  const matches = [{ sceneId: "a", sourceStart: 0, sourceEnd: 2, needsReview: true }, { sceneId: "b", sourceStart: 2, sourceEnd: 4, needsReview: false }];
+  const approved = approveSceneMatches(matches);
+  assert.deepEqual(approved.map((item) => item.needsReview), [false, false]);
+  assert.equal(matches[0].needsReview, true);
+  const replaced = replaceSceneMatch(matches, 0, { sceneId: "c", sourceStart: 8, sourceEnd: 10 });
+  assert.equal(replaced[0].sceneId, "c");
+  assert.equal(replaced[0].sourceStart, 8);
+  assert.equal(replaced[0].sourceEnd, 10);
+  assert.equal(replaced[0].needsReview, false);
+  assert.equal(replaceSceneMatch(matches, 99, { sceneId: "x", sourceStart: 0, sourceEnd: 1 }), matches);
 });

@@ -99,13 +99,13 @@ Installer khách hàng được đặt ngoài source tại `/opt/jacs-studio/dow
 và được mount read-only vào web container. URL production chuẩn:
 
 ```text
-https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-windows-x64.exe
-https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-arm64.dmg
-https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-x64.dmg
-https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-0.3.4-macos-universal.zip
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-<version>-windows-x64.exe
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-<version>-macos-arm64.dmg
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-<version>-macos-x64.dmg
+https://jacs-studio.nexoratech.com.vn/downloads/jacs-studio-<version>-macos-universal.zip
 ```
 
-Release manifest `v0.3.4` dùng asset ZIP Universal macOS (cùng build với DMG)
+Release manifest phải trỏ tới asset ZIP Universal macOS (cùng build với DMG)
 ở URL trên để nút **Cập nhật**
 có thể tự thay ứng dụng sau khi checksum hợp lệ. DMG dành cho cài đặt mới hoặc
 trường hợp người dùng cần thao tác kéo app vào Applications; Windows dùng NSIS

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 function providerPublic(record) {
+  const capabilities = effectiveCapabilities(record);
   return {
     id: record.id,
     name: record.name,
@@ -10,11 +11,20 @@ function providerPublic(record) {
     baseUrl: record.baseUrl,
     model: record.model,
     transcriptionModel: record.transcriptionModel,
-    capabilities: record.capabilities,
+    ttsModel: record.ttsModel,
+    capabilities,
     enabled: record.enabled,
     hasApiKey: Boolean(record.apiKey),
     maskedKey: record.apiKey ? `********${record.apiKey.slice(-4)}` : "********",
   };
+}
+
+function effectiveCapabilities(record) {
+  const capabilities = Array.isArray(record?.capabilities) ? record.capabilities : [];
+  // A compatible API does not imply its model supports every endpoint. In
+  // particular, Groq Whisper accepts /audio/transcriptions but cannot serve
+  // chat completions or /audio/speech, so honor only explicit capabilities.
+  return [...new Set(capabilities)];
 }
 
 function validateProviderDraft(value) {
@@ -38,6 +48,7 @@ function validateProviderDraft(value) {
     providerType,
     baseUrl,
     model,
+    ttsModel: typeof value.ttsModel === "string" ? value.ttsModel.trim().slice(0, 160) : "",
     transcriptionModel: typeof value.transcriptionModel === "string" ? value.transcriptionModel.trim().slice(0, 160) : "",
     capabilities,
     enabled: value.enabled !== false,
@@ -75,7 +86,10 @@ function createProviderStore({ filePath, safeStorage, fsImpl = fs, cryptoImpl = 
   return {
     isAvailable: encryptionAvailable,
     list() { return readRecords().map(providerPublic); },
-    find(id) { return readRecords().find((item) => item.id === String(id)); },
+    find(id) {
+      const record = readRecords().find((item) => item.id === String(id));
+      return record ? { ...record, capabilities: effectiveCapabilities(record) } : undefined;
+    },
     save(value) {
       const draft = validateProviderDraft(value);
       const records = readRecords();
