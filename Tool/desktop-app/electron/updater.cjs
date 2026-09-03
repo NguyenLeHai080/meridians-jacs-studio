@@ -45,6 +45,7 @@ function validateRelease(release, platform, currentVersion) {
 function releaseKind(filePath, platform) {
   const extension = path.extname(String(filePath)).toLowerCase();
   if (platform === "windows" && extension === ".exe") return "windows-installer";
+  if (platform === "windows" && extension === ".zip") return "windows-zip";
   if (platform === "macos" && extension === ".zip") return "macos-zip";
   if (platform === "macos" && extension === ".dmg") return "macos-dmg";
   throw new Error(`Định dạng installer không được hỗ trợ: ${extension || "unknown"}`);
@@ -61,7 +62,7 @@ function safeFileName(url, version, platform) {
   let candidate = "";
   try { candidate = path.basename(new URL(String(url)).pathname); } catch { /* validation happens before this helper */ }
   candidate = candidate.replace(/[^A-Za-z0-9._-]/g, "-");
-  if (!candidate || candidate === "." || candidate === "..") candidate = platform === "windows" ? `JACS-Studio-${version}.exe` : `JACS-Studio-${version}.zip`;
+  if (!candidate || candidate === "." || candidate === "..") candidate = platform === "windows" ? `JACS-Studio-${version}.zip` : `JACS-Studio-${version}.zip`;
   return candidate;
 }
 
@@ -146,11 +147,40 @@ rm -rf "$backup" "$cleanup"
 
 async function installRelease({ filePath, kind, platform, appModule, execPath = process.execPath, tempDirectory }) {
   if (!fs.existsSync(filePath)) throw new Error("Không tìm thấy file cập nhật đã tải");
-  if (platform === "windows" && kind === "windows-installer") {
-    const child = childProcess.spawn(filePath, ["/S"], { detached: true, stdio: "ignore", windowsHide: true });
-    child.unref();
-    appModule.quit();
-    return { status: "installing" };
+  if (platform === "windows") {
+    if (kind === "windows-installer") {
+      const child = childProcess.spawn(filePath, ["/S"], { detached: true, stdio: "ignore", windowsHide: true });
+      child.unref();
+      appModule.quit();
+      return { status: "installing" };
+    }
+    if (kind === "windows-zip") {
+      const currentDir = path.dirname(execPath);
+      const exeName = path.basename(execPath);
+      const extractDirectory = await fsp.mkdtemp(path.join(tempDirectory || os.tmpdir(), "jacs-update-win-"));
+      const scriptPath = path.join(extractDirectory, "install-update.bat");
+      const escapedZip = filePath.replace(/'/g, "''");
+      const escapedDir = currentDir.replace(/'/g, "''");
+      const batContent = `@echo off
+:wait
+timeout /t 1 /nobreak >nul
+tasklist /fi "PID eq ${Number(process.pid)}" | find "${Number(process.pid)}" >nul
+if not errorlevel 1 goto wait
+
+tar -xf "${filePath}" -C "${currentDir}" >nul 2>&1 || (
+  powershell -NoProfile -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDir}' -Force"
+)
+
+start "" "${path.join(currentDir, exeName)}"
+rmdir /s /q "${extractDirectory}" >nul 2>&1
+exit
+`;
+      await fsp.writeFile(scriptPath, batContent, { mode: 0o700 });
+      const child = childProcess.spawn("cmd.exe", ["/c", scriptPath], { detached: true, stdio: "ignore", windowsHide: true });
+      child.unref();
+      appModule.quit();
+      return { status: "installing" };
+    }
   }
   if (platform !== "macos") throw new Error("Nền tảng cập nhật không được hỗ trợ");
   if (kind === "macos-dmg") {
