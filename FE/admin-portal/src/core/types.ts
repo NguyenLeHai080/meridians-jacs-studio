@@ -23,22 +23,25 @@ export type BillingTransaction = {
   id: string;
   license_id?: string | null;
   customer_name: string;
+  plan_name?: string;
+  plan_type?: string;
   amount: number;
-  currency: string;
-  plan_type: string;
+  currency?: string;
   payment_method: string;
-  transaction_type: string; // "income", "deposit", "refund", "renewal"
+  transaction_type: string;
+  reference_code?: string | null;
   notes?: string | null;
-  actor: string;
   created_at: string;
+  actor?: string;
+  created_by?: string;
 };
 
 export type BillingSummary = {
   total_revenue: number;
   this_month_revenue: number;
-  total_deposits: number;
-  total_refunds: number;
-  net_revenue: number;
+  total_deposits?: number;
+  total_refunds?: number;
+  net_revenue?: number;
   total_transactions: number;
   revenue_by_plan: Record<string, number>;
   revenue_by_method: Record<string, number>;
@@ -51,6 +54,7 @@ export type BankConfig = {
   account_name: string;
   qr_template: string;
   custom_qr_url?: string | null;
+  sepay_api_key?: string;
   plans_pricing: Record<string, number>;
   updated_at?: string | null;
 };
@@ -74,7 +78,7 @@ export type RenewQrInfo = {
 export type ClientSession = {
   license_id: string;
   customer_name: string;
-  customer_contact: string;
+  customer_contact?: string;
   key_hint: string;
   hwid: string;
   last_platform?: string | null;
@@ -82,18 +86,20 @@ export type ClientSession = {
   last_ip?: string | null;
   last_seen_at?: string | null;
   is_online: boolean;
-  status: string;
+  status?: string;
 };
 
 export type Provider = {
   id: string;
   name: string;
-  provider_type: string;
+  provider_type: "openai" | "gemini" | "custom" | string;
   base_url: string;
   model: string;
   tts_model?: string | null;
-  masked_key: string;
+  masked_key?: string;
+  api_key?: string;
   capabilities: string[];
+  is_enabled?: boolean;
   enabled?: boolean;
 };
 
@@ -101,9 +107,10 @@ export type TelemetryLog = {
   id: string;
   severity: "info" | "warning" | "error" | "fatal";
   event_name: string;
-  fingerprint: string;
+  fingerprint?: string;
   message: string;
   app_version: string;
+  details?: Record<string, unknown>;
   created_at?: string;
 };
 
@@ -147,14 +154,51 @@ export type Release = {
   created_at?: string;
 };
 
+export type SystemSettings = {
+  app_name: string;
+  default_days_valid: number;
+  default_max_jobs: number;
+  telemetry_enabled: boolean;
+  auto_backup: boolean;
+  notification_email: string;
+  studio_brand_name: string;
+  custom_logo_url: string;
+};
+
+export type SystemInfo = {
+  app_name: string;
+  version: string;
+  environment: string;
+  python_version: string;
+  platform: string;
+  store_backend: string;
+  telemetry_enabled: boolean;
+  total_licenses: number;
+  total_transactions: number;
+  total_providers: number;
+  total_telemetry_events: number;
+  timestamp: string;
+};
+
+export type LegalTerms = {
+  title: string;
+  disclaimer: string;
+  ai_usage: string;
+  license_rights: string;
+  dispute_resolution: string;
+  updated_at?: string;
+};
+
 export type AdminMenuKey =
   | "overview"
   | "licenses"
   | "sessions"
   | "billing"
-  | "clients"
-  | "logs"
+  | "plans"
+  | "renewals"
   | "providers"
+  | "telemetry"
   | "releases"
-  | "tool_branding";
-
+  | "terms"
+  | "tool_branding"
+  | "settings";

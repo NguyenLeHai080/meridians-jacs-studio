@@ -1,0 +1,15 @@
+export const en = {
+  providersTitle: "AI Providers Gateway 🤖",
+  providersSubtitle: "Manage OpenAI, Gemini, and Custom Endpoint integrations for desktop tool.",
+  addProviderBtn: "+ Add New Provider",
+  thName: "PROVIDER NAME",
+  thType: "PLATFORM / TYPE",
+  thModel: "AI MODEL",
+  thTtsModel: "TTS MODEL",
+  thCapabilities: "CAPABILITIES",
+  thStatus: "STATUS",
+  thActions: "ACTIONS",
+  testLatencyBtn: "⚡ Test Latency",
+  createModalTitle: "Add New AI Provider",
+  editModalTitle: "Edit AI Provider",
+};

@@ -150,7 +150,7 @@ export function OverviewView({
               <h3 className="card-title">Cảnh Báo & Lỗi Hệ Thống Gần Đây</h3>
               <p className="card-subtitle">Báo cáo tự động từ các bản Desktop Tool</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => onNavigate("logs")}>
+            <Button variant="ghost" size="sm" onClick={() => onNavigate("telemetry")}>
               Xem chi tiết
             </Button>
           </div>

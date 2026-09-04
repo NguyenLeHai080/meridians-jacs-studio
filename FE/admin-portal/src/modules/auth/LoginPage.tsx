@@ -1,35 +1,35 @@
 import React, { useState } from "react";
 import { Lock, Mail, ArrowRight, ShieldCheck, Globe, ChevronDown } from "lucide-react";
-import { apiRequest } from "../../core/api";
-import { setToken } from "../../core/session";
 import { Toast } from "../../components/common/Toast";
-import { useI18n } from "../../core/i18n";
+import { useI18n, SupportedLanguage } from "../../core/i18n";
+import { useAuth } from "./hooks/useAuth";
+import "./lang";
 
 export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) {
   const { language, setLanguage, t } = useI18n();
   const [email, setEmail] = useState((import.meta.env.VITE_ADMIN_EMAIL as string) || (import.meta.env.DEV ? "admin@example.com" : ""));
   const [password, setPassword] = useState(import.meta.env.DEV ? "change-me" : "");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
+
+  const { loading, error, setError, login } = useAuth(onAuthenticated);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const result = await apiRequest<{ access_token: string }>("/api/v1/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email: email.trim(), password }),
-      });
-      setToken(result.access_token);
-      onAuthenticated();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("loginError"));
-    } finally {
-      setLoading(false);
-    }
+    login({ email, password });
   }
+
+  const getLangLabel = (lang: SupportedLanguage) => {
+    switch (lang) {
+      case "vi":
+        return "🇻🇳 Tiếng Việt";
+      case "en":
+        return "🇬🇧 English";
+      case "jp":
+        return "🇯🇵 日本語";
+      default:
+        return "🇻🇳 Tiếng Việt";
+    }
+  };
 
   return (
     <div className="auth-fullscreen-container">
@@ -43,7 +43,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) 
             onClick={() => setShowLangMenu(!showLangMenu)}
           >
             <Globe size={14} color="#f95738" />
-            <span>{language === "vi" ? "🇻🇳 Tiếng Việt" : "🇬🇧 English"}</span>
+            <span>{getLangLabel(language)}</span>
             <ChevronDown size={14} color="#fff" />
           </button>
           {showLangMenu && (
@@ -61,6 +61,13 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) 
                 onClick={() => { setLanguage("en"); setShowLangMenu(false); }}
               >
                 🇬🇧 English
+              </button>
+              <button
+                type="button"
+                style={{ width: "100%", padding: "0.55rem 0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", background: language === "jp" ? "#262a40" : "transparent", color: "#fff", border: "none", fontSize: "0.8rem", cursor: "pointer", textAlign: "left" }}
+                onClick={() => { setLanguage("jp"); setShowLangMenu(false); }}
+              >
+                🇯🇵 日本語
               </button>
             </div>
           )}
@@ -130,7 +137,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) 
           </div>
           {import.meta.env.DEV && (
             <span className="auth-hint">
-              Local credentials: <code>admin@example.com</code> / <code>change-me</code>
+              {t("localHint")}
             </span>
           )}
         </div>
