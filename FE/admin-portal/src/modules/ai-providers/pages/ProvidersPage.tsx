@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Plus, Bot, Zap, Trash2, Power, Search } from "lucide-react";
+import { Plus, Bot, Zap, Trash2, Power } from "lucide-react";
 import type { Provider } from "../../../core/types";
 import { useProviders } from "../hooks/useProviders";
 import { ProviderModal } from "./modal/ProviderModal";
 import { providerService } from "../services/providerService";
+import { DataTable, StatusBadge, Button, Column } from "../../../components/common";
 import { useI18n } from "../../../core/i18n";
 import "../lang"; // Auto-registers providers translation
 
@@ -50,7 +51,8 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({
     else if (propSetMessage) propSetMessage(msg);
   };
 
-  const { searchTerm, setSearchTerm, filteredProviders, totalCount, enabledCount } = useProviders(activeProviders);
+  const { searchTerm, setSearchTerm, filteredProviders, totalCount, enabledCount } =
+    useProviders(activeProviders);
 
   useEffect(() => {
     if (propSearchTerm) {
@@ -99,117 +101,117 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({
     }
   };
 
+  const columns: Column<Provider>[] = [
+    {
+      key: "name",
+      header: t("thName"),
+      render: (p) => (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <Bot size={16} color="var(--primary)" />
+          <strong>{p.name}</strong>
+        </div>
+      ),
+    },
+    {
+      key: "type",
+      header: t("thType"),
+      render: (p) => <span className="code-chip">{p.provider_type.toUpperCase()}</span>,
+    },
+    {
+      key: "model",
+      header: t("thModel"),
+      render: (p) => <code>{p.model}</code>,
+    },
+    {
+      key: "ttsModel",
+      header: t("thTtsModel"),
+      render: (p) => (p.tts_model ? <code>{p.tts_model}</code> : <span style={{ color: "var(--text-dim)" }}>--</span>),
+    },
+    {
+      key: "capabilities",
+      header: t("thCapabilities"),
+      render: (p) => (
+        <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
+          {p.capabilities.map((cap: string) => (
+            <span key={cap} className="code-chip" style={{ fontSize: "0.68rem" }}>
+              {cap}
+            </span>
+          ))}
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: t("thStatus"),
+      render: (p) => (
+        <StatusBadge
+          status={p.is_enabled ? "active" : "danger"}
+          label={p.is_enabled ? t("statusActive") : t("statusLocked")}
+        />
+      ),
+    },
+    {
+      key: "actions",
+      header: t("thActions"),
+      align: "right",
+      render: (p) => (
+        <div className="table-actions-row">
+          <Button
+            variant="outline"
+            size="sm"
+            style={{ padding: "0.25rem 0.5rem", fontSize: "0.72rem" }}
+            onClick={() => void handleTestLatency(p)}
+            disabled={testingId === p.id}
+            title={t("testLatencyBtn")}
+            icon={<Zap size={12} color="var(--primary)" />}
+          >
+            {testingId === p.id ? "Testing..." : "Test"}
+          </Button>
+          <button
+            type="button"
+            className="btn-icon-action action-edit"
+            onClick={() => void handleToggleStatus(p)}
+            title={p.is_enabled ? "Tạm tắt" : "Kích hoạt"}
+          >
+            <Power size={13} color={p.is_enabled ? "#10b981" : "#94a3b8"} />
+          </button>
+          <button
+            type="button"
+            className="btn-icon-action action-delete"
+            onClick={() => void handleDelete(p)}
+            title={t("delete")}
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="mf-card-panel">
-      <div className="mf-card-header">
-        <div className="mf-card-title-group">
-          <h3>{t("providersTitle")} ({enabledCount}/{totalCount} active)</h3>
-          <p>{t("providersSubtitle")}</p>
-        </div>
-        <button
-          type="button"
-          className="btn-primary-orange"
-          onClick={() => setIsModalOpen(true)}
-        >
-          <Plus size={16} /> {t("addProviderBtn")}
-        </button>
-      </div>
-
-      <div style={{ marginBottom: "1rem" }}>
-        <div className="table-search-box" style={{ maxWidth: "360px" }}>
-          <Search size={14} color="#94a3b8" />
-          <input
-            type="text"
-            placeholder="Tìm theo tên, model AI..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="table-responsive">
-        <table className="mf-table">
-          <thead>
-            <tr>
-              <th>{t("thName")}</th>
-              <th>{t("thType")}</th>
-              <th>{t("thModel")}</th>
-              <th>{t("thTtsModel")}</th>
-              <th>{t("thCapabilities")}</th>
-              <th>{t("thStatus")}</th>
-              <th style={{ textAlign: "right" }}>{t("thActions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredProviders.map((p) => (
-              <tr key={p.id}>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <Bot size={16} color="var(--primary)" />
-                    <strong>{p.name}</strong>
-                  </div>
-                </td>
-                <td>
-                  <span className="code-chip">{p.provider_type.toUpperCase()}</span>
-                </td>
-                <td><code>{p.model}</code></td>
-                <td>{p.tts_model ? <code>{p.tts_model}</code> : <span style={{ color: "var(--text-dim)" }}>--</span>}</td>
-                <td>
-                  <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap" }}>
-                    {p.capabilities.map((cap: string) => (
-                      <span key={cap} className="code-chip" style={{ fontSize: "0.68rem" }}>
-                        {cap}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td>
-                  <span className={`pill-status ${p.is_enabled ? "pill-active" : "pill-danger"}`}>
-                    {p.is_enabled ? `● ${t("statusActive")}` : t("statusLocked")}
-                  </span>
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <div className="table-actions-row">
-                    <button
-                      type="button"
-                      className="btn-white-outline"
-                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.72rem" }}
-                      onClick={() => void handleTestLatency(p)}
-                      disabled={testingId === p.id}
-                      title={t("testLatencyBtn")}
-                    >
-                      <Zap size={12} color="var(--primary)" /> {testingId === p.id ? "Testing..." : "Test"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-icon-action action-edit"
-                      onClick={() => void handleToggleStatus(p)}
-                      title={p.is_enabled ? "Tạm tắt" : "Kích hoạt"}
-                    >
-                      <Power size={13} color={p.is_enabled ? "#10b981" : "#94a3b8"} />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-icon-action action-delete"
-                      onClick={() => void handleDelete(p)}
-                      title={t("delete")}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredProviders.length === 0 && (
-              <tr>
-                <td colSpan={7} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                  {t("noProvidersFound")}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+    <>
+      <DataTable
+        title={`${t("providersTitle")} (${enabledCount}/${totalCount} active)`}
+        subtitle={t("providersSubtitle")}
+        headerActions={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsModalOpen(true)}
+            icon={<Plus size={16} />}
+          >
+            {t("addProviderBtn")}
+          </Button>
+        }
+        search={{
+          value: searchTerm,
+          onChange: setSearchTerm,
+          placeholder: "Tìm theo tên, model AI...",
+        }}
+        columns={columns}
+        data={filteredProviders}
+        emptyTitle={t("noProvidersFound")}
+      />
 
       <ProviderModal
         isOpen={isModalOpen}
@@ -219,6 +221,6 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({
           void handleRefresh();
         }}
       />
-    </div>
+    </>
   );
 };

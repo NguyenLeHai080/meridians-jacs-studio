@@ -191,6 +191,7 @@ export type LegalTerms = {
 
 export type AdminMenuKey =
   | "overview"
+  | "clients"
   | "licenses"
   | "sessions"
   | "billing"
@@ -198,7 +199,9 @@ export type AdminMenuKey =
   | "renewals"
   | "providers"
   | "telemetry"
+  | "logs"
   | "releases"
   | "terms"
   | "tool_branding"
   | "settings";
+

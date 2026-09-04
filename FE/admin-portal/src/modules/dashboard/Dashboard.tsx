@@ -7,6 +7,7 @@ import { Navbar } from "../../components/layout/Navbar";
 
 // Feature Pages
 import { OverviewPage } from "../overview";
+import { ClientsPage } from "../clients";
 import { LicensesPage } from "../licenses";
 import { BillingPage } from "../billing";
 import { PlansPage } from "../plans";
@@ -14,6 +15,7 @@ import { RenewalsPage } from "../renewals";
 import { SessionsPage } from "../sessions";
 import { ProvidersPage } from "../ai-providers";
 import { TelemetryPage } from "../telemetry";
+import { LogsPage } from "../logs";
 import { ReleasesPage } from "../releases";
 import { ToolConfigPage } from "../tool-config";
 import { TermsPage } from "../terms";
@@ -21,6 +23,7 @@ import { SettingsPage, AccountSecurityModal } from "../settings";
 
 const VALID_MENUS: MenuKey[] = [
   "overview",
+  "clients",
   "licenses",
   "sessions",
   "billing",
@@ -28,6 +31,7 @@ const VALID_MENUS: MenuKey[] = [
   "renewals",
   "providers",
   "telemetry",
+  "logs",
   "releases",
   "terms",
   "tool_branding",
@@ -159,6 +163,14 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             />
           )}
 
+          {activeMenu === "clients" && (
+            <ClientsPage
+              searchTerm={searchTerm}
+              onNotify={showToast}
+              onNavigate={setActiveMenu}
+            />
+          )}
+
           {activeMenu === "licenses" && (
             <LicensesPage
               searchTerm={searchTerm}
@@ -205,6 +217,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           {activeMenu === "telemetry" && (
             <TelemetryPage
               searchTerm={searchTerm}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeMenu === "logs" && (
+            <LogsPage
               onNotify={showToast}
             />
           )}

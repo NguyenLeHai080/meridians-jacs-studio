@@ -1,4 +1,5 @@
 packages:
   - "FE/admin-portal"
-  - "Tool/desktop-app"
+  - "FE/desktop-app"
   - "packages/*"
+
