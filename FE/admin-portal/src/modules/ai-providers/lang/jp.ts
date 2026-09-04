@@ -1,0 +1,15 @@
+export const jp = {
+  providersTitle: "AIプロバイダゲートウェイ 🤖",
+  providersSubtitle: "OpenAI、Gemini、およびカスタムエンドポイント連携の管理。",
+  addProviderBtn: "+ プロバイダ追加",
+  thName: "プロバイダ名",
+  thType: "種類 / プラットフォーム",
+  thModel: "AIモデル",
+  thTtsModel: "TTSモデル",
+  thCapabilities: "機能",
+  thStatus: "ステータス",
+  thActions: "操作",
+  testLatencyBtn: "⚡ レイテンシ測定",
+  createModalTitle: "新規AIプロバイダ追加",
+  editModalTitle: "AIプロバイダ編集",
+};
