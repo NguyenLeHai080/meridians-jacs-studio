@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import re
 import urllib.parse
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.core.errors import AppError
 from app.core.security import require_auth
@@ -227,8 +228,7 @@ async def process_sepay_webhook(
         if current_exp:
             try:
                 base_dt = datetime.fromisoformat(str(current_exp).replace("Z", "+00:00"))
-                if base_dt < now:
-                    base_dt = now
+                base_dt = max(base_dt, now)
             except Exception:
                 base_dt = now
         else:
