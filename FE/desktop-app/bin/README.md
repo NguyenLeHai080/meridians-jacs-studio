@@ -12,7 +12,7 @@ The application also accepts `JACS_FFMPEG_PATH` and `JACS_FFPROBE_PATH` for QA.
 CI and local release builds can copy binaries from the host with:
 
 ```bash
-node Tool/desktop-app/scripts/prepare-media-binaries.cjs
+node FE/desktop-app/scripts/prepare-media-binaries.cjs
 ```
 
 The release workflow installs FFmpeg on each native runner before packaging.

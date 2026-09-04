@@ -80,7 +80,7 @@ jobs:
             --no-xattrs --no-acls --no-fflags --no-mac-metadata \
             --exclude='./.git' --exclude='./node_modules' \
             --exclude='./._*' --exclude='./.DS_Store' \
-            --exclude='./Tool/desktop-app' --exclude='./release' \
+            --exclude='./FE/desktop-app' --exclude='./release' \
             --exclude='./data' --exclude='*.tsbuildinfo' . |
             ssh -i ~/.ssh/jacs_deploy -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
               "tar -xzf - -C '$release_dir'"
