@@ -3,7 +3,7 @@ import { RotateCw } from "lucide-react";
 import type { ClientSession } from "../../../core/types";
 import { useSessions } from "../hooks/useSessions";
 import { sessionService } from "../services/sessionService";
-import { Pagination } from "../../../components/common/Pagination";
+import { DataTable, StatusBadge, Button, Column } from "../../../components/common";
 import { useI18n } from "../../../core/i18n";
 import "../lang"; // Auto-registers sessions translation
 
@@ -79,89 +79,107 @@ export const SessionsPage: React.FC<SessionsPageProps> = ({
     }
   };
 
+  const columns: Column<ClientSession>[] = [
+    {
+      key: "customer",
+      header: t("thCustomer"),
+      render: (sess) => <strong>{sess.customer_name}</strong>,
+    },
+    {
+      key: "keyHint",
+      header: t("thKeyHint"),
+      render: (sess) => <span className="code-chip">{sess.key_hint}</span>,
+    },
+    {
+      key: "hwid",
+      header: t("thHwid"),
+      render: (sess) => (
+        <span className="code-chip" style={{ fontSize: "0.72rem" }}>
+          {sess.hwid}
+        </span>
+      ),
+    },
+    {
+      key: "platform",
+      header: t("thPlatform"),
+      render: (sess) => (
+        <span>
+          {sess.last_platform || "Windows"} · v{sess.last_app_version || "0.3.17"}
+        </span>
+      ),
+    },
+    {
+      key: "ip",
+      header: t("thIp"),
+      render: (sess) => <code>{sess.last_ip || "0.0.0.0"}</code>,
+    },
+    {
+      key: "time",
+      header: t("thTime"),
+      render: (sess) => (
+        <span>
+          {sess.last_seen_at ? (
+            <span style={{ fontSize: "0.78rem" }}>
+              {new Date(sess.last_seen_at).toLocaleTimeString(
+                language === "vi" ? "vi-VN" : language === "jp" ? "ja-JP" : "en-US"
+              )}
+            </span>
+          ) : (
+            <span style={{ color: "var(--text-dim)" }}>--</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: t("thStatus"),
+      render: (sess) => (
+        <StatusBadge
+          status={sess.is_online ? "online" : "offline"}
+          label={sess.is_online ? t("statusOnline") : t("statusOffline")}
+        />
+      ),
+    },
+    {
+      key: "actions",
+      header: t("thActions"),
+      align: "right",
+      render: (sess) => (
+        <Button
+          variant="outline"
+          size="sm"
+          style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+          onClick={() => void handleTerminateSession(sess.license_id)}
+          title={t("btnTerminate")}
+        >
+          {t("btnTerminate")}
+        </Button>
+      ),
+    },
+  ];
+
   return (
-    <div className="mf-card-panel">
-      <div className="mf-card-header">
-        <div className="mf-card-title-group">
-          <h3>{t("sessionsTitle")} ({totalCount})</h3>
-          <p>{t("sessionsSubtitle")}</p>
-        </div>
-        <button type="button" className="btn-white-outline" onClick={() => void handleRefresh()}>
-          <RotateCw size={15} /> {t("refresh")}
-        </button>
-      </div>
-
-      <div className="table-responsive">
-        <table className="mf-table">
-          <thead>
-            <tr>
-              <th>{t("thCustomer")}</th>
-              <th>{t("thKeyHint")}</th>
-              <th>{t("thHwid")}</th>
-              <th>{t("thPlatform")}</th>
-              <th>{t("thIp")}</th>
-              <th>{t("thTime")}</th>
-              <th>{t("thStatus")}</th>
-              <th style={{ textAlign: "right" }}>{t("thActions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedSessions.map((sess) => (
-              <tr key={sess.license_id}>
-                <td><strong>{sess.customer_name}</strong></td>
-                <td><span className="code-chip">{sess.key_hint}</span></td>
-                <td><span className="code-chip" style={{ fontSize: "0.72rem" }}>{sess.hwid}</span></td>
-                <td>{sess.last_platform || "Windows"} · v{sess.last_app_version || "0.3.17"}</td>
-                <td><code>{sess.last_ip || "0.0.0.0"}</code></td>
-                <td>
-                  {sess.last_seen_at ? (
-                    <span style={{ fontSize: "0.78rem" }}>
-                      {new Date(sess.last_seen_at).toLocaleTimeString(
-                        language === "vi" ? "vi-VN" : language === "jp" ? "ja-JP" : "en-US"
-                      )}
-                    </span>
-                  ) : (
-                    <span style={{ color: "var(--text-dim)" }}>--</span>
-                  )}
-                </td>
-                <td>
-                  <span className={`pill-status ${sess.is_online ? "pill-online" : "pill-offline"}`}>
-                    {sess.is_online ? `● ${t("statusOnline")}` : t("statusOffline")}
-                  </span>
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <button
-                    type="button"
-                    className="btn-white-outline"
-                    style={{ padding: "0.3rem 0.6rem", color: "var(--danger)" }}
-                    onClick={() => void handleTerminateSession(sess.license_id)}
-                    title={t("btnTerminate")}
-                  >
-                    {t("btnTerminate")}
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {activeSessions.length === 0 && (
-              <tr>
-                <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                  {t("noSessionsFound")}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-        totalItems={totalCount}
-        pageSize={pageSize}
-        pageSizeOptions={[5, 10, 20, 50]}
-        onPageSizeChange={setPageSize}
-      />
-    </div>
+    <DataTable
+      title={`${t("sessionsTitle")} (${totalCount})`}
+      subtitle={t("sessionsSubtitle")}
+      headerActions={
+        <Button variant="outline" size="sm" onClick={() => void handleRefresh()} icon={<RotateCw size={14} />}>
+          {t("refresh")}
+        </Button>
+      }
+      columns={columns}
+      data={paginatedSessions}
+      keyExtractor={(s) => s.license_id}
+      emptyTitle={t("noSessionsFound")}
+      pagination={{
+        currentPage,
+        totalPages,
+        onPageChange: setCurrentPage,
+        totalItems: totalCount,
+        pageSize,
+        pageSizeOptions: [5, 10, 20, 50],
+        onPageSizeChange: setPageSize,
+      }}
+    />
   );
 };

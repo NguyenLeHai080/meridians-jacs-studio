@@ -2,7 +2,8 @@ import React from "react";
 import { Building2, KeyRound, Shield, Pencil, Trash2, Search } from "lucide-react";
 import type { License } from "../../../core/types";
 import { useI18n } from "../../../core/i18n";
-import { Pagination } from "../../../components/common/Pagination";
+import { Table, StatusBadge, Pagination } from "../../../components/common";
+
 
 interface LicenseTableProps {
   licenses: License[];

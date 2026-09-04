@@ -3,8 +3,9 @@ WORKDIR /workspace
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY FE/admin-portal/package.json FE/admin-portal/package.json
-COPY Tool/desktop-app/package.json Tool/desktop-app/package.json
+COPY FE/desktop-app/package.json FE/desktop-app/package.json
 COPY packages packages
+
 RUN pnpm install --frozen-lockfile
 COPY FE/admin-portal FE/admin-portal
 ARG VITE_API_URL=
