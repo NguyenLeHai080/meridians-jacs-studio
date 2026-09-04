@@ -47,6 +47,32 @@ export type BillingSummary = {
   revenue_by_method: Record<string, number>;
 };
 
+export type BankAccountPurpose =
+  | "customer_income"
+  | "api_expense"
+  | "supplier"
+  | "backup"
+  | "other"
+  | string;
+
+export type BankAccount = {
+  id: string;
+  bank_name: string;
+  bank_bin: string;
+  bank_short?: string | null;
+  account_number: string;
+  account_name: string;
+  branch?: string | null;
+  purpose: BankAccountPurpose;
+  qr_template: string;
+  custom_qr_url?: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 export type BankConfig = {
   bank_name: string;
   bank_bin: string;
