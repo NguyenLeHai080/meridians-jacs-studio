@@ -131,6 +131,22 @@ export type ToolConfig = {
   menu_locks: Record<string, MenuLockItem>;
 };
 
+export type Release = {
+  id: string;
+  version: string;
+  platform: "windows" | "macos" | string;
+  channel: "stable" | "beta" | string;
+  download_url: string;
+  sha512: string;
+  release_notes: string;
+  force_update: boolean;
+  signature?: string;
+  status: "draft" | "published" | string;
+  rollout_percent?: number;
+  min_app_version?: string;
+  created_at?: string;
+};
+
 export type AdminMenuKey =
   | "overview"
   | "licenses"
@@ -141,3 +157,4 @@ export type AdminMenuKey =
   | "providers"
   | "releases"
   | "tool_branding";
+
