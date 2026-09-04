@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import type { TelemetryLog } from "../../../core/types";
 import { useTelemetry } from "../hooks/useTelemetry";
 import { telemetryService } from "../services/telemetryService";
-import { Pagination } from "../../../components/common/Pagination";
+import { DataTable, StatusBadge, FilterSelect, Button, Column } from "../../../components/common";
 import { useI18n } from "../../../core/i18n";
 import "../lang"; // Auto-registers telemetry translation
 
@@ -88,111 +88,108 @@ export const TelemetryPage: React.FC<TelemetryPageProps> = ({
     }
   };
 
+  const columns: Column<TelemetryLog>[] = [
+    {
+      key: "time",
+      header: t("thTime"),
+      render: (log) => (
+        <span style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>
+          {log.created_at
+            ? new Date(log.created_at).toLocaleString(
+                language === "vi" ? "vi-VN" : language === "jp" ? "ja-JP" : "en-US"
+              )
+            : "--"}
+        </span>
+      ),
+    },
+    {
+      key: "severity",
+      header: t("thSeverity"),
+      render: (log) => (
+        <StatusBadge
+          status={
+            log.severity === "fatal" || log.severity === "error"
+              ? "danger"
+              : log.severity === "warning"
+              ? "warning"
+              : "active"
+          }
+          label={log.severity.toUpperCase()}
+        />
+      ),
+    },
+    {
+      key: "version",
+      header: t("thVersion"),
+      render: (log) => <span className="code-chip">v{log.app_version}</span>,
+    },
+    {
+      key: "event",
+      header: t("thEvent"),
+      render: (log) => <strong>{log.event_name}</strong>,
+    },
+    {
+      key: "message",
+      header: t("thMessage"),
+      render: (log) => (
+        <span style={{ fontSize: "0.82rem", color: "var(--text-body)" }}>{log.message}</span>
+      ),
+    },
+  ];
+
   return (
-    <div className="mf-card-panel">
-      <div className="mf-card-header">
-        <div className="mf-card-title-group">
-          <h3>{t("telemetryTitle")} ({totalCount})</h3>
-          <p>{t("telemetrySubtitle")}</p>
-        </div>
+    <DataTable
+      title={`${t("telemetryTitle")} (${totalCount})`}
+      subtitle={t("telemetrySubtitle")}
+      headerActions={
         <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-          <button
-            type="button"
-            className="btn-white-outline"
-            style={{ color: "var(--danger)" }}
+          <Button
+            variant="outline"
+            size="sm"
+            style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
             onClick={handleClearLogs}
+            icon={<Trash2 size={14} />}
           >
-            <Trash2 size={15} /> {t("btnClearLogs")}
-          </button>
-          <button
-            type="button"
-            className="btn-primary-orange"
+            {t("btnClearLogs")}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
             onClick={handleCreateManualLog}
+            icon={<Plus size={15} />}
           >
-            <Plus size={16} /> {t("btnManualLog")}
-          </button>
+            {t("btnManualLog")}
+          </Button>
         </div>
-      </div>
-
-      <div style={{ marginBottom: "1rem" }}>
-        <select
-          className="form-input-mf"
-          style={{ width: "auto", minWidth: "160px" }}
+      }
+      filters={
+        <FilterSelect
           value={severityFilter}
-          onChange={(e) => setSeverityFilter(e.target.value)}
-        >
-          <option value="all">Tất cả mức độ</option>
-          <option value="info">INFO</option>
-          <option value="warning">WARNING</option>
-          <option value="error">ERROR</option>
-          <option value="fatal">FATAL</option>
-        </select>
-      </div>
-
-      <div className="table-responsive">
-        <table className="mf-table">
-          <thead>
-            <tr>
-              <th>{t("thTime")}</th>
-              <th>{t("thSeverity")}</th>
-              <th>{t("thVersion")}</th>
-              <th>{t("thEvent")}</th>
-              <th>{t("thMessage")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedLogs.map((log) => (
-              <tr key={log.id}>
-                <td style={{ fontSize: "0.78rem", whiteSpace: "nowrap" }}>
-                  {log.created_at ? (
-                    new Date(log.created_at).toLocaleString(
-                      language === "vi" ? "vi-VN" : language === "jp" ? "ja-JP" : "en-US"
-                    )
-                  ) : "--"}
-                </td>
-                <td>
-                  <span
-                    className={`pill-status-mf ${
-                      log.severity === "fatal" || log.severity === "error"
-                        ? "status-locked"
-                        : log.severity === "warning"
-                        ? "status-expired"
-                        : "status-active"
-                    }`}
-                    style={{ fontSize: "0.68rem" }}
-                  >
-                    {log.severity.toUpperCase()}
-                  </span>
-                </td>
-                <td>
-                  <span className="code-chip">v{log.app_version}</span>
-                </td>
-                <td>
-                  <strong>{log.event_name}</strong>
-                </td>
-                <td style={{ fontSize: "0.82rem", color: "var(--text-body)" }}>{log.message}</td>
-              </tr>
-            ))}
-            {paginatedLogs.length === 0 && (
-              <tr>
-                <td colSpan={5} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                  {t("noLogsFound")}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-        totalItems={totalCount}
-        pageSize={pageSize}
-        pageSizeOptions={[10, 15, 30, 50]}
-        onPageSizeChange={setPageSize}
-      />
-    </div>
+          onChange={(e) => {
+            setSeverityFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          options={[
+            { value: "all", label: "Tất cả mức độ" },
+            { value: "info", label: "INFO" },
+            { value: "warning", label: "WARNING" },
+            { value: "error", label: "ERROR" },
+            { value: "fatal", label: "FATAL" },
+          ]}
+        />
+      }
+      columns={columns}
+      data={paginatedLogs}
+      emptyTitle={t("noLogsFound")}
+      pagination={{
+        currentPage,
+        totalPages,
+        onPageChange: setCurrentPage,
+        totalItems: totalCount,
+        pageSize,
+        pageSizeOptions: [10, 15, 30, 50],
+        onPageSizeChange: setPageSize,
+      }}
+    />
   );
 };

@@ -6,8 +6,9 @@ const childProcess = require("node:child_process");
 const readline = require("node:readline");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
-const TOOL_DIR = path.join(ROOT_DIR, "Tool", "desktop-app");
+const TOOL_DIR = path.join(ROOT_DIR, "FE", "desktop-app");
 const DIST_DIR = path.join(TOOL_DIR, "dist");
+
 const API_URL = process.env.JACS_API_URL || "http://localhost:8000";
 
 function askQuestion(query) {
@@ -86,9 +87,13 @@ async function main() {
   // 1. Run Build
   console.log("🔨 [1/3] Đang biên dịch bản build mới nhất của Desktop Tool...");
   try {
-    childProcess.execSync("npm --prefix Tool/desktop-app run build", {
+    const buildCmd = process.platform === "win32"
+      ? "pnpm.cmd --dir FE/desktop-app build || npm.cmd --prefix FE/desktop-app run build"
+      : "pnpm --dir FE/desktop-app build || npm --prefix FE/desktop-app run build";
+    childProcess.execSync(buildCmd, {
       cwd: ROOT_DIR,
       stdio: "inherit",
+      shell: true,
     });
   } catch (error) {
     console.error("\n❌ Build thất bại. Vui lòng kiểm tra lỗi biên dịch.");
@@ -105,7 +110,8 @@ async function main() {
   console.log("   ✅ BIÊN DỊCH THÀNH CÔNG (BUILD FINISHED)");
   console.log("========================================================================");
   console.log(`📦 Phiên bản: ${defaultVersion}`);
-  console.log(`📁 Thư mục output: Tool/desktop-app/dist`);
+  console.log(`📁 Thư mục output: FE/desktop-app/dist`);
+
   console.log(`🔑 SHA-512 Checksum: ${sha512.slice(0, 16)}...${sha512.slice(-8)}`);
   console.log("========================================================================\n");
 

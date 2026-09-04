@@ -13,11 +13,12 @@
   animation: fadeIn 0.15s ease-out;
 }
 
-.modal-dialog-box {
+.modal-dialog-box,
+.modal-card {
   background: #ffffff;
   border-radius: $radius-xl;
   width: 100%;
-  max-width: 520px;
+  max-width: 540px;
   box-shadow: $shadow-modal;
   overflow: visible;
   position: relative;
@@ -26,22 +27,31 @@
   flex-direction: column;
 }
 
-.modal-header-mf {
+.modal-header-mf,
+.modal-header {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid $border-light;
   display: flex;
   align-items: center;
   justify-content: space-between;
 
-  h3 {
+  h3, .modal-title {
     font-size: 1.15rem;
     font-weight: 800;
     color: $text-dark;
     letter-spacing: -0.3px;
+    margin: 0;
+  }
+
+  .modal-subtitle {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-top: 0.2rem;
   }
 }
 
-.btn-close-modal {
+.btn-close-modal,
+.modal-close-btn {
   background: none;
   border: none;
   color: $text-dim;
@@ -59,14 +69,18 @@
   }
 }
 
-.modal-body-mf {
+.modal-body-mf,
+.modal-body {
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
-.modal-footer-mf {
+.modal-footer-mf,
+.modal-footer {
   padding: 1rem 1.5rem;
   background: #f8fafc;
   border-top: 1px solid $border-light;
@@ -89,7 +103,9 @@
   color: $text-dark;
 }
 
-.form-input-mf {
+.form-input-mf,
+input.form-input,
+textarea.form-input {
   width: 100%;
   padding: 0.65rem 0.85rem;
   border: 1px solid $border-light;
@@ -106,4 +122,21 @@
     border-color: $primary;
     box-shadow: 0 0 0 3px rgba(249, 87, 56, 0.12);
   }
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+}
+
+textarea.form-input-mf,
+textarea.form-input {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.mf-two-col-grid,
+.mf-form-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
 }
