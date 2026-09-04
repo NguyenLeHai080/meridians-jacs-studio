@@ -14,11 +14,13 @@ import {
   Sliders,
 } from "lucide-react";
 import { apiRequest } from "../../core/api";
+import { getToken } from "../../core/session";
 import type { ToolConfig, MenuLockItem } from "../../core/types";
 
 interface ToolConfigPageProps {
-  token: string;
-  language: string;
+  token?: string;
+  language?: string;
+  onNotify?: (msg: string, type?: "success" | "error") => void;
 }
 
 const DEFAULT_MENUS: { key: string; label: string; icon: string; category: string }[] = [
@@ -35,7 +37,8 @@ const DEFAULT_MENUS: { key: string; label: string; icon: string; category: strin
   { key: "settings", label: "Cài Đặt Tool", icon: "⚙️", category: "Hệ thống" },
 ];
 
-export function ToolConfigPage({ token, language }: ToolConfigPageProps) {
+export function ToolConfigPage({ token, language: _language, onNotify }: ToolConfigPageProps) {
+  const authToken = token || getToken() || "";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -51,7 +54,7 @@ export function ToolConfigPage({ token, language }: ToolConfigPageProps) {
     setLoading(true);
     setError("");
     try {
-      const res = await apiRequest<{ data: ToolConfig }>("/api/v1/system/tool-config", {}, token);
+      const res = await apiRequest<{ data: ToolConfig }>("/api/v1/system/tool-config", {}, authToken);
       const data = res?.data || (res as unknown as ToolConfig);
       if (data) {
         setBrandName(data.studio_brand_name || "JACS STUDIO");
@@ -149,11 +152,15 @@ export function ToolConfigPage({ token, language }: ToolConfigPageProps) {
             menu_locks: menuLocks,
           }),
         },
-        token
+        authToken
       );
-      setMessage("🎉 Đã lưu cấu hình thương hiệu & khoá Menu thành công! Mọi máy khách sẽ tự động cập nhật ngay lập tức.");
+      const successMsg = "🎉 Đã lưu cấu hình thương hiệu & khoá Menu thành công! Mọi máy khách sẽ tự động cập nhật ngay lập tức.";
+      setMessage(successMsg);
+      if (onNotify) onNotify(successMsg, "success");
     } catch (err: any) {
-      setError(err?.message || "Lỗi khi lưu cấu hình thương hiệu");
+      const errMsg = err?.message || "Lỗi khi lưu cấu hình thương hiệu";
+      setError(errMsg);
+      if (onNotify) onNotify(errMsg, "error");
     } finally {
       setSaving(false);
     }
