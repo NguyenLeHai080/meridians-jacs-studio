@@ -19,6 +19,7 @@ class ReleaseCreate(BaseModel):
     download_url: HttpUrl
     sha512: str = Field(pattern=r"^[a-fA-F0-9]{128}$")
     release_notes: str = Field(min_length=1, max_length=10000)
+    signature: str | None = None
     force_update: bool = False
 class ReleaseResponse(BaseModel):
     id: UUID
