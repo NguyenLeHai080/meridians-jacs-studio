@@ -69,6 +69,7 @@ async def list_logs(_: dict = Depends(require_auth), severity: Severity | None =
             "message": msg,
             "app_version": a.get("app_version", "v0.3.42"),
             "machine_id": str(a.get("license_id", "SERVER")),
+            "fingerprint": a.get("fingerprint") or a.get("hwid") or "system",
             "created_at": a.get("created_at"),
             "actor": a.get("actor"),
             "details": a,
