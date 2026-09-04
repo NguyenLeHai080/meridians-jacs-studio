@@ -7,8 +7,10 @@ import { renewalService } from "../services/renewalService";
 import { licenseService } from "../../licenses/services/licenseService";
 import { billingService } from "../../billing/services/billingService";
 import { formatCurrency } from "../../billing/utils/currencyHelper";
+import { Table, StatusBadge, Pagination } from "../../../components/common";
 import { useI18n } from "../../../core/i18n";
 import "../lang"; // Auto-registers renewals translation
+
 
 interface RenewalsPageProps {
   licenses?: License[];

@@ -4,6 +4,7 @@ import { I18nProvider } from "./core/i18n";
 import { getToken } from "./core/session";
 import { LoginPage } from "./modules/auth/LoginPage";
 import { Dashboard } from "./modules/dashboard/Dashboard";
+import "./styles/tailwind.css";
 import "./styles/main.scss";
 
 function App() {

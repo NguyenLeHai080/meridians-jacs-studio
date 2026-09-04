@@ -1,5 +1,14 @@
 @use 'variables' as *;
 
+.sidebar-mobile-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 45;
+}
+
 .sidebar {
   width: 255px;
   background-color: $bg-sidebar;
@@ -11,7 +20,7 @@
   top: 0;
   height: 100vh;
   z-index: 40;
-  transition: width 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), width 0.2s ease;
 }
 
 .sidebar-header {
@@ -79,7 +88,7 @@
 .menu-heading {
   font-size: 0.62rem;
   font-weight: 800;
-  color: #55627a;
+  color: #64748b;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 0.85rem 0.75rem 0.35rem;
@@ -106,6 +115,7 @@
   cursor: pointer;
   transition: all 0.15s ease;
   position: relative;
+  font-family: inherit;
 
   &:hover {
     color: #ffffff;
@@ -206,6 +216,7 @@
     line-height: 1.35;
   }
 
+  .btn-promo-action,
   .btn-promo-learn-more {
     margin-top: 0.35rem;
     padding: 0.42rem 0.85rem;
@@ -218,6 +229,8 @@
     cursor: pointer;
     text-align: center;
     transition: all 0.15s ease;
+    width: 100%;
+    font-family: inherit;
 
     &:hover {
       background: #f1f5f9;
@@ -237,39 +250,6 @@
   gap: 0.75rem;
 }
 
-.user-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: $radius-full;
-  background: #374151;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 0.82rem;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-}
-
-.user-info-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.user-name {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #ffffff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.user-role {
-  font-size: 0.68rem;
-  color: $sidebar-heading;
-}
-
 .btn-sidebar-logout {
   background: none;
   border: none;
@@ -287,4 +267,3 @@
     color: #ef4444;
   }
 }
-

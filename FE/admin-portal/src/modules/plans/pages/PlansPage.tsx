@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import type { BankConfig } from "../../../core/types";
 import { DEFAULT_PLANS, PlanItem } from "../utils/planHelper";
 import { usePlans } from "../hooks/usePlans";
@@ -7,6 +7,7 @@ import { PlanEditModal } from "./modal/PlanEditModal";
 import { planService } from "../services/planService";
 import { billingService } from "../../billing/services/billingService";
 import { formatCurrency } from "../../billing/utils/currencyHelper";
+import { DataTable, StatusBadge, FilterSelect, Button, Column } from "../../../components/common";
 import { useI18n } from "../../../core/i18n";
 import "../lang"; // Auto-registers plans translation
 
@@ -60,9 +61,12 @@ export const PlansPage: React.FC<PlansPageProps> = ({
 
   useEffect(() => {
     if (!propBankConfig) {
-      billingService.getBankConfig().then((cfg) => {
-        setLocalBankConfig(cfg);
-      }).catch(() => {});
+      billingService
+        .getBankConfig()
+        .then((cfg) => {
+          setLocalBankConfig(cfg);
+        })
+        .catch(() => {});
     }
   }, [propBankConfig]);
 
@@ -129,106 +133,124 @@ export const PlansPage: React.FC<PlansPageProps> = ({
     }
   };
 
+  const columns: Column<PlanItem>[] = [
+    {
+      key: "name",
+      header: t("thPlanName"),
+      render: (plan) => (
+        <div>
+          <strong>{plan.name}</strong>
+          <div style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>ID: {plan.id}</div>
+        </div>
+      ),
+    },
+    {
+      key: "duration",
+      header: t("thDuration"),
+      render: (plan) => (
+        <span>
+          {plan.days} {t("daysSuffix")}
+        </span>
+      ),
+    },
+    {
+      key: "price",
+      header: t("thPrice"),
+      render: (plan) => (
+        <strong style={{ color: "var(--primary)" }}>{formatCurrency(plan.price)}</strong>
+      ),
+    },
+    {
+      key: "renderLimit",
+      header: t("thRenderLimit"),
+      render: (plan) => (
+        <span>
+          {plan.max_jobs_per_day} {t("jobsPerDay")}
+        </span>
+      ),
+    },
+    {
+      key: "discount",
+      header: t("thDiscount"),
+      render: (plan) => <span>{plan.discount_percent ? `${plan.discount_percent}%` : "--"}</span>,
+    },
+    {
+      key: "status",
+      header: t("thStatus"),
+      render: (plan) => (
+        <StatusBadge
+          status={plan.active !== false ? "active" : "danger"}
+          label={plan.active !== false ? t("badgeActive") : t("badgeHidden")}
+        />
+      ),
+    },
+    {
+      key: "actions",
+      header: t("thActions"),
+      align: "right",
+      render: (plan) => (
+        <div className="table-actions-row">
+          <button
+            type="button"
+            className="btn-icon-action action-edit"
+            onClick={() => {
+              setEditingPlan(plan);
+              setIsModalOpen(true);
+            }}
+            title={t("edit")}
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            type="button"
+            className="btn-icon-action action-delete"
+            onClick={() => handleDeletePlan(plan.id)}
+            title={t("delete")}
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="mf-card-panel">
-      <div className="mf-card-header">
-        <div className="mf-card-title-group">
-          <h3>{t("plansTitle")}</h3>
-          <p>{t("plansSubtitle")}</p>
-        </div>
-        <button
-          type="button"
-          className="btn-primary-orange"
-          onClick={() => {
-            setEditingPlan(null);
-            setIsModalOpen(true);
-          }}
-        >
-          <Plus size={16} /> {t("addPlanBtn")}
-        </button>
-      </div>
-
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-        <div className="table-search-box" style={{ flex: 1, minWidth: "240px" }}>
-          <Search size={14} color="#94a3b8" />
-          <input
-            type="text"
-            placeholder={t("searchPlaceholder")}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+    <>
+      <DataTable
+        title={t("plansTitle")}
+        subtitle={t("plansSubtitle")}
+        headerActions={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setEditingPlan(null);
+              setIsModalOpen(true);
+            }}
+            icon={<Plus size={15} />}
+          >
+            {t("addPlanBtn")}
+          </Button>
+        }
+        search={{
+          value: searchTerm,
+          onChange: setSearchTerm,
+          placeholder: t("searchPlaceholder"),
+        }}
+        filters={
+          <FilterSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            options={[
+              { value: "all", label: t("filterAll") },
+              { value: "active", label: t("filterActive") },
+              { value: "hidden", label: t("filterHidden") },
+            ]}
           />
-        </div>
-        <select
-          className="form-input-mf"
-          style={{ width: "auto", minWidth: "160px" }}
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="all">{t("filterAll")}</option>
-          <option value="active">{t("filterActive")}</option>
-          <option value="hidden">{t("filterHidden")}</option>
-        </select>
-      </div>
-
-      <div className="table-responsive">
-        <table className="mf-table">
-          <thead>
-            <tr>
-              <th>{t("thPlanName")}</th>
-              <th>{t("thDuration")}</th>
-              <th>{t("thPrice")}</th>
-              <th>{t("thRenderLimit")}</th>
-              <th>{t("thDiscount")}</th>
-              <th>{t("thStatus")}</th>
-              <th style={{ textAlign: "right" }}>{t("thActions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPlans.map((plan) => (
-              <tr key={plan.id}>
-                <td>
-                  <strong>{plan.name}</strong>
-                  <div style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>ID: {plan.id}</div>
-                </td>
-                <td>{plan.days} {t("daysSuffix")}</td>
-                <td>
-                  <strong style={{ color: "var(--primary)" }}>{formatCurrency(plan.price)}</strong>
-                </td>
-                <td>{plan.max_jobs_per_day} {t("jobsPerDay")}</td>
-                <td>{plan.discount_percent ? `${plan.discount_percent}%` : "--"}</td>
-                <td>
-                  <span className={`pill-status ${plan.active !== false ? "pill-active" : "pill-danger"}`}>
-                    {plan.active !== false ? t("badgeActive") : t("badgeHidden")}
-                  </span>
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <div className="table-actions-row">
-                    <button
-                      type="button"
-                      className="btn-icon-action action-edit"
-                      onClick={() => {
-                        setEditingPlan(plan);
-                        setIsModalOpen(true);
-                      }}
-                      title={t("edit")}
-                    >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-icon-action action-delete"
-                      onClick={() => handleDeletePlan(plan.id)}
-                      title={t("delete")}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        }
+        columns={columns}
+        data={filteredPlans}
+      />
 
       <PlanEditModal
         plan={editingPlan}
@@ -236,6 +258,6 @@ export const PlansPage: React.FC<PlansPageProps> = ({
         onClose={() => setIsModalOpen(false)}
         onSave={handleSavePlan}
       />
-    </div>
+    </>
   );
 };

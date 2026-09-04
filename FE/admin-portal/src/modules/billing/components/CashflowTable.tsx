@@ -3,7 +3,8 @@ import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { BillingTransaction } from "../../../core/types";
 import { formatCurrency } from "../utils/currencyHelper";
 import { useI18n } from "../../../core/i18n";
-import { Pagination } from "../../../components/common/Pagination";
+import { Table, StatusBadge, Pagination } from "../../../components/common";
+
 
 interface CashflowTableProps {
   transactions: BillingTransaction[];

@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Activity,
-  User,
+  Users,
   KeyRound,
   ShieldCheck,
   Wallet,
@@ -12,12 +12,14 @@ import {
   Settings,
   Rocket,
   FileText,
+  ScrollText,
   X,
 } from "lucide-react";
 import { useI18n } from "../../core/i18n";
 
 export type MenuKey =
   | "overview"
+  | "clients"
   | "licenses"
   | "sessions"
   | "billing"
@@ -25,6 +27,7 @@ export type MenuKey =
   | "renewals"
   | "providers"
   | "telemetry"
+  | "logs"
   | "releases"
   | "terms"
   | "tool_branding"
@@ -107,16 +110,27 @@ export function Sidebar({
             <span className="menu-label">{t("menuOverview", "Tổng quan hệ thống")}</span>
           </button>
 
-          <div className="menu-heading">TÀI KHOẢN & TRUY CẬP</div>
+          <div className="menu-heading">KHÁCH HÀNG & BẢN QUYỀN</div>
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "clients" ? "active" : ""}`}
+            onClick={() => handleNav("clients")}
+          >
+            <span className="menu-icon">
+              <Users size={17} />
+            </span>
+            <span className="menu-label">Danh bạ khách hàng</span>
+          </button>
+
           <button
             type="button"
             className={`menu-item ${activeMenu === "licenses" ? "active" : ""}`}
             onClick={() => handleNav("licenses")}
           >
             <span className="menu-icon">
-              <User size={17} />
+              <KeyRound size={17} />
             </span>
-            <span className="menu-label">{t("menuLicenses", "Tài khoản")}</span>
+            <span className="menu-label">{t("menuLicenses", "Bản quyền & License")}</span>
           </button>
 
           <button
@@ -186,7 +200,7 @@ export function Sidebar({
             <span className="menu-label">{t("menuRenewals", "Giao dịch nạp SePay")}</span>
           </button>
 
-          <div className="menu-heading">CẤU HÌNH DỊCH VỤ</div>
+          <div className="menu-heading">CẤU HÌNH & HỆ THỐNG</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
@@ -229,7 +243,18 @@ export function Sidebar({
             <span className="menu-icon">
               <FileText size={17} />
             </span>
-            <span className="menu-label">{t("menuTelemetry", "Nhật ký hệ thống")}</span>
+            <span className="menu-label">{t("menuTelemetry", "Nhật ký cảnh báo")}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "logs" ? "active" : ""}`}
+            onClick={() => handleNav("logs")}
+          >
+            <span className="menu-icon">
+              <ScrollText size={17} />
+            </span>
+            <span className="menu-label">Vết thao tác quản trị</span>
           </button>
 
           <button
@@ -265,3 +290,5 @@ export function Sidebar({
     </>
   );
 }
+
+export default Sidebar;
