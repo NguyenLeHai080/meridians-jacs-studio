@@ -232,7 +232,7 @@ export function BillingView({
                   </td>
                   <td>
                     <span className="badge-pill badge-info">
-                      {planLabels[tx.plan_type] || tx.plan_type}
+                      {(tx.plan_type && planLabels[tx.plan_type]) || tx.plan_type || "Gia hạn"}
                     </span>
                   </td>
                   <td>

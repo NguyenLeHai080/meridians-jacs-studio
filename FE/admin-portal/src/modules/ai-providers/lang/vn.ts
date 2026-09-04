@@ -1,0 +1,15 @@
+export const vn = {
+  providersTitle: "Cấu hình AI Providers Gateway 🤖",
+  providersSubtitle: "Quản lý kết nối OpenAI, Gemini và Custom Endpoints cấp quyền cho tool.",
+  addProviderBtn: "+ Thêm Provider Mới",
+  thName: "TÊN PROVIDER",
+  thType: "LOẠI / NỀN TẢNG",
+  thModel: "MODEL AI",
+  thTtsModel: "TTS MODEL",
+  thCapabilities: "TÍNH NĂNG",
+  thStatus: "TRẠNG THÁI",
+  thActions: "THAO TÁC",
+  testLatencyBtn: "⚡ Test Latency",
+  createModalTitle: "Thêm AI Provider Mới",
+  editModalTitle: "Chỉnh Sửa AI Provider",
+};

@@ -1,13 +1,10 @@
-import React from "react";
-import { AdminMenuKey } from "../../core/types";
-import { Sidebar } from "./Sidebar";
+import React, { useState } from "react";
+import { Sidebar, MenuKey } from "./Sidebar";
 import { Navbar } from "./Navbar";
 
 interface AdminLayoutProps {
-  activeMenu: AdminMenuKey;
-  onSelectMenu: (menu: AdminMenuKey) => void;
-  environmentUrl: string;
-  adminEmail: string;
+  activeMenu: MenuKey;
+  onSelectMenu: (menu: MenuKey) => void;
   onRefresh: () => void;
   onLogout: () => void;
   loading?: boolean;
@@ -19,8 +16,6 @@ interface AdminLayoutProps {
 export function AdminLayout({
   activeMenu,
   onSelectMenu,
-  environmentUrl,
-  adminEmail,
   onRefresh,
   onLogout,
   loading = false,
@@ -28,23 +23,32 @@ export function AdminLayout({
   activeLicenseCount = 0,
   children,
 }: AdminLayoutProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+
   return (
-    <div className="admin-app-container">
+    <div className="app-container">
       <Sidebar
         activeMenu={activeMenu}
         onSelectMenu={onSelectMenu}
         onlineCount={onlineCount}
-        activeLicenseCount={activeLicenseCount}
+        mobileMenuOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
       />
-      <div className="admin-main-wrapper">
+      <div className="main-content">
         <Navbar
-          environmentUrl={environmentUrl}
-          adminEmail={adminEmail}
+          onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
           onRefresh={onRefresh}
-          onLogout={onLogout}
           loading={loading}
+          onOpenAccountModal={() => onSelectMenu("settings")}
+          onOpenTerms={() => onSelectMenu("terms")}
+          onLogout={onLogout}
+          activeLicensesCount={activeLicenseCount}
+          onlineSessionsCount={onlineCount}
         />
-        <main className="admin-content-area">{children}</main>
+        <main className="content-body">{children}</main>
       </div>
     </div>
   );
