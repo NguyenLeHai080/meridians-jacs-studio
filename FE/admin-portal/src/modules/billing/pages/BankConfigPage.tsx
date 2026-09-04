@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Building2, RefreshCw, ShieldCheck } from "lucide-react";
-import type { BankConfig } from "../../../core/types";
+import { Building2, Plus, RefreshCw, ShieldCheck, CreditCard, CheckCircle2, AlertCircle } from "lucide-react";
+import type { BankConfig, BankAccount } from "../../../core/types";
 import { BankCardGrid } from "../components/BankCardGrid";
-import { BankConfigForm } from "../components/BankConfigForm";
+import { PricingPlansCard } from "../components/PricingPlansCard";
 import { SepayWebhookBox } from "../components/SepayWebhookBox";
+import { BankModal } from "./modal/BankModal";
+import { BankQrViewModal } from "./modal/BankQrViewModal";
 import { billingService } from "../services/billingService";
 import { Button } from "../../../components/common";
 import { useI18n } from "../../../core/i18n";
@@ -26,6 +28,7 @@ export const BankConfigPage: React.FC<BankConfigPageProps> = ({
 }) => {
   const { t } = useI18n();
   const [loading, setLoading] = useState(false);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [localBankConfig, setLocalBankConfig] = useState<BankConfig>(
     propBankConfig || {
       bank_name: "VietinBank",
@@ -43,39 +46,102 @@ export const BankConfigPage: React.FC<BankConfigPageProps> = ({
     }
   );
 
+  // Modals state
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrViewingAccount, setQrViewingAccount] = useState<BankAccount | null>(null);
+
   const activeBankConfig = propBankConfig || localBankConfig;
-
-  const fetchBankConfig = useCallback(async () => {
-    try {
-      setLoading(true);
-      const cfg = await billingService.getBankConfig();
-      if (cfg) setLocalBankConfig(cfg);
-    } catch {
-      // Handled
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!propBankConfig) {
-      fetchBankConfig();
-    }
-  }, [propBankConfig, fetchBankConfig]);
 
   const notify = (msg: string, type: "success" | "error" = "success") => {
     if (onNotify) onNotify(msg, type);
   };
 
-  const updateBankConfig = (next: BankConfig) => {
-    if (propSetBankConfig) propSetBankConfig(next);
-    else setLocalBankConfig(next);
-  };
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [accounts, cfg] = await Promise.all([
+        billingService.getBankAccounts(),
+        billingService.getBankConfig(),
+      ]);
+      if (accounts) setBankAccounts(accounts);
+      if (cfg) {
+        setLocalBankConfig(cfg);
+        if (propSetBankConfig) propSetBankConfig(cfg);
+      }
+    } catch (err: any) {
+      notify(err instanceof Error ? err.message : "Lỗi nạp dữ liệu ngân hàng", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [propSetBankConfig]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleRefresh = async () => {
     if (propOnRefresh) await propOnRefresh();
-    else await fetchBankConfig();
+    await loadData();
+    notify("Đã làm mới dữ liệu ngân hàng & VietQR", "success");
   };
+
+  // Bank Account Actions
+  const handleAddNew = () => {
+    setEditingAccount(null);
+    setIsBankModalOpen(true);
+  };
+
+  const handleEdit = (account: BankAccount) => {
+    setEditingAccount(account);
+    setIsBankModalOpen(true);
+  };
+
+  const handleDelete = async (account: BankAccount) => {
+    if (confirm(`Bạn có chắc chắn muốn xóa tài khoản ${account.bank_name} - ${account.account_number}?`)) {
+      try {
+        await billingService.deleteBankAccount(account.id);
+        notify(`Đã xóa tài khoản ${account.account_number} thành công`, "success");
+        await loadData();
+      } catch (err: any) {
+        notify(err instanceof Error ? err.message : "Lỗi khi xóa tài khoản", "error");
+      }
+    }
+  };
+
+  const handleSetDefault = async (account: BankAccount) => {
+    try {
+      await billingService.setDefaultBankAccount(account.id);
+      notify(`Đã đặt tài khoản ${account.bank_name} làm mặc định nhận tiền`, "success");
+      await loadData();
+    } catch (err: any) {
+      notify(err instanceof Error ? err.message : "Lỗi đặt tài khoản mặc định", "error");
+    }
+  };
+
+  const handleToggleStatus = async (account: BankAccount) => {
+    try {
+      const updated = await billingService.toggleBankAccountStatus(account.id);
+      notify(
+        `Đã ${updated.is_active ? "kích hoạt" : "tạm dừng"} tài khoản ${account.account_number}`,
+        "success"
+      );
+      await loadData();
+    } catch (err: any) {
+      notify(err instanceof Error ? err.message : "Lỗi đổi trạng thái tài khoản", "error");
+    }
+  };
+
+  const handleViewQr = (account: BankAccount) => {
+    setQrViewingAccount(account);
+    setIsQrModalOpen(true);
+  };
+
+  // KPIs
+  const totalAccounts = bankAccounts.length;
+  const activeAccounts = bankAccounts.filter((a) => a.is_active).length;
+  const defaultAccount = bankAccounts.find((a) => a.is_default) || bankAccounts[0];
 
   return (
     <div className="view-container animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -87,10 +153,10 @@ export const BankConfigPage: React.FC<BankConfigPageProps> = ({
             <h1 className="view-title">{t("bankConfigTitle", "Cấu Hình Ngân Hàng & VietQR")}</h1>
           </div>
           <p className="view-subtitle">
-            Thiết lập tài khoản ngân hàng thụ hưởng, mã VietQR và cổng Webhook tự động hóa SePay
+            Quản lý danh sách tài khoản ngân hàng thụ hưởng, mã VietQR tự động và kết nối SePay Webhook
           </p>
         </div>
-        <div className="view-actions">
+        <div className="view-actions" style={{ display: "flex", gap: "0.5rem" }}>
           <Button
             variant="secondary"
             onClick={handleRefresh}
@@ -99,43 +165,120 @@ export const BankConfigPage: React.FC<BankConfigPageProps> = ({
           >
             Làm mới
           </Button>
+          <Button
+            variant="primary"
+            onClick={handleAddNew}
+            icon={<Plus size={16} />}
+          >
+            Thêm Tài Khoản Mới
+          </Button>
         </div>
       </div>
 
-      {/* Two-column Bank Cards Preview */}
+      {/* KPI Stats Row */}
+      <div className="billing-kpi-grid">
+        <div className="billing-kpi-card">
+          <div className="billing-kpi-header">
+            <span className="billing-kpi-label">Tổng Tài Khoản</span>
+            <div className="billing-kpi-icon" style={{ background: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}>
+              <CreditCard size={18} />
+            </div>
+          </div>
+          <div className="billing-kpi-value">{totalAccounts}</div>
+          <div className="billing-kpi-subtext" style={{ color: "#3b82f6" }}>
+            {activeAccounts} tài khoản đang nhận tiền
+          </div>
+        </div>
+
+        <div className="billing-kpi-card">
+          <div className="billing-kpi-header">
+            <span className="billing-kpi-label">Tài Khoản Mặc Định (Default)</span>
+            <div className="billing-kpi-icon" style={{ background: "rgba(255, 107, 0, 0.1)", color: "var(--primary)" }}>
+              <Building2 size={18} />
+            </div>
+          </div>
+          <div className="billing-kpi-value" style={{ fontSize: "1.1rem" }}>
+            {defaultAccount ? defaultAccount.bank_short || defaultAccount.bank_name.split("(")[0].trim() : "Chưa đặt"}
+          </div>
+          <div className="billing-kpi-subtext">
+            {defaultAccount ? `STK: ${defaultAccount.account_number} (${defaultAccount.account_name})` : "Nhấn 'Đặt mặc định'"}
+          </div>
+        </div>
+
+        <div className="billing-kpi-card">
+          <div className="billing-kpi-header">
+            <span className="billing-kpi-label">Cổng Webhook SePay</span>
+            <div className="billing-kpi-icon" style={{ background: activeBankConfig.sepay_api_key ? "rgba(16, 185, 129, 0.1)" : "rgba(245, 158, 11, 0.1)", color: activeBankConfig.sepay_api_key ? "#10b981" : "#f59e0b" }}>
+              <ShieldCheck size={18} />
+            </div>
+          </div>
+          <div className="billing-kpi-value" style={{ fontSize: "1.1rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            {activeBankConfig.sepay_api_key ? (
+              <>
+                <CheckCircle2 size={18} style={{ color: "#10b981" }} /> Đã Kết Nối API Key
+              </>
+            ) : (
+              <>
+                <AlertCircle size={18} style={{ color: "#f59e0b" }} /> Sẵn Sàng (Chưa nhập Key)
+              </>
+            )}
+          </div>
+          <div className="billing-kpi-subtext">
+            Tự động kích hoạt khi có biến động số dư
+          </div>
+        </div>
+      </div>
+
+      {/* Dynamic Bank Cards Grid (Full Multi-Account CRUD) */}
       <BankCardGrid
-        bankConfig={activeBankConfig}
-        onEditBank={() => {
-          const el = document.getElementById("bank-config-form-section");
-          if (el) el.scrollIntoView({ behavior: "smooth" });
-        }}
-        onDeleteBank={() => {
-          if (confirm("Bạn có chắc muốn xóa thông tin tài khoản này?")) {
-            const updated = {
-              ...activeBankConfig,
-              account_number: "",
-              account_name: "",
-            };
-            updateBankConfig(updated);
-            notify("Đã xóa thông tin tài khoản", "success");
-          }
-        }}
+        bankAccounts={bankAccounts}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onSetDefault={handleSetDefault}
+        onToggleStatus={handleToggleStatus}
+        onViewQr={handleViewQr}
+        onAddNew={handleAddNew}
+        onNotify={notify}
       />
 
-      {/* Main Settings Section: Form & SePay Webhook */}
-      <div id="bank-config-form-section" className="mf-two-col-grid">
-        <BankConfigForm
+      {/* Two-Column Section: Pricing Plans & SePay Webhook */}
+      <div className="mf-two-col-grid" style={{ marginTop: "0.5rem" }}>
+        <PricingPlansCard
           bankConfig={activeBankConfig}
-          setBankConfig={updateBankConfig}
-          onSuccess={(msg) => notify(msg, "success")}
-          onError={(err) => notify(err, "error")}
+          onUpdate={(updated) => {
+            setLocalBankConfig(updated);
+            if (propSetBankConfig) propSetBankConfig(updated);
+          }}
+          onNotify={notify}
         />
 
         <SepayWebhookBox
           bankConfig={activeBankConfig}
+          onUpdateConfig={(updated) => {
+            setLocalBankConfig(updated);
+            if (propSetBankConfig) propSetBankConfig(updated);
+          }}
           onCopySuccess={(msg) => notify(msg, "success")}
         />
       </div>
+
+      {/* Modals */}
+      <BankModal
+        isOpen={isBankModalOpen}
+        initialData={editingAccount}
+        onClose={() => setIsBankModalOpen(false)}
+        onSuccess={async (msg) => {
+          notify(msg, "success");
+          await loadData();
+        }}
+      />
+
+      <BankQrViewModal
+        isOpen={isQrModalOpen}
+        bankAccount={qrViewingAccount}
+        onClose={() => setIsQrModalOpen(false)}
+        onNotify={(msg) => notify(msg, "success")}
+      />
     </div>
   );
 };
