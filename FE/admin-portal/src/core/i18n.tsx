@@ -1,8 +1,29 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
-export type Language = "vi" | "en";
+export type Language = "vi" | "en" | "jp";
+export type SupportedLanguage = Language;
 
-export const translations = {
+export type TranslationDictionary = Record<string, string>;
+
+export interface ModuleTranslations {
+  vi: TranslationDictionary;
+  en: TranslationDictionary;
+  jp: TranslationDictionary;
+}
+
+// Global registry of module-level translations
+const moduleTranslationsRegistry: Record<string, ModuleTranslations> = {};
+
+/**
+ * Registers a module's language files (vn, en, jp) into the global i18n system.
+ * This allows each module in `modules/[module_name]/lang/` to be completely self-contained.
+ */
+export function registerModuleTranslations(moduleName: string, translations: ModuleTranslations) {
+  moduleTranslationsRegistry[moduleName] = translations;
+}
+
+// Base translations (shared across all modules)
+export const baseTranslations: Record<Language, TranslationDictionary> = {
   vi: {
     // Brand & App
     appName: "JACS Studio",
@@ -18,45 +39,34 @@ export const translations = {
     serviceSection: "CẤU HÌNH DỊCH VỤ",
     operationSection: "VẬN HÀNH",
 
-    menuOverview: "Tổng quan hệ thống",
-    menuLicenses: "Quản lý License Keys",
-    menuSessions: "Máy khách Desktop",
-    menuBilling: "Doanh thu & Dòng tiền",
-    menuPlans: "Quản lý gói cước",
-    menuRenewals: "Quản lý gia hạn",
+    menuOverview: "Tổng quan",
+    menuLicenses: "Quản lý người dùng",
+    menuSessions: "Máy khách Online",
+    menuBilling: "Ví & dòng tiền",
+    menuBankConfig: "Ngân hàng & QR",
+    menuPlans: "Cấu hình Credit",
+    menuRenewals: "Giao dịch nạp SePay",
     menuProviders: "AI Providers Gateway",
-    menuTelemetry: "Báo cáo vận hành & Logs",
-    menuReleases: "Bản phát hành & OTA",
+    menuTelemetry: "Nhật ký hệ thống",
+    menuReleases: "Bản phát hành OTA",
+    menuToolBranding: "Cài đặt công cụ",
+    menuTerms: "Phân quyền",
     menuSettings: "Cài đặt hệ thống",
 
     // Topbar
-    searchPlaceholder: "Tìm kiếm nhân viên, dự án, license, khách hàng...",
+    searchPlaceholder: "Tìm nhân viên, dự án, hợp đồng...",
     langVi: "Tiếng Việt",
     langEn: "English",
-    quickActionCreateLicense: "Cấp License Mới",
+    langJp: "日本語",
+    quickActionCreate: "Tạo mới",
+    quickActionCreateLicense: "Thêm người dùng",
     helpSupport: "Trợ giúp & Hỗ trợ",
     notifications: "Thông báo",
 
-    // Page Headers
-    overviewTitle: "Tổng quan hệ thống 👋",
-    overviewSubtitle: "Dữ liệu tài chính và vận hành API theo thời gian thực.",
-    licensesTitle: "Quản lý License Keys 🔑",
-    licensesSubtitle: "Quản lý cấp phát, phân quyền, khóa/mở khóa, gia hạn và đổi mã máy.",
-    sessionsTitle: "Giám sát Desktop Realtime 💻",
-    sessionsSubtitle: "Theo dõi tín hiệu heartbeat và thiết bị máy khách online.",
-    billingTitle: "Doanh thu & Dòng tiền 💳",
-    billingSubtitle: "Hồ sơ thu chi, lịch sử nạp tiền, phân bổ gói và doanh thu thời gian thực.",
-    providersTitle: "Cấu hình AI Gateway 🤖",
-    providersSubtitle: "Quản lý kết nối OpenAI, Gemini và Custom Endpoints.",
-    telemetryTitle: "Báo cáo vận hành & Logs 📄",
-    telemetrySubtitle: "Báo cáo sự cố, nhật ký phân tích và telemetry từ Desktop Tool.",
-    settingsTitle: "Cài đặt & Quản trị hệ thống ⚙️",
-    settingsSubtitle: "Cấu hình thương hiệu studio, mặc định license, sao lưu dữ liệu và môi trường runtime.",
-
     // Action buttons
     refresh: "Làm mới",
-    createLicense: "Cấp License Mới",
-    addTransaction: "Thêm Giao Dịch",
+    createLicense: "Thêm người dùng",
+    addTransaction: "Ghi Nhận Giao Dịch",
     addProvider: "Thêm Provider Mới",
     createManualLog: "Tạo Log Test",
     clearLogs: "Xóa toàn bộ logs",
@@ -73,115 +83,20 @@ export const translations = {
     testLatency: "⚡ Test Latency",
     close: "Đóng",
 
-    // KPI Cards
-    kpiBalanceLabel: "Số dư API / Doanh thu tháng",
-    kpiBalanceSub1: "↗ Trực tiếp",
-    kpiBalanceSub2: "Số dư khả dụng",
-    kpiTotalRevenueLabel: "Tổng tiền nạp / Doanh thu",
-    kpiTotalRevenueSub1: "↗ Ví",
-    kpiTotalRevenueSub2: "Theo giao dịch ví",
-    kpiActiveKeysLabel: "License đang hoạt động",
-    kpiActiveKeysSub1: "hết hạn / bị khóa",
-    kpiActiveKeysSub2: "tổng số key",
-    kpiDesktopOnlineLabel: "Máy khách Desktop Online",
-    kpiDesktopOnlineSub1: "online",
-    kpiDesktopOnlineSub2: "thiết bị đã cài",
-
-    // Charts
-    chartApiUsageTitle: "Chi phí và request API",
-    chartApiUsageSubtitle: "Dựa trên request log 7 ngày gần nhất",
-    chartCostLegend: "Chi phí API",
-    chartRequestLegend: "Tổng API request",
-    chartKeyStatusTitle: "Trạng thái API key",
-    chartKeyStatusSub: "key đang quản lý",
-    donutStatusActive: "Đang hoạt động",
-    donutStatusOther: "Khác / Hết hạn",
-    donutStatusLifetime: "Bản quyền Vĩnh viễn",
-
-    // Days of week
-    dayThu: "Thứ 5",
-    dayFri: "Thứ 6",
-    daySat: "Thứ 7",
-    daySun: "CN",
-    dayMon: "Thứ 2",
-    dayTue: "Thứ 3",
-    dayWed: "Thứ 4",
-
-    // Table Headers
-    thCustomer: "Khách hàng & Logo",
-    thKeyHwid: "Key Hint & Device ID (HWID)",
-    thExpiryLimits: "Hạn Dùng & Giới Hạn",
-    thDeviceLastSeen: "Thiết Bị & Lần Cuối Online",
-    thStatus: "Trạng Thái",
-    thActions: "Thao Tác",
-    thTxId: "Mã Giao Dịch",
-    thPlan: "Gói Dịch Vụ",
-    thTxType: "Loại Giao Dịch",
-    thAmount: "Số Tiền",
-    thMethod: "Phương Thức",
-    thTime: "Thời Gian",
-    thIp: "Địa Chỉ IP",
-    thOsVersion: "Hệ Điều Hành & Bản Tool",
-
-    // Filter & Statuses
-    allStatus: "Tất cả trạng thái",
-    statusActive: "Đang hoạt động (Active)",
-    statusBlocked: "Đang bị khóa (Blocked)",
-    statusExpired: "Đã hết hạn (Expired)",
+    // Status
+    statusActive: "Hoạt động",
+    statusLocked: "Đã khóa",
+    statusExpired: "Hết hạn",
     statusOnline: "Online",
     statusOffline: "Offline",
-    lifetime: "Vĩnh viễn",
-    unlimited: "Không giới hạn",
 
-    // Empty states
-    noLicensesFound: "Không tìm thấy license nào phù hợp.",
-    noSessionsFound: "Chưa có thiết bị nào kích hoạt và gửi heartbeat.",
-    noTransactionsFound: "Chưa có giao dịch nạp tiền nào được ghi nhận.",
-    noProvidersFound: "Chưa có provider nào được cấu hình.",
-    noLogsFound: "Không có sự cố nào được ghi nhận. Hệ thống vận hành hoàn toàn ổn định.",
-
-    // Modals
-    modalCreateLicenseTitle: "Cấp License Khách Hàng Mới",
-    modalEditLicenseTitle: "Chỉnh Sửa Thông Tin License",
-    modalRenewLicenseTitle: "Gia Hạn Bản Quyền License",
-    modalResetHwidTitle: "Đổi Mã Máy (HWID Reset)",
-    modalDeleteLicenseTitle: "Xác Nhận Xóa License",
-    modalCreatedSuccessTitle: "Cấp License Thành Công!",
-    modalAddTransactionTitle: "Thêm Giao Dịch / Nạp Tiền Thủ Công",
-    modalEditProviderTitle: "Chỉnh Sửa AI Provider",
-    modalAddProviderTitle: "Thêm AI Provider Mới",
-    modalDeleteConfirmText: "Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác.",
-
-    // Form fields
-    fieldCustomerName: "Tên Khách Hàng / Studio *",
-    fieldContact: "Liên Hệ (Email / SĐT) *",
-    fieldHwid: "Mã Máy Tính Thiết Bị (HWID) *",
-    fieldOldHwid: "Mã Máy Tính Cũ (HWID)",
-    fieldNewHwid: "Mã Máy Tính Mới (HWID) *",
-    fieldDays: "Thời Hạn (Số Ngày)",
-    fieldMaxJobs: "Giới Hạn Render Jobs/Ngày",
-    fieldBillAmount: "Số Tiền Thu (VND)",
-    fieldPlanName: "Tên Gói Dịch Vụ",
-    fieldLogoUrl: "Link Logo Thương Hiệu Khách Hàng (URL)",
-    fieldNotes: "Ghi Chú Đơn Hàng",
-    fieldReason: "Lý Do",
-    fieldPaymentMethod: "Phương Thức Thanh Toán",
-    fieldTxType: "Loại Giao Dịch",
-    fieldProviderName: "Tên hiển thị",
-    fieldType: "Loại Provider",
-    fieldBaseUrl: "Base URL",
-    fieldModel: "Model Vision & Text",
-    fieldApiKey: "API Key",
-    fieldCapabilities: "Khả Năng / Tính Năng",
-
-    // Login Page
-    loginTitle: "Đăng Nhập Quản Trị Hệ Thống",
-    loginSubtitle: "Nhập thông tin quản trị viên để truy cập bảng điều khiển",
-    loginEmailLabel: "Email Quản Trị",
-    loginPasswordLabel: "Mật Khẩu",
-    loginBtn: "Đăng Nhập Quản Trị",
-    loginSecurityBadge: "Bảo mật End-to-End với JWT Session Token",
-    loginError: "Email hoặc mật khẩu không chính xác",
+    // Common Messages
+    noLicensesFound: "Không tìm thấy người dùng nào",
+    noTransactionsFound: "Không có giao dịch nào trong khoảng thời gian này",
+    noSessionsFound: "Chưa có máy khách Desktop nào đang hoạt động",
+    noProvidersFound: "Chưa có provider AI nào",
+    noLogsFound: "Chưa có nhật ký sự cố nào",
+    noReleasesFound: "Chưa có bản phát hành nào",
   },
   en: {
     // Brand & App
@@ -189,7 +104,7 @@ export const translations = {
     appSuite: "BUSINESS SUITE",
     superAdmin: "Super Admin",
     adminSuperuser: "System Administrator",
-    logout: "Sign Out",
+    logout: "Log out",
 
     // Sidebar Headings & Menus
     workspaceSection: "WORKSPACE",
@@ -198,49 +113,38 @@ export const translations = {
     serviceSection: "SERVICE CONFIGURATION",
     operationSection: "OPERATIONS",
 
-    menuOverview: "System Overview",
-    menuLicenses: "License Keys Manager",
-    menuSessions: "Desktop Clients",
-    menuBilling: "Revenue & Cashflow",
-    menuPlans: "Plans & Pricing",
-    menuRenewals: "Subscriptions & Renewals",
+    menuOverview: "Overview",
+    menuLicenses: "User Management",
+    menuSessions: "Online Clients",
+    menuBilling: "Wallet & Cashflow",
+    menuBankConfig: "Bank & QR",
+    menuPlans: "Credit Plans",
+    menuRenewals: "SePay Topups",
     menuProviders: "AI Providers Gateway",
-    menuTelemetry: "Incident Reports & Logs",
-    menuReleases: "Releases & OTA Updates",
+    menuTelemetry: "System Logs",
+    menuReleases: "OTA Releases",
+    menuToolBranding: "Tool Settings",
+    menuTerms: "Permissions & Terms",
     menuSettings: "System Settings",
 
     // Topbar
-    searchPlaceholder: "Search users, projects, licenses, clients...",
+    searchPlaceholder: "Search users, projects, keys...",
     langVi: "Tiếng Việt",
     langEn: "English",
-    quickActionCreateLicense: "Issue New License",
+    langJp: "日本語",
+    quickActionCreate: "Create New",
+    quickActionCreateLicense: "Add User",
     helpSupport: "Help & Support",
     notifications: "Notifications",
 
-    // Page Headers
-    overviewTitle: "System Overview 👋",
-    overviewSubtitle: "Real-time financial and API operational analytics.",
-    licensesTitle: "License Keys Management 🔑",
-    licensesSubtitle: "Manage issuance, permissions, lock/unlock, renewal and HWID resets.",
-    sessionsTitle: "Real-time Desktop Monitoring 💻",
-    sessionsSubtitle: "Monitor heartbeat signals and active desktop client sessions.",
-    billingTitle: "Revenue & Cashflow 💳",
-    billingSubtitle: "Top-up history, plan allocations and real-time revenue analytics.",
-    providersTitle: "AI Gateway Configuration 🤖",
-    providersSubtitle: "Manage OpenAI, Gemini and Custom Endpoints.",
-    telemetryTitle: "Operations & Incident Logs 📄",
-    telemetrySubtitle: "Real-time error logs, analysis telemetry from Desktop tools.",
-    settingsTitle: "System & Administration Settings ⚙️",
-    settingsSubtitle: "Studio branding, default limits, database backup/restore and runtime diagnostics.",
-
     // Action buttons
     refresh: "Refresh",
-    createLicense: "Issue License",
-    addTransaction: "Add Transaction",
+    createLicense: "Add User",
+    addTransaction: "Record Transaction",
     addProvider: "Add Provider",
     createManualLog: "Create Test Log",
     clearLogs: "Clear all logs",
-    saveChanges: "Save Changes",
+    saveChanges: "Save changes",
     confirm: "Confirm",
     cancel: "Cancel",
     delete: "Delete",
@@ -249,162 +153,166 @@ export const translations = {
     resetHwid: "Reset HWID",
     copy: "Copy",
     copied: "Copied",
-    terminateSession: "Terminate Session",
+    terminateSession: "Terminate",
     testLatency: "⚡ Test Latency",
     close: "Close",
 
-    // KPI Cards
-    kpiBalanceLabel: "API Balance / Monthly Revenue",
-    kpiBalanceSub1: "↗ Direct",
-    kpiBalanceSub2: "Available Balance",
-    kpiTotalRevenueLabel: "Total Deposits / Revenue",
-    kpiTotalRevenueSub1: "↗ Wallet",
-    kpiTotalRevenueSub2: "By wallet transactions",
-    kpiActiveKeysLabel: "Active Licenses",
-    kpiActiveKeysSub1: "expired / blocked",
-    kpiActiveKeysSub2: "total licenses",
-    kpiDesktopOnlineLabel: "Online Desktop Clients",
-    kpiDesktopOnlineSub1: "online",
-    kpiDesktopOnlineSub2: "installed devices",
-
-    // Charts
-    chartApiUsageTitle: "API Costs & Requests",
-    chartApiUsageSubtitle: "Based on 7-day API request telemetry",
-    chartCostLegend: "API Cost",
-    chartRequestLegend: "Total API Requests",
-    chartKeyStatusTitle: "API Key Status",
-    chartKeyStatusSub: "keys managed",
-    donutStatusActive: "Active",
-    donutStatusOther: "Other / Expired",
-    donutStatusLifetime: "Lifetime License",
-
-    // Days of week
-    dayThu: "Thu",
-    dayFri: "Fri",
-    daySat: "Sat",
-    daySun: "Sun",
-    dayMon: "Mon",
-    dayTue: "Tue",
-    dayWed: "Wed",
-
-    // Table Headers
-    thCustomer: "Customer & Logo",
-    thKeyHwid: "Key Hint & Device ID (HWID)",
-    thExpiryLimits: "Expiry & Limits",
-    thDeviceLastSeen: "Device & Last Seen",
-    thStatus: "Status",
-    thActions: "Actions",
-    thTxId: "Transaction ID",
-    thPlan: "Plan Name",
-    thTxType: "Transaction Type",
-    thAmount: "Amount",
-    thMethod: "Method",
-    thTime: "Timestamp",
-    thIp: "IP Address",
-    thOsVersion: "OS & App Version",
-
-    // Filter & Statuses
-    allStatus: "All Statuses",
+    // Status
     statusActive: "Active",
-    statusBlocked: "Blocked",
+    statusLocked: "Locked",
     statusExpired: "Expired",
     statusOnline: "Online",
     statusOffline: "Offline",
-    lifetime: "Lifetime",
-    unlimited: "Unlimited",
 
-    // Empty states
-    noLicensesFound: "No licenses found matching the filter.",
-    noSessionsFound: "No desktop clients have connected yet.",
-    noTransactionsFound: "No billing transactions recorded.",
-    noProvidersFound: "No AI providers configured yet.",
-    noLogsFound: "No incidents recorded. System is operating normally.",
+    // Common Messages
+    noLicensesFound: "No users found",
+    noTransactionsFound: "No transactions found in this period",
+    noSessionsFound: "No desktop clients currently online",
+    noProvidersFound: "No AI providers configured",
+    noLogsFound: "No logs or telemetry events recorded",
+    noReleasesFound: "No releases found",
+  },
+  jp: {
+    // Brand & App
+    appName: "JACS Studio",
+    appSuite: "BUSINESS SUITE",
+    superAdmin: "Super Admin",
+    adminSuperuser: "システム管理者",
+    logout: "ログアウト",
 
-    // Modals
-    modalCreateLicenseTitle: "Issue New Customer License",
-    modalEditLicenseTitle: "Edit License Information",
-    modalRenewLicenseTitle: "Renew License Validity",
-    modalResetHwidTitle: "Reset Device ID (HWID)",
-    modalDeleteLicenseTitle: "Confirm License Deletion",
-    modalCreatedSuccessTitle: "License Issued Successfully!",
-    modalAddTransactionTitle: "Manual Transaction / Top-up",
-    modalEditProviderTitle: "Edit AI Provider",
-    modalAddProviderTitle: "Add New AI Provider",
-    modalDeleteConfirmText: "Are you sure you want to delete this item? This action cannot be undone.",
+    // Sidebar Headings & Menus
+    workspaceSection: "ワークスペース",
+    accessSection: "アカウントとアクセス",
+    billingSection: "クレジットと決済",
+    serviceSection: "サービス設定",
+    operationSection: "運用管理",
 
-    // Form fields
-    fieldCustomerName: "Customer / Studio Name *",
-    fieldContact: "Contact (Email / Phone) *",
-    fieldHwid: "Device ID (HWID) *",
-    fieldOldHwid: "Old Device ID (HWID)",
-    fieldNewHwid: "New Device ID (HWID) *",
-    fieldDays: "Duration (Days)",
-    fieldMaxJobs: "Daily Render Jobs Limit",
-    fieldBillAmount: "Billing Amount",
-    fieldPlanName: "Plan Name",
-    fieldLogoUrl: "Customer Brand Logo URL",
-    fieldNotes: "Order Notes",
-    fieldReason: "Reason",
-    fieldPaymentMethod: "Payment Method",
-    fieldTxType: "Transaction Type",
-    fieldProviderName: "Display Name",
-    fieldType: "Provider Type",
-    fieldBaseUrl: "Base URL",
-    fieldModel: "Vision & Text Model",
-    fieldApiKey: "API Key",
-    fieldCapabilities: "Capabilities",
+    menuOverview: "概要",
+    menuLicenses: "ユーザー管理",
+    menuSessions: "オンラインクライアント",
+    menuBilling: "ウォレットと入出金",
+    menuBankConfig: "銀行とQR決済",
+    menuPlans: "プラン設定",
+    menuRenewals: "SePay入金トランザクション",
+    menuProviders: "AIゲートウェイ",
+    menuTelemetry: "システムログ",
+    menuReleases: "OTAリリース",
+    menuToolBranding: "ツール設定",
+    menuTerms: "権限と規約",
+    menuSettings: "システム設定",
 
-    // Login Page
-    loginTitle: "System Administration Login",
-    loginSubtitle: "Sign in with administrator credentials to access the suite",
-    loginEmailLabel: "Admin Email",
-    loginPasswordLabel: "Password",
-    loginBtn: "Sign In to Dashboard",
-    loginSecurityBadge: "End-to-End Encrypted with JWT Session Token",
-    loginError: "Invalid email or password",
+    // Topbar
+    searchPlaceholder: "ユーザー、プロジェクト、キーを検索...",
+    langVi: "Tiếng Việt",
+    langEn: "English",
+    langJp: "日本語",
+    quickActionCreate: "新規作成",
+    quickActionCreateLicense: "ユーザー追加",
+    helpSupport: "ヘルプとサポート",
+    notifications: "通知",
+
+    // Action buttons
+    refresh: "更新",
+    createLicense: "ユーザー追加",
+    addTransaction: "取引記録",
+    addProvider: "プロバイダ追加",
+    createManualLog: "テストログ作成",
+    clearLogs: "全ログ消去",
+    saveChanges: "変更を保存",
+    confirm: "確認",
+    cancel: "キャンセル",
+    delete: "削除",
+    edit: "編集",
+    renew: "更新",
+    resetHwid: "HWIDリセット",
+    copy: "コピー",
+    copied: "コピー完了",
+    terminateSession: "セッション切断",
+    testLatency: "⚡ レイテンシ測定",
+    close: "閉じる",
+
+    // Status
+    statusActive: "有効",
+    statusLocked: "ロック中",
+    statusExpired: "期限切れ",
+    statusOnline: "オンライン",
+    statusOffline: "オフライン",
+
+    // Common Messages
+    noLicensesFound: "ユーザーが見つかりません",
+    noTransactionsFound: "取引データがありません",
+    noSessionsFound: "オンラインのクライアントはいません",
+    noProvidersFound: "AIプロバイダが設定されていません",
+    noLogsFound: "ログイベントはありません",
+    noReleasesFound: "リリースが見つかりません",
   },
 };
 
-export type TranslationKey = keyof typeof translations.vi;
-
-interface I18nContextType {
+interface I18nContextValue {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: TranslationKey, defaultText?: string) => string;
+  t: (key: string, fallback?: string) => string;
 }
 
-const I18nContext = createContext<I18nContextType>({
+const I18nContext = createContext<I18nContextValue>({
   language: "vi",
   setLanguage: () => {},
-  t: (key) => key,
+  t: (key, fallback) => fallback || key,
 });
 
-export function I18nProvider({ children }: { children: React.ReactNode }) {
+export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem("jacs_admin_lang");
-    return saved === "en" || saved === "vi" ? saved : "vi";
+    const saved = localStorage.getItem("jacs.admin.lang") as Language;
+    if (saved === "vi" || saved === "en" || saved === "jp") return saved;
+    return "vi";
   });
 
-  function setLanguage(lang: Language) {
+  const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem("jacs_admin_lang", lang);
-  }
+    localStorage.setItem("jacs.admin.lang", lang);
+  };
 
-  function t(key: TranslationKey, defaultText?: string): string {
-    const langDict = translations[language];
-    if (langDict && key in langDict) {
-      return (langDict as Record<string, string>)[key];
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
+  const t = (key: string, fallback?: string): string => {
+    // 1. Check if the key contains a dot (e.g. "licenses.title", "billing.bankConfig")
+    if (key.includes(".")) {
+      const [moduleName, subKey] = key.split(".", 2);
+      const mod = moduleTranslationsRegistry[moduleName];
+      if (mod && mod[language] && mod[language][subKey]) {
+        return mod[language][subKey];
+      }
     }
-    return defaultText || key;
-  }
+
+    // 2. Check in all registered module translations
+    for (const modName of Object.keys(moduleTranslationsRegistry)) {
+      const mod = moduleTranslationsRegistry[modName];
+      if (mod && mod[language] && mod[language][key]) {
+        return mod[language][key];
+      }
+    }
+
+    // 3. Check base translations
+    const baseDict = baseTranslations[language] || baseTranslations.vi;
+    if (baseDict[key]) {
+      return baseDict[key];
+    }
+
+    // 4. Fallback to vi base translation
+    if (baseTranslations.vi[key]) {
+      return baseTranslations.vi[key];
+    }
+
+    return fallback !== undefined ? fallback : key;
+  };
 
   return (
     <I18nContext.Provider value={{ language, setLanguage, t }}>
       {children}
     </I18nContext.Provider>
   );
-}
+};
 
-export function useI18n() {
-  return useContext(I18nContext);
-}
+export const useI18n = () => useContext(I18nContext);
