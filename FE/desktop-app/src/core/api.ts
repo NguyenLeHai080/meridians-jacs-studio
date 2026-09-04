@@ -1,4 +1,5 @@
 import type { ClientMetrics, TimelineClip } from "./types";
+export type { ClientMetrics, TimelineClip };
 
 function apiUrl() {
   return (
@@ -50,6 +51,8 @@ export async function getBankConfig(): Promise<BankConfigPublic> {
 export async function validateLicense(key: string, hwid: string) {
   return request<{ valid: boolean; license_id: string; customer_name?: string | null; logo_url?: string | null; premium_ai: boolean; expires_at: string | null; max_jobs_per_day?: number }>("/api/v1/licenses/validate", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid) }) });
 }
+
+export const activateLicense = validateLicense;
 
 export async function heartbeatLicense(key: string, hwid: string, appVersion: string, platform: string) {
   return request<{ valid: boolean; license_id: string; customer_name?: string | null; logo_url?: string | null; premium_ai: boolean; expires_at: string | null; max_jobs_per_day?: number }>("/api/v1/licenses/heartbeat", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid), app_version: appVersion, platform }) });

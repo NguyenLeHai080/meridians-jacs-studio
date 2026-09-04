@@ -15,6 +15,7 @@ import {
   Clock,
   Download,
   ExclamationTriangle,
+  FileEarmarkText,
   Folder,
   Fullscreen,
   Film,
@@ -29,6 +30,7 @@ import {
   Play,
   Plus,
   QrCodeScan,
+  Search,
   Sliders,
   Scissors,
   Stars,
@@ -68,12 +70,14 @@ export type IconName =
   | "volume-mute"
   | "maximize"
   | "chevron"
+  | "chevron-down"
   | "chevron-left"
   | "chevron-right"
   | "download"
   | "music"
   | "captions"
   | "video"
+  | "film"
   | "timeline"
   | "mic"
   | "link"
@@ -90,6 +94,8 @@ export type IconName =
   | "zoom-in"
   | "zoom-out"
   | "chat"
+  | "search"
+  | "file-text"
   | "alert"
   | "x";
 
@@ -115,6 +121,7 @@ const ICONS = {
   "volume-mute": VolumeMute,
   maximize: Fullscreen,
   chevron: ChevronDown,
+  "chevron-down": ChevronDown,
   "chevron-left": ChevronLeft,
   "chevron-right": ChevronRight,
   download: Download,
@@ -122,6 +129,7 @@ const ICONS = {
   music: MusicNoteBeamed,
   captions: BadgeCc,
   video: CameraVideo,
+  film: Film,
   timeline: Film,
   mic: Mic,
   link: Link45deg,
@@ -138,6 +146,8 @@ const ICONS = {
   "zoom-in": ZoomIn,
   "zoom-out": ZoomOut,
   chat: ChatQuote,
+  search: Search,
+  "file-text": FileEarmarkText,
   x: XLg,
 } as const;
 

@@ -44,7 +44,7 @@ code giữa hai ngôn ngữ.
 
 ## Desktop module hiện tại
 
-`Tool/desktop-app/src` đang dùng các module React sau:
+`FE/desktop-app/src` đang dùng các module React sau:
 
 ```text
 core/       types, runtime bridge, API và state policy dùng chung
