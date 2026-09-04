@@ -1,7 +1,7 @@
 @use 'variables' as *;
 
 .sidebar {
-  width: 260px;
+  width: 255px;
   background-color: $bg-sidebar;
   display: flex;
   flex-direction: column;
@@ -15,7 +15,7 @@
 }
 
 .sidebar-header {
-  padding: 1.25rem 1.25rem 1rem;
+  padding: 1.25rem 1.25rem 1.1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -31,16 +31,16 @@
 }
 
 .brand-logo-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: $primary-gradient;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: $primary;
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   letter-spacing: -0.5px;
   box-shadow: 0 4px 10px rgba(249, 87, 56, 0.35);
 }
@@ -53,39 +53,39 @@
 .brand-title {
   font-weight: 800;
   font-size: 1.05rem;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.3px;
   line-height: 1.1;
   color: #ffffff;
 }
 
 .brand-badge-sub {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: $sidebar-heading;
   text-transform: uppercase;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .sidebar-menu {
   flex: 1;
   overflow-y: auto;
-  padding: 1.25rem 0.75rem;
+  padding: 1rem 0.65rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
 .menu-heading {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 800;
-  color: $sidebar-heading;
+  color: #55627a;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 0.85rem 0.75rem 0.35rem;
 
   &:first-child {
-    padding-top: 0;
+    padding-top: 0.25rem;
   }
 }
 
@@ -93,9 +93,9 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.55rem 0.75rem;
+  padding: 0.52rem 0.75rem;
   border-radius: $radius-md;
-  color: $sidebar-item;
+  color: #94a3b8;
   text-decoration: none;
   font-weight: 600;
   font-size: 0.82rem;
@@ -108,21 +108,21 @@
   position: relative;
 
   &:hover {
-    color: $sidebar-active;
+    color: #ffffff;
     background-color: rgba(255, 255, 255, 0.05);
   }
 
   &.active {
-    color: $sidebar-active;
-    background-color: rgba(249, 87, 56, 0.12);
+    color: #ffffff;
+    background-color: rgba(249, 87, 56, 0.14);
     font-weight: 700;
 
     &::before {
       content: '';
       position: absolute;
       left: 0;
-      top: 6px;
-      bottom: 6px;
+      top: 5px;
+      bottom: 5px;
       width: 3.5px;
       border-radius: 0 4px 4px 0;
       background: $primary;
@@ -172,8 +172,62 @@
   color: #fbbf24;
 }
 
+// Bottom Promo Card
+.sidebar-promo-card {
+  margin: 0.5rem 0.65rem 0.75rem;
+  padding: 0.95rem 1rem;
+  border-radius: 12px;
+  background: #151824;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+
+  .promo-header-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .promo-sparkle-icon {
+    font-size: 1rem;
+    color: #f95738;
+  }
+
+  .promo-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .promo-desc {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    line-height: 1.35;
+  }
+
+  .btn-promo-learn-more {
+    margin-top: 0.35rem;
+    padding: 0.42rem 0.85rem;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 0.74rem;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: #f1f5f9;
+      transform: translateY(-1px);
+    }
+  }
+}
+
 .sidebar-footer {
-  padding: 1rem 1.25rem;
+  padding: 0.85rem 1rem;
   border-top: 1px solid $border-sidebar;
 }
 
@@ -212,7 +266,7 @@
 }
 
 .user-role {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: $sidebar-heading;
 }
 
@@ -233,3 +287,4 @@
     color: #ef4444;
   }
 }
+

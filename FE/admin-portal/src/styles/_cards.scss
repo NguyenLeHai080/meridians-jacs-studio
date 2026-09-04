@@ -9,49 +9,54 @@
 
 .kpi-card-mf {
   background: #ffffff;
-  border-radius: $radius-xl;
-  border: 1px solid $border-light;
-  padding: 1.35rem 1.5rem;
-  box-shadow: $shadow-card;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 1.15rem 1.35rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: 1rem;
   transition: all 0.2s ease;
 
   &:hover {
-    box-shadow: $shadow-card-hover;
-    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
   }
 }
 
-.kpi-squircle-badge {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
+.kpi-circle-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-}
 
-.squircle-orange {
-  background: $squircle-orange-bg;
-  color: $squircle-orange-icon;
-}
+  &.circle-orange {
+    background: #fff7ed;
+    color: #ea580c;
+  }
 
-.squircle-green {
-  background: $squircle-green-bg;
-  color: $squircle-green-icon;
-}
+  &.circle-green {
+    background: #ecfdf5;
+    color: #10b981;
+  }
 
-.squircle-blue {
-  background: $squircle-blue-bg;
-  color: $squircle-blue-icon;
-}
+  &.circle-rose {
+    background: #fff1f2;
+    color: #f43f5e;
+  }
 
-.squircle-purple {
-  background: $squircle-purple-bg;
-  color: $squircle-purple-icon;
+  &.circle-blue {
+    background: #eff6ff;
+    color: #3b82f6;
+  }
+
+  &.circle-purple {
+    background: #f5f3ff;
+    color: #8b5cf6;
+  }
 }
 
 .kpi-content-box {
@@ -60,26 +65,34 @@
 }
 
 .kpi-label-mf {
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 600;
-  color: $text-muted;
-  margin-bottom: 0.25rem;
+  color: #64748b;
+  margin-bottom: 0.2rem;
 }
 
 .kpi-value-mf {
   font-size: 1.45rem;
   font-weight: 800;
-  color: $text-dark;
-  letter-spacing: -0.5px;
-  line-height: 1.2;
+  color: #0f172a;
+  letter-spacing: -0.4px;
+  line-height: 1.15;
+}
+
+.kpi-subtext-right {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-top: 0.2rem;
+  text-align: right;
+  margin-left: auto;
 }
 
 .kpi-subtext-indicator {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-size: 0.75rem;
-  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  margin-top: 0.3rem;
 }
 
 .subtext-green {
@@ -96,6 +109,210 @@
   color: $text-muted;
 }
 
+// 2-Column Bank Cards Grid (Screenshot 2)
+.bank-cards-grid-mf {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.bank-card-mf {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  }
+
+  .bank-card-tags-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .tag-pill-purpose {
+    padding: 0.25rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+
+    &.purpose-customer {
+      background: #eff6ff;
+      color: #2563eb;
+    }
+
+    &.purpose-supplier {
+      background: #fff7ed;
+      color: #ea580c;
+    }
+  }
+
+  .tag-status-active {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #10b981;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .bank-card-body-split {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 1.5rem;
+    align-items: center;
+  }
+
+  .vietqr-preview-box {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+
+    .vietqr-top-logo {
+      height: 18px;
+      margin-bottom: 0.5rem;
+      object-fit: contain;
+    }
+
+    .vietqr-code-img {
+      width: 140px;
+      height: 140px;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .vietqr-bottom-footer {
+      margin-top: 0.5rem;
+      font-size: 0.65rem;
+      color: #64748b;
+      text-align: center;
+      line-height: 1.25;
+
+      .account-text {
+        font-weight: 700;
+        color: #0f172a;
+      }
+    }
+  }
+
+  .bank-details-column {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+    gap: 1rem;
+  }
+
+  .bank-header-group {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+
+    .bank-building-icon {
+      color: #64748b;
+    }
+
+    .bank-name-text {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.2;
+    }
+
+    .bank-short-code {
+      font-size: 0.72rem;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+  }
+
+  .bank-field-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+
+    .bank-field-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+
+      .field-label {
+        width: 95px;
+        color: #64748b;
+        font-size: 0.76rem;
+        flex-shrink: 0;
+      }
+
+      .field-value {
+        font-weight: 700;
+        color: #0f172a;
+        word-break: break-all;
+      }
+    }
+  }
+
+  .bank-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+  }
+}
+
+// Button table / card actions
+.btn-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+
+  &:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+  }
+
+  &.action-edit {
+    color: #334155;
+    &:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+  }
+
+  &.action-delete {
+    color: #dc2626;
+    background: #fef2f2;
+    border-color: #fecaca;
+    &:hover {
+      background: #fee2e2;
+      border-color: #fca5a5;
+    }
+  }
+}
+
 // Charts Layout Grid
 .charts-grid-mintforge {
   display: grid;
@@ -106,10 +323,10 @@
 
 .mf-card-panel {
   background: $bg-card;
-  border-radius: $radius-xl;
+  border-radius: 12px;
   border: 1px solid $border-light;
   padding: 1.5rem;
-  box-shadow: $shadow-card;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .mf-card-header {
@@ -128,109 +345,9 @@
   }
 
   p {
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     color: $text-muted;
     margin-top: 0.15rem;
   }
 }
 
-.mf-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.pill-dropdown-year {
-  padding: 0.25rem 0.65rem;
-  border-radius: $radius-full;
-  border: 1px solid $border-light;
-  background: #ffffff;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: $text-muted;
-  outline: none;
-  cursor: pointer;
-}
-
-.btn-dot-menu {
-  background: none;
-  border: none;
-  color: $text-dim;
-  cursor: pointer;
-  padding: 0.2rem 0.5rem;
-  font-size: 1rem;
-  line-height: 1;
-  border-radius: 4px;
-
-  &:hover {
-    color: $text-dark;
-    background: #f1f5f9;
-  }
-}
-
-.mf-chart-legend {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-  font-size: 0.78rem;
-  color: $text-muted;
-  font-weight: 600;
-  margin-bottom: 1rem;
-}
-
-.mf-legend-dot-orange {
-  color: $primary;
-}
-
-.mf-legend-dot-navy {
-  color: #1e293b;
-}
-
-.mf-donut-status-layout {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  padding: 0.5rem 0;
-}
-
-.mf-donut-left {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mf-donut-center-text {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.mf-donut-count {
-  font-size: 1.45rem;
-  font-weight: 800;
-  color: $text-dark;
-}
-
-.mf-donut-label {
-  font-size: 0.72rem;
-  color: $text-muted;
-}
-
-.mf-donut-breakdown {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.mf-breakdown-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.8rem;
-  color: $text-body;
-}

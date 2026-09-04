@@ -38,6 +38,7 @@ import {
   Activity,
   Menu,
   User,
+  UserCheck,
   KeyRound,
   Rocket,
   QrCode,
@@ -1293,10 +1294,10 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       <aside className={`sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-header">
           <a href="#" className="brand-logo" onClick={(e) => { e.preventDefault(); setActiveMenu("overview"); setMobileMenuOpen(false); }}>
-            <div className="brand-logo-icon">JS</div>
+            <div className="brand-logo-icon">MI</div>
             <div className="brand-title-box">
-              <span className="brand-title">{t("appName")}</span>
-              <span className="brand-badge-sub">{t("appSuite")}</span>
+              <span className="brand-title">MintForge</span>
+              <span className="brand-badge-sub">BUSINESS SUITE</span>
             </div>
           </a>
           {mobileMenuOpen && (
@@ -1312,100 +1313,35 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
 
         <div className="sidebar-menu">
-          <div className="menu-heading">{t("workspaceSection")}</div>
+          <div className="menu-heading">KHÔNG GIAN LÀM VIỆC</div>
+          
+          <div className="menu-heading" style={{ paddingTop: "0.4rem" }}>TỔNG QUAN</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "overview" ? "active" : ""}`}
             onClick={() => { setActiveMenu("overview"); setMobileMenuOpen(false); }}
           >
-            <span className="menu-icon"><LayoutDashboard size={18} /></span>
-            <span className="menu-label">{t("menuOverview")}</span>
+            <span className="menu-icon"><Activity size={17} /></span>
+            <span className="menu-label">Tổng quan hệ thống</span>
           </button>
 
-          <div className="menu-heading">{t("accessSection")}</div>
+          <div className="menu-heading">TÀI KHOẢN & TRUY CẬP</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "licenses" ? "active" : ""}`}
             onClick={() => { setActiveMenu("licenses"); setMobileMenuOpen(false); }}
           >
-            <span className="menu-icon"><Key size={18} /></span>
-            <span className="menu-label">{t("menuLicenses")}</span>
-            <span className="menu-badge badge-primary">{activeLicensesCount}</span>
+            <span className="menu-icon"><User size={17} /></span>
+            <span className="menu-label">Tài khoản</span>
           </button>
 
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
-            onClick={() => { setActiveMenu("sessions"); setMobileMenuOpen(false); }}
-          >
-            <span className="menu-icon"><Laptop size={18} /></span>
-            <span className="menu-label">{t("menuSessions")}</span>
-            <span className="menu-badge badge-primary">{sessions.length}</span>
-          </button>
-
-          <div className="menu-heading">{t("billingSection")}</div>
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "billing" ? "active" : ""}`}
-            onClick={() => { setActiveMenu("billing"); setMobileMenuOpen(false); }}
-          >
-            <span className="menu-icon"><CreditCard size={18} /></span>
-            <span className="menu-label">{t("menuBilling")}</span>
-            <span className="menu-badge badge-warning">{billingSummary?.total_revenue ? `${(billingSummary.total_revenue / 1000000).toFixed(1)}M` : `${transactions.length} GD`}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "plans" ? "active" : ""}`}
-            onClick={() => { setActiveMenu("plans"); setMobileMenuOpen(false); }}
-          >
-            <span className="menu-icon"><Zap size={18} /></span>
-            <span className="menu-label">{t("menuPlans")}</span>
-            <span className="menu-badge badge-primary">{plansList.length}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "renewals" ? "active" : ""}`}
-            onClick={() => { setActiveMenu("renewals"); setMobileMenuOpen(false); }}
-          >
-            <span className="menu-icon"><RotateCcw size={18} /></span>
-            <span className="menu-label">{t("menuRenewals")}</span>
-            <span className="menu-badge badge-primary">{transactions.length > 0 ? transactions.length : licenses.length}</span>
-          </button>
-
-          <div className="menu-heading">{t("serviceSection")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "providers" ? "active" : ""}`}
             onClick={() => { setActiveMenu("providers"); setMobileMenuOpen(false); }}
           >
-            <span className="menu-icon"><Bot size={18} /></span>
-            <span className="menu-label">{t("menuProviders")}</span>
-            <span className="menu-badge badge-primary">{providers.length}</span>
-          </button>
-
-          <div className="menu-heading">{t("operationSection")}</div>
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "telemetry" ? "active" : ""}`}
-            onClick={() => { setActiveMenu("telemetry"); setMobileMenuOpen(false); }}
-          >
-            <span className="menu-icon"><FileText size={18} /></span>
-            <span className="menu-label">{t("menuTelemetry")}</span>
-            {logs.length > 0 && (
-              <span className="menu-badge badge-warning">{logs.length}</span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "releases" ? "active" : ""}`}
-            onClick={() => { setActiveMenu("releases"); setMobileMenuOpen(false); }}
-          >
-            <span className="menu-icon"><Rocket size={18} /></span>
-            <span className="menu-label">{t("menuReleases")}</span>
-            <span className="menu-badge badge-primary">{releases.filter((r) => r.status === "published").length}</span>
+            <span className="menu-icon"><KeyRound size={17} /></span>
+            <span className="menu-label">API Keys & gói dịch vụ</span>
           </button>
 
           <button
@@ -1413,8 +1349,56 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             className={`menu-item ${activeMenu === "terms" ? "active" : ""}`}
             onClick={() => { setActiveMenu("terms"); setMobileMenuOpen(false); }}
           >
-            <span className="menu-icon"><ShieldCheck size={18} /></span>
-            <span className="menu-label">{language === "vi" ? "Luật & Miễn trừ trách nhiệm" : "Terms & Disclaimer"}</span>
+            <span className="menu-icon"><ShieldCheck size={17} /></span>
+            <span className="menu-label">Phân quyền</span>
+          </button>
+
+          <div className="menu-heading">CREDIT & THANH TOÁN</div>
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "billing" && billingTab === "transactions" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("billing"); setBillingTab("transactions"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><Wallet size={17} /></span>
+            <span className="menu-label">Ví & dòng tiền</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "billing" && billingTab === "bank_config" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("billing"); setBillingTab("bank_config"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><Building2 size={17} /></span>
+            <span className="menu-label">Ngân hàng & QR</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "plans" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("plans"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><CreditCard size={17} /></span>
+            <span className="menu-label">Cấu hình Credit</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "renewals" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("renewals"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><ArrowDownLeft size={17} /></span>
+            <span className="menu-label">Giao dịch nạp SePay</span>
+          </button>
+
+          <div className="menu-heading">CẤU HÌNH DỊCH VỤ</div>
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("sessions"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><Laptop size={17} /></span>
+            <span className="menu-label">Máy khách đang Online</span>
+            <span className="menu-badge badge-primary">{sessions.length}</span>
           </button>
 
           <button
@@ -1422,8 +1406,26 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             className={`menu-item ${activeMenu === "tool_branding" ? "active" : ""}`}
             onClick={() => { setActiveMenu("tool_branding"); setMobileMenuOpen(false); }}
           >
-            <span className="menu-icon"><Palette size={18} /></span>
-            <span className="menu-label">{language === "vi" ? "Cấu hình Tool & Menu" : "Tool Branding & Menus"}</span>
+            <span className="menu-icon"><Settings size={17} /></span>
+            <span className="menu-label">Cài đặt công cụ</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "releases" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("releases"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><Rocket size={17} /></span>
+            <span className="menu-label">Bản phát hành OTA</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "telemetry" ? "active" : ""}`}
+            onClick={() => { setActiveMenu("telemetry"); setMobileMenuOpen(false); }}
+          >
+            <span className="menu-icon"><FileText size={17} /></span>
+            <span className="menu-label">Nhật ký hệ thống</span>
           </button>
 
           <button
@@ -1431,32 +1433,27 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             className={`menu-item ${activeMenu === "settings" ? "active" : ""}`}
             onClick={() => { setActiveMenu("settings"); setMobileMenuOpen(false); }}
           >
-            <span className="menu-icon"><Settings size={18} /></span>
+            <span className="menu-icon"><Settings size={17} /></span>
             <span className="menu-label">{t("menuSettings")}</span>
           </button>
         </div>
 
-        <div className="sidebar-footer">
-          <div
-            className="user-profile-strip"
-            onClick={() => setShowUserPopover(!showUserPopover)}
-            style={{ cursor: "pointer" }}
-            title="Quản lý tài khoản"
-          >
-            <div className="user-avatar">AD</div>
-            <div className="user-info-text">
-              <div className="user-name">Admin Superuser</div>
-              <div className="user-role">{t("superAdmin")}</div>
-            </div>
-            <button
-              type="button"
-              className="btn-sidebar-logout"
-              onClick={(e) => { e.stopPropagation(); logout(); }}
-              title={t("logout")}
-            >
-              <Power size={16} />
-            </button>
+        {/* Promo Upgrade Banner Card */}
+        <div className="sidebar-promo-card">
+          <div className="promo-header-row">
+            <span className="promo-sparkle-icon">✨</span>
+            <span className="promo-title">Nâng cấp doanh nghiệp</span>
           </div>
+          <div className="promo-desc">
+            Mở khóa báo cáo nâng cao và tự động hóa.
+          </div>
+          <button
+            type="button"
+            className="btn-promo-learn-more"
+            onClick={() => setActiveMenu("plans")}
+          >
+            Tìm hiểu thêm
+          </button>
         </div>
       </aside>
 
@@ -1473,13 +1470,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
               <Menu size={20} />
             </button>
 
-            {/* Redesigned Search Pill with Live Results Popover */}
-            <div className="search-container-relative" ref={searchContainerRef}>
+            {/* Global Search Bar with Shortcut Chip */}
+            <div className="search-container-relative" ref={searchContainerRef} style={{ width: "100%" }}>
               <div className="navbar-search-pill">
-                <Search size={15} color="var(--primary)" />
+                <Search size={15} color="#94a3b8" />
                 <input
                   type="text"
-                  placeholder={t("searchPlaceholder")}
+                  placeholder="Tìm nhân viên, dự án, hợp đồng..."
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setShowSearchDropdown(true); }}
                   onFocus={() => setShowSearchDropdown(true)}
@@ -1536,7 +1533,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                                 <strong>{sess.customer_name}</strong>
                                 <small style={{ display: "block" }}>{sess.last_platform} · v{sess.last_app_version}</small>
                               </div>
-                              <span className={`pill-status ${sess.is_online ? "pill-online" : "pill-offline"}`} style={{ fontSize: "0.68rem" }}>
+                              <span className={`pill-status-mf ${sess.is_online ? "status-active" : "status-locked"}`} style={{ fontSize: "0.68rem" }}>
                                 {sess.is_online ? "Online" : "Offline"}
                               </span>
                             </button>
@@ -1602,24 +1599,24 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onClick={() => setShowLangDropdown(!showLangDropdown)}
                 style={{ cursor: "pointer" }}
               >
-                <Globe size={14} color="var(--primary)" />
-                <span className="lang-text-desktop">{language === "vi" ? "🇻🇳 Tiếng Việt" : "🇬🇧 English"}</span>
-                <span className="lang-text-mobile">{language === "vi" ? "🇻🇳 VN" : "🇬🇧 EN"}</span>
-                <ChevronDown size={14} color="var(--text-muted)" />
+                <Globe size={14} color="#64748b" />
+                <span className="lang-text-desktop">{language === "vi" ? "Tiếng Việt" : "English"}</span>
+                <span className="lang-text-mobile">{language === "vi" ? "VN" : "EN"}</span>
+                <ChevronDown size={14} color="#94a3b8" />
               </div>
 
               {showLangDropdown && (
-                <div style={{ position: "absolute", right: 0, top: "115%", background: "#1a1d2e", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "8px", overflow: "hidden", minWidth: "140px", zIndex: 100, boxShadow: "0 10px 25px rgba(0,0,0,0.5)" }}>
+                <div style={{ position: "absolute", right: 0, top: "115%", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden", minWidth: "140px", zIndex: 100, boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
                   <button
                     type="button"
-                    style={{ width: "100%", padding: "0.55rem 0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", background: language === "vi" ? "#262a40" : "transparent", color: "#fff", border: "none", fontSize: "0.8rem", cursor: "pointer", textAlign: "left" }}
+                    style={{ width: "100%", padding: "0.55rem 0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", background: language === "vi" ? "#f8fafc" : "transparent", color: "#0f172a", border: "none", fontSize: "0.8rem", cursor: "pointer", textAlign: "left", fontWeight: 600 }}
                     onClick={() => { setLanguage("vi"); setShowLangDropdown(false); }}
                   >
                     🇻🇳 Tiếng Việt
                   </button>
                   <button
                     type="button"
-                    style={{ width: "100%", padding: "0.55rem 0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", background: language === "en" ? "#262a40" : "transparent", color: "#fff", border: "none", fontSize: "0.8rem", cursor: "pointer", textAlign: "left" }}
+                    style={{ width: "100%", padding: "0.55rem 0.85rem", display: "flex", alignItems: "center", gap: "0.5rem", background: language === "en" ? "#f8fafc" : "transparent", color: "#0f172a", border: "none", fontSize: "0.8rem", cursor: "pointer", textAlign: "left", fontWeight: 600 }}
                     onClick={() => { setLanguage("en"); setShowLangDropdown(false); }}
                   >
                     🇬🇧 English
@@ -1628,14 +1625,25 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </div>
 
-            {/* Quick Action Button */}
+            {/* Quick Action Button: + Tạo mới ▾ */}
             <button
               type="button"
-              className="btn-nav-action-orange"
-              title={t("quickActionCreateLicense")}
+              className="btn-nav-create-orange"
               onClick={() => setShowCreateModal(true)}
             >
-              <Plus size={18} />
+              <Plus size={15} />
+              <span>Tạo mới</span>
+              <ChevronDown size={13} style={{ marginLeft: "2px" }} />
+            </button>
+
+            {/* Message / Chat Icon Button */}
+            <button
+              type="button"
+              className="btn-nav-icon-plain"
+              title="Tin nhắn & Hỗ trợ"
+              onClick={() => setActiveMenu("telemetry")}
+            >
+              <MessageSquare size={16} />
             </button>
 
             {/* Notifications with Popover */}
@@ -1665,7 +1673,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         onClick={() => { setActiveMenu("telemetry"); setShowNotifPopover(false); }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.2rem" }}>
-                          <span className={`pill-status pill-${log.severity === "fatal" ? "danger" : log.severity === "error" ? "danger" : "warning"}`} style={{ fontSize: "0.65rem", padding: "0.1rem 0.35rem" }}>
+                          <span className={`pill-status-mf ${log.severity === "fatal" ? "status-locked" : log.severity === "error" ? "status-locked" : "status-expired"}`} style={{ fontSize: "0.65rem", padding: "0.1rem 0.35rem" }}>
                             {log.severity.toUpperCase()}
                           </span>
                           <strong style={{ fontSize: "0.78rem", color: "#ffffff" }}>{log.event_name}</strong>
@@ -1693,23 +1701,27 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
               )}
             </div>
 
-            {/* User Profile Popover */}
+            {/* User Profile Pill: Admin / SUPER_ADMIN */}
             <div style={{ position: "relative" }} ref={userMenuRef}>
               <div
-                className="nav-avatar-photo"
+                className="nav-user-pill"
                 onClick={() => setShowUserPopover(!showUserPopover)}
                 title="Tài khoản quản trị"
               >
-                AD
+                <div className="nav-user-avatar">AD</div>
+                <div className="nav-user-details">
+                  <span className="nav-user-name">Admin</span>
+                  <span className="nav-user-role">SUPER_ADMIN</span>
+                </div>
               </div>
 
               {showUserPopover && (
                 <div className="topbar-popover-card user-popover-width">
                   <div className="popover-user-header">
-                    <div className="nav-avatar-photo" style={{ width: "42px", height: "42px" }}>AD</div>
+                    <div className="nav-user-avatar" style={{ width: "42px", height: "42px" }}>AD</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <strong style={{ display: "block", color: "#ffffff", fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Admin Superuser</strong>
-                      <span style={{ fontSize: "0.75rem", color: "var(--sidebar-heading)", display: "block" }}>admin@example.com</span>
+                      <strong style={{ display: "block", color: "#ffffff", fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Admin</strong>
+                      <span style={{ fontSize: "0.75rem", color: "var(--sidebar-heading)", display: "block" }}>SUPER_ADMIN</span>
                       <span className="badge-primary menu-badge" style={{ marginTop: "0.25rem", display: "inline-block" }}>Super Admin</span>
                     </div>
                   </div>
@@ -1733,15 +1745,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                       <span>{t("menuSettings")}</span>
                     </button>
 
-                    <button
-                      type="button"
-                      className="popover-menu-action"
-                      onClick={() => { setLanguage(language === "vi" ? "en" : "vi"); setShowUserPopover(false); }}
-                    >
-                      <Globe size={15} color="#34d399" />
-                      <span>{language === "vi" ? "Chuyển sang English 🇬🇧" : "Chuyển sang Tiếng Việt 🇻🇳"}</span>
-                    </button>
-
                     <div className="popover-divider" />
 
                     <button
@@ -1760,52 +1763,131 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
         </header>
 
         <main className="page-body-content">
+          {/* Breadcrumb Navigation */}
+          {activeMenu === "licenses" && (
+            <div className="breadcrumb-nav">
+              <span>MintForge</span>
+              <span>/</span>
+              <span className="breadcrumb-active">Quản trị</span>
+            </div>
+          )}
+
+          {activeMenu === "billing" && billingTab === "bank_config" && (
+            <div className="breadcrumb-nav">
+              <span>Tài chính & tài sản</span>
+              <span>/</span>
+              <span className="breadcrumb-active">Ngân hàng & QR</span>
+            </div>
+          )}
+
+          {activeMenu === "billing" && billingTab === "transactions" && (
+            <div className="breadcrumb-nav">
+              <span>Tài chính & tài sản</span>
+              <span>/</span>
+              <span className="breadcrumb-active">Ví & dòng tiền</span>
+            </div>
+          )}
+
+          {activeMenu !== "licenses" && !(activeMenu === "billing" && billingTab === "bank_config") && (
+            <div className="breadcrumb-nav">
+              <span>MintForge</span>
+              <span>/</span>
+              <span className="breadcrumb-active">
+                {activeMenu === "overview" && "Tổng quan"}
+                {activeMenu === "sessions" && "Máy khách"}
+                {activeMenu === "billing" && "Dòng tiền"}
+                {activeMenu === "plans" && "Gói cước"}
+                {activeMenu === "renewals" && "Gia hạn"}
+                {activeMenu === "providers" && "AI Gateway"}
+                {activeMenu === "telemetry" && "Báo cáo"}
+                {activeMenu === "releases" && "Bản phát hành"}
+                {activeMenu === "tool_branding" && "Cấu hình Tool"}
+                {activeMenu === "terms" && "Phân quyền"}
+                {activeMenu === "settings" && "Cài đặt"}
+              </span>
+            </div>
+          )}
+
           {/* Header Row */}
           <div className="page-header-row">
             <div className="page-title-group">
               <h1>
-                {activeMenu === "overview" && t("overviewTitle")}
-                {activeMenu === "licenses" && t("licensesTitle")}
+                {activeMenu === "overview" && "Tổng quan hệ thống"}
+                {activeMenu === "licenses" && "Quản lý người dùng"}
                 {activeMenu === "sessions" && t("sessionsTitle")}
-                {activeMenu === "billing" && t("billingTitle")}
-                {activeMenu === "plans" && (language === "vi" ? "Quản lý Gói cước & Bảng giá ⚡" : "Pricing Plans & Tier Management ⚡")}
-                {activeMenu === "renewals" && (language === "vi" ? "Quản lý Gia hạn & Đăng ký Bản quyền 🔄" : "License Renewals & Subscriptions 🔄")}
-                {activeMenu === "providers" && t("providersTitle")}
-                {activeMenu === "telemetry" && t("telemetryTitle")}
-                {activeMenu === "releases" && (language === "vi" ? "Quản lý Bản phát hành & Cập nhật OTA 🚀" : "Releases & OTA Updates 🚀")}
-                {activeMenu === "tool_branding" && (language === "vi" ? "Cấu hình Thương hiệu & Khoá Menu Tool 🎨" : "Tool Branding & Feature Locks 🎨")}
+                {activeMenu === "billing" && (billingTab === "bank_config" ? "Ngân hàng & QR" : "Dòng tiền & Doanh thu")}
+                {activeMenu === "plans" && "Cấu hình Gói & Bảng giá ⚡"}
+                {activeMenu === "renewals" && "Giao dịch nạp SePay 🔄"}
+                {activeMenu === "providers" && "API Keys & Gói dịch vụ 🤖"}
+                {activeMenu === "telemetry" && "Nhật ký hệ thống 📄"}
+                {activeMenu === "releases" && "Bản phát hành & OTA 🚀"}
+                {activeMenu === "tool_branding" && "Cài đặt công cụ & Menu 🎨"}
+                {activeMenu === "terms" && "Phân quyền & Điều khoản bảo mật 🛡️"}
                 {activeMenu === "settings" && t("settingsTitle")}
               </h1>
               <p>
-                {activeMenu === "overview" && t("overviewSubtitle")}
-                {activeMenu === "licenses" && t("licensesSubtitle")}
+                {activeMenu === "overview" && "Dữ liệu tài chính và vận hành API theo thời gian thực."}
+                {activeMenu === "licenses" && "Tạo tài khoản, kiểm soát truy cập và gán vai trò hệ thống"}
                 {activeMenu === "sessions" && t("sessionsSubtitle")}
-                {activeMenu === "billing" && t("billingSubtitle")}
-                {activeMenu === "plans" && (language === "vi" ? "Thiết lập cấu hình thời hạn, giá tiền, số lượng render và chiết khấu cho từng gói." : "Configure duration, pricing, daily limits and discount badges.")}
-                {activeMenu === "renewals" && (language === "vi" ? "Kiểm tra yêu cầu gia hạn, xác nhận thanh toán chuyển khoản và tự động cộng hạn dùng cho khách." : "Review renewal requests, verify bank transfers and extend license periods automatically.")}
-                {activeMenu === "providers" && t("providersSubtitle")}
-                {activeMenu === "telemetry" && t("telemetrySubtitle")}
-                {activeMenu === "releases" && (language === "vi" ? "Cung cấp bản cập nhật mới trực tiếp cho khách hàng. Người dùng chỉ cần 1 click để tải và áp dụng bản mới mà không cần cài lại tool." : "Broadcast updates to desktop clients with 1-click in-place update.")}
-                {activeMenu === "tool_branding" && (language === "vi" ? "Tự động đổi tên phần mềm, logo và bật/tắt quyền truy cập tính năng đang phát triển lên toàn bộ thiết bị khách." : "Customize tool name, logo and lock under-development features.")}
+                {activeMenu === "billing" && (billingTab === "bank_config" ? "Quản lý tài khoản nhận tiền khách hàng và tài khoản thanh toán nhà cung cấp." : "Hồ sơ thu chi, lịch sử nạp tiền, phân bổ gói và doanh thu thời gian thực.")}
+                {activeMenu === "plans" && "Thiết lập cấu hình thời hạn, giá tiền, số lượng render và chiết khấu cho từng gói."}
+                {activeMenu === "renewals" && "Kiểm tra yêu cầu gia hạn, xác nhận thanh toán chuyển khoản và tự động cộng hạn dùng cho khách."}
+                {activeMenu === "providers" && "Quản lý kết nối OpenAI, Gemini và Custom Endpoints."}
+                {activeMenu === "telemetry" && "Báo cáo sự cố, nhật ký phân tích và telemetry từ Desktop Tool."}
+                {activeMenu === "releases" && "Cung cấp bản cập nhật mới trực tiếp cho khách hàng qua 1-click update."}
+                {activeMenu === "tool_branding" && "Tự động đổi tên phần mềm, logo và bật/tắt quyền truy cập tính năng trên toàn bộ thiết bị khách."}
+                {activeMenu === "terms" && "Thiết lập phân quyền hệ thống và các điều khoản miễn trừ trách nhiệm pháp lý."}
                 {activeMenu === "settings" && t("settingsSubtitle")}
               </p>
             </div>
 
             <div className="page-actions-group">
-              <button
-                type="button"
-                className="btn-white-outline"
-                onClick={() => void refresh()}
-              >
-                <ArrowUpRight size={15} /> {t("refresh")}
-              </button>
-              <button
-                type="button"
-                className="btn-primary-orange"
-                onClick={() => setShowCreateModal(true)}
-              >
-                <Zap size={15} /> {t("createLicense")}
-              </button>
+              {activeMenu === "licenses" ? (
+                <button
+                  type="button"
+                  className="btn-primary-orange"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <Plus size={16} /> Thêm người dùng
+                </button>
+              ) : activeMenu === "billing" && billingTab === "bank_config" ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-white-outline"
+                    onClick={() => void refresh()}
+                  >
+                    <RotateCw size={14} /> Làm mới
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary-orange"
+                    onClick={() => {
+                      const bankName = prompt("Nhập tên ngân hàng mới:");
+                      if (bankName) setMessage(`Đã ghi nhận yêu cầu thêm ngân hàng ${bankName}`);
+                    }}
+                  >
+                    <Plus size={16} /> Thêm ngân hàng
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn-white-outline"
+                    onClick={() => void refresh()}
+                  >
+                    <ArrowUpRight size={15} /> {t("refresh")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary-orange"
+                    onClick={() => setShowCreateModal(true)}
+                  >
+                    <Zap size={15} /> {t("createLicense")}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1844,7 +1926,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                 <div className="kpi-cards-grid-mintforge">
                   {/* Card 1: Số dư / Doanh thu tháng này */}
                   <div className="kpi-card-mf" onClick={() => setActiveMenu("billing")} style={{ cursor: "pointer" }}>
-                    <div className="kpi-squircle-badge squircle-orange"><Wallet size={24} /></div>
+                    <div className="kpi-circle-icon circle-orange"><Wallet size={22} /></div>
                     <div className="kpi-content-box">
                       <div className="kpi-label-mf">{t("kpiBalanceLabel")}</div>
                       <div className="kpi-value-mf">{formatCurrency(thisMonthRevenueVal)}</div>
@@ -1857,7 +1939,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                   {/* Card 2: Tổng tiền nạp / Doanh thu */}
                   <div className="kpi-card-mf" onClick={() => setActiveMenu("billing")} style={{ cursor: "pointer" }}>
-                    <div className="kpi-squircle-badge squircle-green"><ArrowUpRight size={24} /></div>
+                    <div className="kpi-circle-icon circle-green"><ArrowUpRight size={22} /></div>
                     <div className="kpi-content-box">
                       <div className="kpi-label-mf">{t("kpiTotalRevenueLabel")}</div>
                       <div className="kpi-value-mf">{formatCurrency(totalRevenueVal)}</div>
@@ -1870,7 +1952,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                   {/* Card 3: License đang hoạt động */}
                   <div className="kpi-card-mf" onClick={() => setActiveMenu("licenses")} style={{ cursor: "pointer" }}>
-                    <div className="kpi-squircle-badge squircle-blue"><Key size={24} /></div>
+                    <div className="kpi-circle-icon circle-blue"><Key size={22} /></div>
                     <div className="kpi-content-box">
                       <div className="kpi-label-mf">{t("kpiActiveKeysLabel")}</div>
                       <div className="kpi-value-mf">{activeLicensesCount} key</div>
@@ -1883,7 +1965,7 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
                   {/* Card 4: Máy khách Desktop Online */}
                   <div className="kpi-card-mf" onClick={() => setActiveMenu("sessions")} style={{ cursor: "pointer" }}>
-                    <div className="kpi-squircle-badge squircle-purple"><Laptop size={24} /></div>
+                    <div className="kpi-circle-icon circle-purple"><Laptop size={22} /></div>
                     <div className="kpi-content-box">
                       <div className="kpi-label-mf">{t("kpiDesktopOnlineLabel")}</div>
                       <div className="kpi-value-mf">{onlineSessionsCount} {language === "vi" ? "thiết bị" : "devices"}</div>
@@ -1903,13 +1985,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                       <div className="mf-card-title-group">
                         <h3>{t("chartApiUsageTitle")}</h3>
                         <p>{t("chartApiUsageSubtitle")}</p>
-                      </div>
-                      <div className="mf-card-actions">
-                        <select className="pill-dropdown-year" defaultValue="2026">
-                          <option value="2026">2026 ▾</option>
-                          <option value="2025">2025 ▾</option>
-                        </select>
-                        <button type="button" className="btn-dot-menu" title="Options">•••</button>
                       </div>
                     </div>
 
@@ -1968,7 +2043,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                         <h3>{t("chartKeyStatusTitle")}</h3>
                         <p>{licenses.length} {t("chartKeyStatusSub")}</p>
                       </div>
-                      <button type="button" className="btn-dot-menu" title="Options">•••</button>
                     </div>
 
                     <div className="mf-donut-status-layout">
@@ -2022,228 +2096,247 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           })()}
 
           {/* ========================================================================= */}
-          {/* VIEW: LICENSES MANAGEMENT */}
+          {/* VIEW: LICENSES / USERS MANAGEMENT (MintForge Screenshot 1) */}
           {/* ========================================================================= */}
           {activeMenu === "licenses" && (() => {
             const totalLicensePages = Math.ceil(filteredLicenses.length / licensePageSize) || 1;
             const paginatedLicenses = filteredLicenses.slice((licensePage - 1) * licensePageSize, licensePage * licensePageSize);
+            const blockedCount = licenses.filter((l) => l.status === "blocked").length;
 
             return (
-              <div className="mf-card-panel">
-                <div className="mf-card-header">
-                  <div className="mf-card-title-group">
-                    <h3>{t("licensesTitle")} ({filteredLicenses.length})</h3>
-                    <p>{t("licensesSubtitle")}</p>
+              <>
+                {/* 4 Stat Cards in a row */}
+                <div className="kpi-cards-grid-mintforge">
+                  {/* Card 1: Tổng người dùng */}
+                  <div className="kpi-card-mf">
+                    <div className="kpi-circle-icon circle-orange"><User size={22} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">Tổng người dùng</div>
+                      <div className="kpi-value-mf">{licenses.length}</div>
+                    </div>
+                    <div className="kpi-subtext-right">Toàn hệ thống</div>
                   </div>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <button
-                      type="button"
-                      className="btn-white-outline"
-                      onClick={() => {
-                        setActiveMenu("billing");
-                        setBillingTab("bank_config");
-                      }}
-                      title="Cấu hình tài khoản và mã QR để khách quét gia hạn"
-                    >
-                      <QrCode size={15} color="var(--primary)" /> {language === "vi" ? "Cấu Hình QR Bank" : "Bank QR Config"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary-orange"
-                      onClick={() => setShowCreateModal(true)}
-                    >
-                      <Plus size={16} /> {t("createLicense")}
-                    </button>
+
+                  {/* Card 2: Đang hoạt động */}
+                  <div className="kpi-card-mf">
+                    <div className="kpi-circle-icon circle-green"><UserCheck size={22} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">Đang hoạt động</div>
+                      <div className="kpi-value-mf">{activeLicensesCount}</div>
+                    </div>
+                    <div className="kpi-subtext-right">Trang hiện tại</div>
+                  </div>
+
+                  {/* Card 3: Đang khóa */}
+                  <div className="kpi-card-mf">
+                    <div className="kpi-circle-icon circle-rose"><Lock size={22} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">Đang khóa</div>
+                      <div className="kpi-value-mf">{blockedCount}</div>
+                    </div>
+                    <div className="kpi-subtext-right">Cần xử lý</div>
+                  </div>
+
+                  {/* Card 4: Vai trò */}
+                  <div className="kpi-card-mf">
+                    <div className="kpi-circle-icon circle-blue"><Shield size={22} /></div>
+                    <div className="kpi-content-box">
+                      <div className="kpi-label-mf">Vai trò</div>
+                      <div className="kpi-value-mf">5</div>
+                    </div>
+                    <div className="kpi-subtext-right">Đã cấu hình</div>
                   </div>
                 </div>
 
-                {/* Search & Filter Bar */}
-                <div style={{ display: "flex", gap: "0.85rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-                  <input
-                    type="text"
-                    className="form-input-mf"
-                    placeholder={language === "vi" ? "Tìm theo tên khách hàng, email, Key Hint, Device ID..." : "Search by customer name, email, key hint, HWID..."}
-                    style={{ flex: 1, minWidth: "240px" }}
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
+                {/* Table Panel */}
+                <div className="mf-card-panel">
+                  {/* Table Panel Header */}
+                  <div className="table-panel-header">
+                    <div className="table-title-group">
+                      <h3>Danh sách người dùng</h3>
+                      <span>{filteredLicenses.length} tài khoản</span>
+                    </div>
+
+                    <div className="table-search-box">
+                      <Search size={14} color="#94a3b8" />
+                      <input
+                        type="text"
+                        placeholder="Tìm tên hoặc email..."
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          setLicensePage(1);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Page Size Selector Bar */}
+                  <div className="table-controls-bar">
+                    <div className="page-size-selector">
+                      <span>Hiển thị</span>
+                      <select
+                        value={licensePageSize}
+                        onChange={(e) => {
+                          setLicensePageSize(Number(e.target.value));
+                          setLicensePage(1);
+                        }}
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                      </select>
+                      <span>dòng mỗi trang</span>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive">
+                    <table className="mf-table">
+                      <thead>
+                        <tr>
+                          <th>NGƯỜI DÙNG</th>
+                          <th>VAI TRÒ</th>
+                          <th>TÀI KHOẢN / DOANH NGHIỆP</th>
+                          <th>API KEY</th>
+                          <th>NGÀY TẠO</th>
+                          <th>TRẠNG THÁI</th>
+                          <th>BẢO MẬT</th>
+                          <th style={{ textAlign: "right" }}>THAO TÁC</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedLicenses.map((lic) => {
+                          const initials = lic.customer_name
+                            .split(" ")
+                            .filter(Boolean)
+                            .map((p) => p[0])
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase() || "US";
+
+                          const createdDateFormatted = new Date(lic.created_at).toLocaleString("en-US", {
+                            month: "numeric",
+                            day: "numeric",
+                            year: "2-digit",
+                            hour: "numeric",
+                            minute: "numeric",
+                            hour12: true,
+                          });
+
+                          return (
+                            <tr key={lic.id}>
+                              {/* 1. NGƯỜI DÙNG */}
+                              <td>
+                                <div className="user-cell-flex">
+                                  <div className="user-avatar-initials">
+                                    {initials}
+                                  </div>
+                                  <div className="user-names-group">
+                                    <span className="user-name-bold">{lic.customer_name}</span>
+                                    <span className="user-email-muted">{lic.customer_contact || `${lic.customer_name.toLowerCase().replace(/\s+/g, "")}@gmail.com`}</span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 2. VAI TRÒ */}
+                              <td>
+                                <span className="badge-role-user">USER</span>
+                              </td>
+
+                              {/* 3. TÀI KHOẢN / DOANH NGHIỆP */}
+                              <td>
+                                <div className="enterprise-cell-flex">
+                                  <div className="enterprise-icon-squircle">
+                                    <Building2 size={16} />
+                                  </div>
+                                  <div className="enterprise-details">
+                                    <span className="enterprise-name">{lic.customer_name}</span>
+                                    <span className="enterprise-subtext">ACCOUNT_FINANCE_USER · ACTIVE</span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 4. API KEY */}
+                              <td>
+                                {lic.key_hint ? (
+                                  <div className="api-key-chip" title={lic.hwid} onClick={() => void copyText(lic.key_hint, lic.id)} style={{ cursor: "pointer" }}>
+                                    <KeyRound size={12} className="key-icon" />
+                                    <span>test</span>
+                                    <span style={{ color: "#94a3b8", fontSize: "0.68rem" }}>{lic.key_hint.slice(-8)}</span>
+                                  </div>
+                                ) : (
+                                  <span className="api-key-none">Chưa gắn API key</span>
+                                )}
+                              </td>
+
+                              {/* 5. NGÀY TẠO */}
+                              <td style={{ color: "#64748b", fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                                {createdDateFormatted}
+                              </td>
+
+                              {/* 6. TRẠNG THÁI */}
+                              <td>
+                                <span className={`pill-status-mf ${lic.status === "active" ? "status-active" : lic.status === "blocked" ? "status-locked" : "status-expired"}`}>
+                                  ● {lic.status === "active" ? "Hoạt động" : lic.status === "blocked" ? "Đã khóa" : "Hết hạn"}
+                                </span>
+                              </td>
+
+                              {/* 7. BẢO MẬT */}
+                              <td>
+                                <span className="pill-security-mf">
+                                  <Shield size={12} /> Bình thường
+                                </span>
+                              </td>
+
+                              {/* 8. THAO TÁC */}
+                              <td style={{ textAlign: "right" }}>
+                                <div className="table-actions-row">
+                                  <button
+                                    type="button"
+                                    className="btn-icon-action action-edit"
+                                    onClick={() => openEditModal(lic)}
+                                    title="Chỉnh sửa thông tin"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-icon-action action-delete"
+                                    onClick={() => setDeletingLicense(lic)}
+                                    title="Xóa người dùng"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredLicenses.length === 0 && (
+                          <tr>
+                            <td colSpan={8} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
+                              {t("noLicensesFound")}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <Pagination
+                    currentPage={licensePage}
+                    totalPages={totalLicensePages}
+                    onPageChange={setLicensePage}
+                    totalItems={filteredLicenses.length}
+                    pageSize={licensePageSize}
+                    pageSizeOptions={[5, 10, 20, 50, 100]}
+                    onPageSizeChange={(size) => {
+                      setLicensePageSize(size);
                       setLicensePage(1);
                     }}
                   />
-                  <select
-                    className="form-input-mf"
-                    style={{ width: "220px" }}
-                    value={statusFilter}
-                    onChange={(e) => {
-                      setStatusFilter(e.target.value);
-                      setLicensePage(1);
-                    }}
-                  >
-                    <option value="all">{t("allStatus")}</option>
-                    <option value="active">{t("statusActive")}</option>
-                    <option value="blocked">{t("statusBlocked")}</option>
-                    <option value="expired">{t("statusExpired")}</option>
-                  </select>
                 </div>
-
-                <div className="table-responsive">
-                  <table className="mf-table">
-                    <thead>
-                      <tr>
-                        <th>{t("thCustomer")}</th>
-                        <th>{t("thKeyHwid")}</th>
-                        <th>{t("thExpiryLimits")}</th>
-                        <th>{t("thDeviceLastSeen")}</th>
-                        <th>{t("thStatus")}</th>
-                        <th style={{ textAlign: "right" }}>{t("thActions")}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedLicenses.map((lic) => (
-                        <tr key={lic.id}>
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
-                              {lic.logo_url ? (
-                                <img
-                                  src={lic.logo_url}
-                                  alt="logo"
-                                  style={{ width: "32px", height: "32px", borderRadius: "6px", objectFit: "contain", background: "#f8fafc", border: "1px solid var(--border-light)" }}
-                                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = "none"; }}
-                                />
-                              ) : (
-                                <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: "#fff1ec", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 800 }}>
-                                  {lic.customer_name.slice(0, 2).toUpperCase()}
-                                </div>
-                              )}
-                              <div>
-                                <strong style={{ color: "var(--text-dark)", display: "block" }}>{lic.customer_name}</strong>
-                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{lic.customer_contact}</span>
-                                {lic.notes && (
-                                  <span style={{ display: "block", color: "var(--text-dim)", fontSize: "0.72rem", fontStyle: "italic" }}>
-                                    {lic.notes}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                              <span className="code-chip">{lic.key_hint}</span>
-                              <button
-                                type="button"
-                                className="btn-white-outline"
-                                style={{ padding: "0.2rem 0.45rem", fontSize: "0.72rem" }}
-                                onClick={() => void copyText(lic.key_hint, lic.id)}
-                              >
-                                {copiedItemId === lic.id ? (
-                                  <>
-                                    <Check size={12} color="var(--success)" /> {t("copied")}
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy size={12} /> {t("copy")}
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                            <div style={{ marginTop: "0.25rem" }}>
-                              <span className="code-chip" style={{ background: "#f8fafc", color: "#475569", fontSize: "0.72rem" }}>{lic.hwid}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <div>
-                              {lic.expires_at ? (
-                                <strong style={{ color: "var(--text-dark)" }}>{new Date(lic.expires_at).toLocaleDateString(language === "vi" ? "vi-VN" : "en-US")}</strong>
-                              ) : (
-                                <span style={{ color: "var(--success-text)", fontWeight: 800, background: "var(--success-light)", padding: "0.15rem 0.45rem", borderRadius: "4px" }}>{t("lifetime")}</span>
-                              )}
-                            </div>
-                            <small style={{ color: "var(--text-muted)", display: "block", marginTop: "0.15rem" }}>
-                              {lic.max_jobs_per_day} {language === "vi" ? "jobs/ngày" : "jobs/day"} {lic.premium_ai ? "· Premium AI" : ""}
-                            </small>
-                          </td>
-                          <td>
-                            <div>{lic.last_platform || "--"} {lic.last_app_version ? `· v${lic.last_app_version}` : ""}</div>
-                            <small style={{ color: "var(--text-muted)", display: "block" }}>{lic.last_ip || (language === "vi" ? "Chưa có IP" : "No IP")}</small>
-                            <small style={{ color: lic.last_seen_at ? "var(--success)" : "var(--text-dim)", fontWeight: 600 }}>
-                              {lic.last_seen_at ? `Online: ${new Date(lic.last_seen_at).toLocaleTimeString(language === "vi" ? "vi-VN" : "en-US")}` : (language === "vi" ? "Chưa online" : "Never")}
-                            </small>
-                          </td>
-                          <td>
-                            <span className={`pill-status pill-${lic.status === "active" ? "active" : lic.status === "blocked" ? "danger" : "warning"}`}>
-                              ● {lic.status === "active" ? "Active" : lic.status === "blocked" ? "Blocked" : "Expired"}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: "right" }}>
-                            <div className="table-actions-row">
-                              <button
-                                type="button"
-                                className="btn-table-action btn-action-edit"
-                                onClick={() => openEditModal(lic)}
-                                title={t("edit")}
-                              >
-                                <Pencil size={13} /> <span>{t("edit")}</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-table-action btn-action-renew"
-                                onClick={() => openRenewModal(lic)}
-                                title={t("renew")}
-                              >
-                                <Clock size={13} /> <span>{t("renew")}</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-table-action btn-action-hwid"
-                                onClick={() => openResetHwidModal(lic)}
-                                title={t("resetHwid")}
-                              >
-                                <RotateCw size={13} /> <span>{t("resetHwid")}</span>
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-table-action"
-                                onClick={() => void toggleLicense(lic)}
-                                title={lic.status === "active" ? "Khóa key" : "Mở khóa key"}
-                              >
-                                {lic.status === "active" ? <Lock size={13} color="#ea580c" /> : <Unlock size={13} color="#16a34a" />}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn-table-action btn-action-danger"
-                                onClick={() => setDeletingLicense(lic)}
-                                title={t("delete")}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {filteredLicenses.length === 0 && (
-                        <tr>
-                          <td colSpan={6} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>
-                            {t("noLicensesFound")}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <Pagination
-                  currentPage={licensePage}
-                  totalPages={totalLicensePages}
-                  onPageChange={setLicensePage}
-                  totalItems={filteredLicenses.length}
-                  pageSize={licensePageSize}
-                  pageSizeOptions={[5, 10, 20, 50, 100]}
-                  onPageSizeChange={(size) => {
-                    setLicensePageSize(size);
-                    setLicensePage(1);
-                  }}
-                />
-              </div>
+              </>
             );
           })()}
 
@@ -2546,15 +2639,183 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
               })()}
 
               {billingTab === "bank_config" && (
-                <div className="mf-two-col-grid">
-                  {/* Bank Config Form */}
-                  <div className="mf-card-panel">
-                    <div className="mf-card-header">
-                      <div className="mf-card-title-group">
-                        <h3>{language === "vi" ? "Cấu Hình Tài Khoản Ngân Hàng Nhận Tiền" : "Beneficiary Bank Configuration"}</h3>
-                        <p>{language === "vi" ? "Thông tin tài khoản để tự động tạo mã QR VietQR khi khách gia hạn trên Tool Desktop" : "Beneficiary account info for generating dynamic VietQR in Desktop app"}</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {/* Two-column Bank Cards Grid (MintForge Screenshot 2) */}
+                  <div className="bank-cards-grid-mf">
+                    {/* Card 1: VietinBank / Nhận tiền khách hàng */}
+                    <div className="bank-card-mf">
+                      <div className="bank-card-tags-row">
+                        <span className="tag-pill-purpose purpose-customer">Nhận tiền khách hàng</span>
+                        <span className="tag-status-active">● Đang hoạt động</span>
+                      </div>
+
+                      <div className="bank-card-body-split">
+                        <div className="vietqr-preview-box">
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: "0.4rem", padding: "0 4px" }}>
+                            <span style={{ fontWeight: 800, fontSize: "0.68rem", color: "#003b7a" }}>napas247</span>
+                            <span style={{ fontWeight: 800, fontSize: "0.68rem", color: "#005baa" }}>VietinBank</span>
+                          </div>
+                          <img
+                            className="vietqr-code-img"
+                            src={
+                              bankConfig.custom_qr_url ||
+                              (bankConfig.bank_bin && bankConfig.account_number
+                                ? `https://img.vietqr.io/image/${bankConfig.bank_bin}-${bankConfig.account_number}-${bankConfig.qr_template || "compact2"}.png?amount=${bankConfig.plans_pricing?.["1_month"] || 500000}&accountName=${encodeURIComponent(bankConfig.account_name || "NGUYEN LE HAI")}`
+                                : "https://img.vietqr.io/image/970415-109873538727-compact2.png?amount=500000&accountName=NGUYEN%20LE%20HAI")
+                            }
+                            alt="VietQR VietinBank"
+                          />
+                          <div className="vietqr-bottom-footer">
+                            <div className="account-text">{bankConfig.account_number || "109873538727"}</div>
+                            <div>{bankConfig.account_name || "NGUYEN LE HAI"}</div>
+                          </div>
+                        </div>
+
+                        <div className="bank-details-column">
+                          <div className="bank-header-group">
+                            <Building2 size={20} className="bank-building-icon" />
+                            <div>
+                              <span className="bank-name-text">{bankConfig.bank_name?.split("(")[0]?.trim() || "VietinBank"}</span>
+                              <span className="bank-short-code"> / ICB</span>
+                            </div>
+                          </div>
+
+                          <div className="bank-field-list">
+                            <div className="bank-field-row">
+                              <span className="field-label">Số tài khoản:</span>
+                              <span className="field-value">{bankConfig.account_number || "109873538727"}</span>
+                            </div>
+                            <div className="bank-field-row">
+                              <span className="field-label">Chủ tài khoản:</span>
+                              <span className="field-value">{bankConfig.account_name || "NGUYEN LE HAI"}</span>
+                            </div>
+                            <div className="bank-field-row">
+                              <span className="field-label">Vai trò:</span>
+                              <span className="field-value">SePay theo dõi tiền vào</span>
+                            </div>
+                          </div>
+
+                          <div className="bank-actions-row">
+                            <button
+                              type="button"
+                              className="btn-card-action action-edit"
+                              onClick={() => {
+                                const formEl = document.getElementById("bank-config-form-section");
+                                if (formEl) formEl.scrollIntoView({ behavior: "smooth" });
+                              }}
+                            >
+                              <Pencil size={13} /> Sửa
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-card-action action-delete"
+                              onClick={() => {
+                                if (confirm("Bạn có chắc muốn xóa cấu hình tài khoản này?")) {
+                                  setBankConfig({
+                                    ...bankConfig,
+                                    account_number: "",
+                                    account_name: "",
+                                  });
+                                  setMessage("Đã xóa thông tin tài khoản");
+                                }
+                              }}
+                            >
+                              <Trash2 size={13} /> Xóa
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Card 2: BIDV / Thanh toán API */}
+                    <div className="bank-card-mf">
+                      <div className="bank-card-tags-row">
+                        <span className="tag-pill-purpose purpose-supplier">Thanh toán API</span>
+                        <span className="tag-status-active">● Đang hoạt động</span>
+                      </div>
+
+                      <div className="bank-card-body-split">
+                        <div className="vietqr-preview-box">
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: "0.4rem", padding: "0 4px" }}>
+                            <span style={{ fontWeight: 800, fontSize: "0.68rem", color: "#003b7a" }}>napas247</span>
+                            <span style={{ fontWeight: 800, fontSize: "0.68rem", color: "#00558f" }}>BIDV</span>
+                          </div>
+                          <img
+                            className="vietqr-code-img"
+                            src="https://img.vietqr.io/image/970418-SEPAY_TOKENX-compact2.png?amount=100000&accountName=TOKENX"
+                            alt="VietQR BIDV"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=BIDV-SEPAY_TOKENX`;
+                            }}
+                          />
+                          <div className="vietqr-bottom-footer">
+                            <div className="account-text">SEPAY_TOKENX</div>
+                            <div>TOKENX - willownelson</div>
+                          </div>
+                        </div>
+
+                        <div className="bank-details-column">
+                          <div className="bank-header-group">
+                            <Building2 size={20} className="bank-building-icon" />
+                            <div>
+                              <span className="bank-name-text">BIDV</span>
+                              <span className="bank-short-code"> / BIDV</span>
+                            </div>
+                          </div>
+
+                          <div className="bank-field-list">
+                            <div className="bank-field-row">
+                              <span className="field-label">Số tài khoản:</span>
+                              <span className="field-value">SEPAY_TOKENX</span>
+                            </div>
+                            <div className="bank-field-row">
+                              <span className="field-label">Chủ tài khoản:</span>
+                              <span className="field-value">TOKENX - willownelson</span>
+                            </div>
+                            <div className="bank-field-row">
+                              <span className="field-label">Vai trò:</span>
+                              <span className="field-value">Nạp vốn nhà cung cấp</span>
+                            </div>
+                          </div>
+
+                          <div className="bank-actions-row">
+                            <button
+                              type="button"
+                              className="btn-card-action action-edit"
+                              onClick={() => {
+                                const formEl = document.getElementById("bank-config-form-section");
+                                if (formEl) formEl.scrollIntoView({ behavior: "smooth" });
+                              }}
+                            >
+                              <Pencil size={13} /> Sửa
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-card-action action-delete"
+                              onClick={() => {
+                                if (confirm("Bạn có chắc muốn xóa cấu hình tài khoản này?")) {
+                                  setMessage("Đã xóa thông tin tài khoản");
+                                }
+                              }}
+                            >
+                              <Trash2 size={13} /> Xóa
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Form & SePay Webhook Section */}
+                  <div id="bank-config-form-section" className="mf-two-col-grid">
+                    {/* Bank Config Form */}
+                    <div className="mf-card-panel">
+                      <div className="mf-card-header">
+                        <div className="mf-card-title-group">
+                          <h3>{language === "vi" ? "Cấu Hình Tài Khoản Ngân Hàng Nhận Tiền" : "Beneficiary Bank Configuration"}</h3>
+                          <p>{language === "vi" ? "Thông tin tài khoản để tự động tạo mã QR VietQR khi khách gia hạn trên Tool Desktop" : "Beneficiary account info for generating dynamic VietQR in Desktop app"}</p>
+                        </div>
+                      </div>
 
                     <form onSubmit={handleSaveBankConfig} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                       <div className="form-group-mf">
@@ -2848,7 +3109,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
             </div>
           )}
 
