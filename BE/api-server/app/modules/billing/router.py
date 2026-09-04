@@ -11,36 +11,78 @@ from app.core.errors import AppError
 from app.core.security import require_auth
 from app.core.store import store
 from app.modules.billing.schemas import (
+    BankAccountResponse,
     BankConfigResponse,
     BillingSummaryResponse,
     BillingTransactionResponse,
+    CreateBankAccountRequest,
     CreateBillingTransactionRequest,
     RenewQrRequest,
     RenewQrResponse,
+    UpdateBankAccountRequest,
     UpdateBankConfigRequest,
 )
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 DEFAULT_BANK_CONFIG = {
-    "bank_name": "MB Bank (Quân Đội)",
-    "bank_bin": "970422",
-    "account_number": "0988888888",
-    "account_name": "JACS STUDIO ADMIN",
+    "bank_name": "VietinBank (Công thương Việt Nam)",
+    "bank_bin": "970415",
+    "account_number": "109873538727",
+    "account_name": "NGUYEN LE HAI",
     "qr_template": "compact2",
     "plans_pricing": {
         "1_month": 500000.0,
         "3_months": 1350000.0,
         "6_months": 2500000.0,
         "1_year": 4500000.0,
+        "lifetime": 10000000.0,
     },
 }
+
+DEFAULT_BANK_ACCOUNTS = [
+    {
+        "id": "ba-vietinbank-default",
+        "bank_name": "VietinBank (Công thương Việt Nam)",
+        "bank_bin": "970415",
+        "bank_short": "CTG",
+        "account_number": "109873538727",
+        "account_name": "NGUYEN LE HAI",
+        "branch": "Chi nhánh Hà Nội",
+        "purpose": "customer_income",
+        "qr_template": "compact2",
+        "custom_qr_url": None,
+        "is_default": True,
+        "is_active": True,
+        "notes": "Tài khoản thụ hưởng chính nhận thanh toán bản quyền và SePay Webhook",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    },
+    {
+        "id": "ba-mb-expense",
+        "bank_name": "MB Bank (Ngân hàng Quân Đội)",
+        "bank_bin": "970422",
+        "bank_short": "MB",
+        "account_number": "0988888888",
+        "account_name": "JACS STUDIO ADMIN",
+        "branch": "Hội sở chính",
+        "purpose": "api_expense",
+        "qr_template": "compact2",
+        "custom_qr_url": None,
+        "is_default": False,
+        "is_active": True,
+        "notes": "Tài khoản chi trả phí hạ tầng Server và API AI",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    },
+]
 
 PLAN_DAYS = {
     "1_month": 30,
     "3_months": 90,
     "6_months": 180,
     "1_year": 365,
+    "lifetime": 3650,
 }
 
 PLAN_NAMES = {
@@ -48,14 +90,223 @@ PLAN_NAMES = {
     "3_months": "Gói 3 Tháng (Tiết kiệm 10%)",
     "6_months": "Gói 6 Tháng (Tiết kiệm 17%)",
     "1_year": "Gói 1 Năm (Tiết kiệm 25%)",
+    "lifetime": "Gói Trọn Đời (Lifetime Studio VIP)",
 }
 
 
+def _ensure_seed_bank_accounts() -> list[dict]:
+    accounts = store.list("bank_accounts")
+    if not accounts:
+        legacy = store.get("billing_settings", "bank_config")
+        if legacy:
+            acc = {
+                "bank_name": legacy.get("bank_name", "VietinBank (Công thương Việt Nam)"),
+                "bank_bin": legacy.get("bank_bin", "970415"),
+                "bank_short": legacy.get("bank_short", "CTG"),
+                "account_number": legacy.get("account_number", "109873538727"),
+                "account_name": legacy.get("account_name", "NGUYEN LE HAI"),
+                "branch": legacy.get("branch", ""),
+                "purpose": "customer_income",
+                "qr_template": legacy.get("qr_template", "compact2"),
+                "custom_qr_url": legacy.get("custom_qr_url"),
+                "is_default": True,
+                "is_active": True,
+                "notes": "Tài khoản thụ hưởng chính",
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+            }
+            store.create("bank_accounts", acc)
+        else:
+            for seed in DEFAULT_BANK_ACCOUNTS:
+                store.create("bank_accounts", seed.copy())
+        accounts = store.list("bank_accounts")
+    return accounts
+
+
 def _get_bank_config() -> dict:
-    saved = store.get("billing_settings", "bank_config")
-    if saved:
-        return {**DEFAULT_BANK_CONFIG, **saved}
-    return dict(DEFAULT_BANK_CONFIG)
+    accounts = _ensure_seed_bank_accounts()
+    default_acc = next((a for a in accounts if a.get("is_default") and a.get("is_active")), None)
+    if not default_acc:
+        default_acc = next((a for a in accounts if a.get("is_active")), None)
+    if not default_acc and accounts:
+        default_acc = accounts[0]
+
+    saved_settings = store.get("billing_settings", "bank_config") or {}
+    cfg = dict(DEFAULT_BANK_CONFIG)
+    cfg.update(saved_settings)
+
+    if default_acc:
+        cfg["bank_name"] = default_acc.get("bank_name", cfg["bank_name"])
+        cfg["bank_bin"] = default_acc.get("bank_bin", cfg["bank_bin"])
+        cfg["account_number"] = default_acc.get("account_number", cfg["account_number"])
+        cfg["account_name"] = default_acc.get("account_name", cfg["account_name"])
+        cfg["qr_template"] = default_acc.get("qr_template", cfg["qr_template"])
+        cfg["custom_qr_url"] = default_acc.get("custom_qr_url", cfg.get("custom_qr_url"))
+    return cfg
+
+
+@router.get("/bank-accounts", response_model=list[BankAccountResponse])
+async def list_bank_accounts(_: dict = Depends(require_auth)) -> list[dict]:
+    """Admin endpoint to list all configured beneficiary bank accounts."""
+    accounts = _ensure_seed_bank_accounts()
+    return sorted(
+        accounts,
+        key=lambda x: (not x.get("is_default", False), str(x.get("created_at", ""))),
+    )
+
+
+@router.post("/bank-accounts", response_model=BankAccountResponse, status_code=201)
+async def create_bank_account(
+    payload: CreateBankAccountRequest, user: dict = Depends(require_auth)
+) -> dict:
+    """Admin endpoint to create a new bank account."""
+    data = payload.model_dump()
+    data["created_at"] = datetime.now(UTC)
+    data["updated_at"] = datetime.now(UTC)
+
+    accounts = store.list("bank_accounts")
+    if not accounts or payload.is_default:
+        for acc in accounts:
+            if acc.get("is_default"):
+                store.update("bank_accounts", acc["id"], {"is_default": False})
+        data["is_default"] = True
+
+    record = store.create("bank_accounts", data)
+    store.create(
+        "audit",
+        {
+            "action": "billing.bank_account_created",
+            "account_id": str(record["id"]),
+            "bank_name": payload.bank_name,
+            "account_number": payload.account_number,
+            "actor": user["email"],
+        },
+    )
+    return record
+
+
+@router.get("/bank-accounts/{account_id}", response_model=BankAccountResponse)
+async def get_bank_account(account_id: str, _: dict = Depends(require_auth)) -> dict:
+    """Admin endpoint to get a single bank account details."""
+    record = store.get("bank_accounts", account_id)
+    if not record:
+        raise AppError("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản ngân hàng", 404)
+    return record
+
+
+@router.put("/bank-accounts/{account_id}", response_model=BankAccountResponse)
+async def update_bank_account(
+    account_id: str, payload: UpdateBankAccountRequest, user: dict = Depends(require_auth)
+) -> dict:
+    """Admin endpoint to update bank account details."""
+    record = store.get("bank_accounts", account_id)
+    if not record:
+        raise AppError("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản ngân hàng", 404)
+
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    update_data["updated_at"] = datetime.now(UTC)
+
+    if update_data.get("is_default"):
+        for acc in store.list("bank_accounts"):
+            if str(acc.get("id")) != str(account_id) and acc.get("is_default"):
+                store.update("bank_accounts", acc["id"], {"is_default": False})
+
+    saved = store.update("bank_accounts", account_id, update_data)
+    store.create(
+        "audit",
+        {
+            "action": "billing.bank_account_updated",
+            "account_id": str(account_id),
+            "bank_name": saved.get("bank_name"),
+            "account_number": saved.get("account_number"),
+            "actor": user["email"],
+        },
+    )
+    return saved
+
+
+@router.delete("/bank-accounts/{account_id}")
+async def delete_bank_account(account_id: str, user: dict = Depends(require_auth)) -> dict:
+    """Admin endpoint to delete a bank account."""
+    record = store.get("bank_accounts", account_id)
+    if not record:
+        raise AppError("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản ngân hàng", 404)
+
+    accounts = store.list("bank_accounts")
+    was_default = record.get("is_default", False)
+
+    store.delete("bank_accounts", account_id)
+
+    if was_default:
+        remaining = [acc for acc in accounts if str(acc.get("id")) != str(account_id)]
+        if remaining:
+            store.update("bank_accounts", remaining[0]["id"], {"is_default": True})
+
+    store.create(
+        "audit",
+        {
+            "action": "billing.bank_account_deleted",
+            "account_id": str(account_id),
+            "bank_name": record.get("bank_name"),
+            "account_number": record.get("account_number"),
+            "actor": user["email"],
+        },
+    )
+    return {"data": {"success": True, "message": "Đã xóa tài khoản ngân hàng thành công"}}
+
+
+@router.post("/bank-accounts/{account_id}/set-default", response_model=BankAccountResponse)
+async def set_default_bank_account(account_id: str, user: dict = Depends(require_auth)) -> dict:
+    """Admin endpoint to designate a bank account as the primary default beneficiary."""
+    record = store.get("bank_accounts", account_id)
+    if not record:
+        raise AppError("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản ngân hàng", 404)
+
+    for acc in store.list("bank_accounts"):
+        if str(acc.get("id")) != str(account_id) and acc.get("is_default"):
+            store.update("bank_accounts", acc["id"], {"is_default": False})
+
+    saved = store.update(
+        "bank_accounts",
+        account_id,
+        {"is_default": True, "is_active": True, "updated_at": datetime.now(UTC)},
+    )
+    store.create(
+        "audit",
+        {
+            "action": "billing.bank_account_set_default",
+            "account_id": str(account_id),
+            "bank_name": saved.get("bank_name"),
+            "account_number": saved.get("account_number"),
+            "actor": user["email"],
+        },
+    )
+    return saved
+
+
+@router.post("/bank-accounts/{account_id}/toggle-status", response_model=BankAccountResponse)
+async def toggle_bank_account_status(account_id: str, user: dict = Depends(require_auth)) -> dict:
+    """Admin endpoint to toggle active / inactive status of a bank account."""
+    record = store.get("bank_accounts", account_id)
+    if not record:
+        raise AppError("ACCOUNT_NOT_FOUND", "Không tìm thấy tài khoản ngân hàng", 404)
+
+    new_status = not record.get("is_active", True)
+    saved = store.update(
+        "bank_accounts",
+        account_id,
+        {"is_active": new_status, "updated_at": datetime.now(UTC)},
+    )
+    store.create(
+        "audit",
+        {
+            "action": "billing.bank_account_toggle_status",
+            "account_id": str(account_id),
+            "is_active": new_status,
+            "actor": user["email"],
+        },
+    )
+    return saved
 
 
 @router.get("/bank-config", response_model=BankConfigResponse)
@@ -79,6 +330,25 @@ async def update_bank_config(
         saved = store.update("billing_settings", "bank_config", data)
     else:
         saved = store.create("billing_settings", {"id": "bank_config", **data})
+
+    # Also synchronize default bank account if present
+    accounts = store.list("bank_accounts")
+    default_acc = next((a for a in accounts if a.get("is_default")), None)
+    if default_acc:
+        store.update(
+            "bank_accounts",
+            default_acc["id"],
+            {
+                "bank_name": payload.bank_name,
+                "bank_bin": payload.bank_bin,
+                "account_number": payload.account_number,
+                "account_name": payload.account_name,
+                "qr_template": payload.qr_template,
+                "custom_qr_url": payload.custom_qr_url,
+                "updated_at": datetime.now(UTC),
+            },
+        )
+
     store.create(
         "audit",
         {
