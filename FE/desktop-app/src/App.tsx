@@ -220,7 +220,7 @@ export function App() {
         const key = await runtime.readLicense();
         if (key) {
           const beat = await heartbeatLicense(key, machine.machineId, machine.appVersion, machine.platform);
-          if (beat?.status === "active" || beat?.status === "expiring") {
+          if (beat?.valid) {
             setActivated(true);
             if (beat.expires_at) {
               setLicenseExpiresAt(beat.expires_at);
@@ -532,9 +532,21 @@ export function App() {
 
   const Page = pages[active] || pages.overview;
 
+  if (!activated) {
+    return (
+      <ActivationGate
+        onActivated={(customLogo, customerName) => {
+          setActivated(true);
+          if (customLogo) {
+            setToolConfig((prev) => ({ ...prev, custom_logo_url: customLogo, studio_brand_name: customerName || prev.studio_brand_name }));
+          }
+        }}
+      />
+    );
+  }
+
   return (
-    <ActivationGate onActivated={onActivated}>
-      <div className="app-shell">
+    <div className="app-shell">
         {/* Main Sidebar */}
         <Sidebar
           active={active}
@@ -692,7 +704,6 @@ export function App() {
           </Modal>
         )}
       </div>
-    </ActivationGate>
   );
 }
 

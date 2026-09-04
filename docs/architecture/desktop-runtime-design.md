@@ -14,7 +14,7 @@ React modules -> core/native client -> preload allowlist -> Electron main
                                                       -> updater
 ```
 
-`Tool/desktop-app/electron/preload.cjs` chỉ expose các hàm tối thiểu: lấy thông
+`FE/desktop-app/electron/preload.cjs` chỉ expose các hàm tối thiểu: lấy thông
 tin thiết bị, đọc/ghi/xóa license, quản lý profile provider (chỉ metadata/mask),
 test provider trong main process, mở file chooser và reveal path. Main process
 không trả API key thô về renderer; key được mã hóa bằng `safeStorage` và chỉ
@@ -24,7 +24,7 @@ thêm API native mới; mỗi method mới cần threat review và test Windows/
 ## Cấu trúc code mục tiêu
 
 ```text
-Tool/desktop-app/
+FE/desktop-app/
 ├── electron/
 │   ├── main.cjs                 # cửa sổ, IPC, lifecycle
 │   ├── preload.cjs              # public native API allowlist

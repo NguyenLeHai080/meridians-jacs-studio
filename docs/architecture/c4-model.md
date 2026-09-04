@@ -18,7 +18,7 @@ notification và storage là hệ thống bên ngoài, được gọi qua adapte
 
 | Container | Công nghệ đề xuất | Trách nhiệm |
 | --- | --- | --- |
-| Desktop App | `Tool/desktop-app`: ReactJS + TypeScript + Electron/Tauri | UI, project, timeline, local engine, activation, OTA |
+| Desktop App | `FE/desktop-app`: ReactJS + TypeScript + Electron/Tauri | UI, project, timeline, local engine, activation, OTA |
 | Admin Portal | `FE/admin-portal`: ReactJS + TypeScript | Dashboard, license, provider, telemetry, release |
 | Python API | `BE/api-server`: FastAPI/Pydantic | Auth, nghiệp vụ module, API contract, orchestration |
 | Job Workers | Python worker + queue | Analysis, TTS, remote render, telemetry processing |

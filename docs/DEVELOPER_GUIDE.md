@@ -151,10 +151,10 @@ BE/api-server/app/
 
 ## 5. KIẾN TRÚC DESKTOP TOOL ELECTRON
 
-Ứng dụng Desktop nằm trong `Tool/desktop-app/`:
+Ứng dụng Desktop nằm trong `FE/desktop-app/`:
 
 ```text
-Tool/desktop-app/
+FE/desktop-app/
 ├── electron/             # Main Process (Node.js)
 │   ├── main.cjs          # Entry point Electron, khởi tạo Window, Tray, Auto-updater
 │   ├── preload.cjs       # Bridge an toàn (contextBridge) giữa Main và Renderer
@@ -319,7 +319,7 @@ app.include_router(affiliates_router)
 Desktop Tool hoạt động thông qua cơ chế **IPC (Inter-Process Communication)** giữa Renderer React và Main Process Node.js.
 
 ### Bước 1: Định nghĩa Handler trong Main Process
-Mở file `Tool/desktop-app/electron/main.cjs`:
+Mở file `FE/desktop-app/electron/main.cjs`:
 ```javascript
 const { ipcMain } = require('electron');
 
@@ -332,7 +332,7 @@ ipcMain.handle('tool:export-video-fast', async (event, payload) => {
 ```
 
 ### Bước 2: Expose qua `preload.cjs` an toàn
-Mở file `Tool/desktop-app/electron/preload.cjs`:
+Mở file `FE/desktop-app/electron/preload.cjs`:
 ```javascript
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -343,7 +343,7 @@ contextBridge.exposeInMainWorld('jacsApi', {
 
 ### Bước 3: Sử dụng trong React UI của Tool
 ```typescript
-// Tool/desktop-app/src/modules/render/RenderPage.tsx
+// FE/desktop-app/src/modules/render/RenderPage.tsx
 export function RenderPage() {
   const handleExport = async () => {
     if (window.jacsApi) {
