@@ -23,6 +23,7 @@ export type MenuKey =
   | "licenses"
   | "sessions"
   | "billing"
+  | "bank_config"
   | "plans"
   | "renewals"
   | "providers"
@@ -35,8 +36,7 @@ export type MenuKey =
 
 interface SidebarProps {
   activeMenu: MenuKey;
-  billingTab?: "transactions" | "bank_config";
-  onSelectMenu: (menu: MenuKey, subTab?: "transactions" | "bank_config") => void;
+  onSelectMenu: (menu: MenuKey) => void;
   onlineCount?: number;
   mobileMenuOpen?: boolean;
   onCloseMobile?: () => void;
@@ -45,7 +45,6 @@ interface SidebarProps {
 
 export function Sidebar({
   activeMenu,
-  billingTab = "transactions",
   onSelectMenu,
   onlineCount = 0,
   mobileMenuOpen = false,
@@ -54,8 +53,8 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useI18n();
 
-  const handleNav = (menu: MenuKey, subTab?: "transactions" | "bank_config") => {
-    onSelectMenu(menu, subTab);
+  const handleNav = (menu: MenuKey) => {
+    onSelectMenu(menu);
     if (onCloseMobile) onCloseMobile();
   };
 
@@ -158,8 +157,8 @@ export function Sidebar({
           <div className="menu-heading">CREDIT & THANH TOÁN</div>
           <button
             type="button"
-            className={`menu-item ${activeMenu === "billing" && billingTab === "transactions" ? "active" : ""}`}
-            onClick={() => handleNav("billing", "transactions")}
+            className={`menu-item ${activeMenu === "billing" ? "active" : ""}`}
+            onClick={() => handleNav("billing")}
           >
             <span className="menu-icon">
               <Wallet size={17} />
@@ -169,13 +168,13 @@ export function Sidebar({
 
           <button
             type="button"
-            className={`menu-item ${activeMenu === "billing" && billingTab === "bank_config" ? "active" : ""}`}
-            onClick={() => handleNav("billing", "bank_config")}
+            className={`menu-item ${activeMenu === "bank_config" ? "active" : ""}`}
+            onClick={() => handleNav("bank_config")}
           >
             <span className="menu-icon">
               <Building2 size={17} />
             </span>
-            <span className="menu-label">Ngân hàng & QR</span>
+            <span className="menu-label">{t("menuBankConfig", "Ngân hàng & QR")}</span>
           </button>
 
           <button
