@@ -9,7 +9,7 @@ import { Navbar } from "../../components/layout/Navbar";
 import { OverviewPage } from "../overview";
 import { ClientsPage } from "../clients";
 import { LicensesPage } from "../licenses";
-import { BillingPage } from "../billing";
+import { BillingPage, BankConfigPage } from "../billing";
 import { PlansPage } from "../plans";
 import { RenewalsPage } from "../renewals";
 import { SessionsPage } from "../sessions";
@@ -27,6 +27,7 @@ const VALID_MENUS: MenuKey[] = [
   "licenses",
   "sessions",
   "billing",
+  "bank_config",
   "plans",
   "renewals",
   "providers",
@@ -51,7 +52,6 @@ function getInitialMenu(): MenuKey {
 export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const token = getToken() ?? "";
   const [activeMenu, setActiveMenuState] = useState<MenuKey>(getInitialMenu);
-  const [billingSubTab, setBillingSubTab] = useState<"transactions" | "bank_config">("transactions");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -63,11 +63,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [onlineCount, setOnlineCount] = useState(0);
   const [activeLicenseCount, setActiveLicenseCount] = useState(0);
 
-  const setActiveMenu = (menu: MenuKey, subTab?: "transactions" | "bank_config") => {
+  const setActiveMenu = (menu: MenuKey) => {
     setActiveMenuState(menu);
-    if (subTab) {
-      setBillingSubTab(subTab);
-    }
     if (typeof window !== "undefined") {
       localStorage.setItem("jacs.admin.activeMenu", menu);
       if (window.location.hash) {
@@ -130,7 +127,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* Left Sidebar */}
       <Sidebar
         activeMenu={activeMenu}
-        billingTab={billingSubTab}
         onSelectMenu={setActiveMenu}
         onlineCount={onlineCount}
         mobileMenuOpen={mobileMenuOpen}
@@ -187,7 +183,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
           {activeMenu === "billing" && (
             <BillingPage
-              initialTab={billingSubTab}
+              searchTerm={searchTerm}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeMenu === "bank_config" && (
+            <BankConfigPage
               searchTerm={searchTerm}
               onNotify={showToast}
             />

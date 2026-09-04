@@ -1,4 +1,5 @@
 export * from "./pages/BillingPage";
+export * from "./pages/BankConfigPage";
 export * from "./pages/modal/AddTransactionModal";
 export * from "./pages/modal/RefundModal";
 export * from "./components/BankCardGrid";
