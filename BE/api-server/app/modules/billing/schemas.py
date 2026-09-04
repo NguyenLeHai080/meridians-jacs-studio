@@ -6,6 +6,46 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
+class BankAccountBase(BaseModel):
+    bank_name: str = Field(default="VietinBank", min_length=1, max_length=100)
+    bank_bin: str = Field(default="970415", min_length=1, max_length=32)
+    bank_short: str | None = Field(default=None, max_length=32)
+    account_number: str = Field(default="109873538727", min_length=1, max_length=64)
+    account_name: str = Field(default="NGUYEN LE HAI", min_length=1, max_length=160)
+    branch: str | None = Field(default=None, max_length=160)
+    purpose: str = Field(default="customer_income", max_length=64)  # customer_income, api_expense, supplier, backup, other
+    qr_template: str = Field(default="compact2", max_length=32)
+    custom_qr_url: str | None = Field(default=None, max_length=1000)
+    is_default: bool = Field(default=False)
+    is_active: bool = Field(default=True)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class CreateBankAccountRequest(BankAccountBase):
+    pass
+
+
+class UpdateBankAccountRequest(BaseModel):
+    bank_name: str | None = Field(default=None, min_length=1, max_length=100)
+    bank_bin: str | None = Field(default=None, min_length=1, max_length=32)
+    bank_short: str | None = Field(default=None, max_length=32)
+    account_number: str | None = Field(default=None, min_length=1, max_length=64)
+    account_name: str | None = Field(default=None, min_length=1, max_length=160)
+    branch: str | None = Field(default=None, max_length=160)
+    purpose: str | None = Field(default=None, max_length=64)
+    qr_template: str | None = Field(default=None, max_length=32)
+    custom_qr_url: str | None = Field(default=None, max_length=1000)
+    is_default: bool | None = None
+    is_active: bool | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class BankAccountResponse(BankAccountBase):
+    id: UUID | str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class BankConfigBase(BaseModel):
     bank_name: str = Field(default="MB Bank", min_length=1, max_length=100)
     bank_bin: str = Field(default="970422", min_length=1, max_length=32)
@@ -20,6 +60,7 @@ class BankConfigBase(BaseModel):
             "3_months": 1350000.0,
             "6_months": 2500000.0,
             "1_year": 4500000.0,
+            "lifetime": 10000000.0,
         }
     )
 

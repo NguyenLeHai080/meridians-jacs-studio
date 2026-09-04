@@ -532,3 +532,73 @@ def test_bank_config_and_renew_qr():
     assert summary["total_refunds"] >= 350000.0
     assert summary["net_revenue"] == summary["total_revenue"]
 
+
+def test_bank_accounts_full_crud():
+    headers = auth_headers()
+
+    # 1. List seeded accounts
+    res = client.get("/api/v1/billing/bank-accounts", headers=headers)
+    assert res.status_code == 200
+    accounts = res.json()
+    assert len(accounts) >= 1
+    default_acc = next((a for a in accounts if a.get("is_default")), None)
+    assert default_acc is not None
+
+    # 2. Create new bank account
+    new_acc_payload = {
+        "bank_name": "Techcombank",
+        "bank_bin": "970407",
+        "bank_short": "TCB",
+        "account_number": "19033333333333",
+        "account_name": "NGUYEN VAN B",
+        "branch": "Chi nhánh Sài Gòn",
+        "purpose": "customer_income",
+        "qr_template": "compact2",
+        "is_default": False,
+        "is_active": True,
+        "notes": "Tài khoản phụ dự phòng",
+    }
+    create_res = client.post("/api/v1/billing/bank-accounts", headers=headers, json=new_acc_payload)
+    assert create_res.status_code == 201
+    created = create_res.json()
+    acc_id = created["id"]
+    assert created["account_number"] == "19033333333333"
+
+    # 3. Get single account
+    get_res = client.get(f"/api/v1/billing/bank-accounts/{acc_id}", headers=headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["bank_name"] == "Techcombank"
+
+    # 4. Update account
+    update_res = client.put(
+        f"/api/v1/billing/bank-accounts/{acc_id}",
+        headers=headers,
+        json={"branch": "Chi nhánh Landmark 81", "notes": "Đã cập nhật chi nhánh"},
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["branch"] == "Chi nhánh Landmark 81"
+
+    # 5. Set default
+    set_def_res = client.post(f"/api/v1/billing/bank-accounts/{acc_id}/set-default", headers=headers)
+    assert set_def_res.status_code == 200
+    assert set_def_res.json()["is_default"] is True
+
+    # Verify previous default is no longer default
+    prev_acc = client.get(f"/api/v1/billing/bank-accounts/{default_acc['id']}", headers=headers).json()
+    assert prev_acc["is_default"] is False
+
+    # 6. Toggle status
+    toggle_res = client.post(f"/api/v1/billing/bank-accounts/{acc_id}/toggle-status", headers=headers)
+    assert toggle_res.status_code == 200
+    assert toggle_res.json()["is_active"] is False
+
+    # 7. Delete account
+    del_res = client.delete(f"/api/v1/billing/bank-accounts/{acc_id}", headers=headers)
+    assert del_res.status_code == 200
+    assert del_res.json()["data"]["success"] is True
+
+    # 8. Verify deleted
+    get_after_del = client.get(f"/api/v1/billing/bank-accounts/{acc_id}", headers=headers)
+    assert get_after_del.status_code == 404
+
+
