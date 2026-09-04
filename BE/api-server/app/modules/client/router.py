@@ -162,12 +162,13 @@ class SpeechSynthesisPayload(BaseModel):
 
 @router.post("/synthesize-speech")
 async def client_synthesize_speech(payload: SpeechSynthesisPayload):
-    import os
     import hashlib
     import json
+    import os
     import urllib.request
-    from fastapi import Response
+
     import edge_tts
+    from fastapi import Response
 
     clean_text = str(payload.text or "").strip()
     voice_key = str(payload.voice or "").strip().lower()
@@ -176,7 +177,7 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
 
     cache_dir = "/tmp/tts_cache"
     os.makedirs(cache_dir, exist_ok=True)
-    cache_key = hashlib.sha256(f"{voice_key}:{clean_text}:{api_key[:8]}".encode("utf-8")).hexdigest()
+    cache_key = hashlib.sha256(f"{voice_key}:{clean_text}:{api_key[:8]}".encode()).hexdigest()
     cache_file = os.path.join(cache_dir, f"{cache_key}.mp3")
 
     if os.path.exists(cache_file) and os.path.getsize(cache_file) > 100:
