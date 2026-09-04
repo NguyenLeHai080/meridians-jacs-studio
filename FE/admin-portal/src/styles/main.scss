@@ -1,4 +1,4 @@
-// 1. Custom SCSS Design System Modules
+// JACS Studio Admin Portal - Unified SCSS Design System
 @use 'variables';
 @use 'base';
 @use 'sidebar';
@@ -10,8 +10,3 @@
 @use 'modals';
 @use 'auth';
 @use 'responsive';
-
-// 2. Tailwind Core Directives
-@tailwind base;
-@tailwind components;
-@tailwind utilities;

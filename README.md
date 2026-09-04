@@ -32,14 +32,14 @@ Mở `http://localhost:5173`; đặt `VITE_API_URL` nếu API không chạy ở
 `http://localhost:8000`. Biến `VITE_ADMIN_EMAIL` có thể dùng để điền sẵn email
 quản trị; mật khẩu luôn phải nhập thủ công và không được lưu trong frontend.
 
-### Desktop Tool React/Electron (`Tool/`)
+### Desktop Tool React/Electron (`FE/desktop-app`)
 
 ```bash
 pnpm dev:electron
 ```
 
-Trong chế độ phát triển, thay đổi trong `Tool/desktop-app/src` được Vite cập
-nhật ngay; thay đổi trong `Tool/desktop-app/electron` sẽ tự khởi động lại shell
+Trong chế độ phát triển, thay đổi trong `FE/desktop-app/src` được Vite cập
+nhật ngay; thay đổi trong `FE/desktop-app/electron` sẽ tự khởi động lại shell
 Electron.
 
 Desktop có shell điều hướng theo module, activation UI, Device ID dẫn xuất,

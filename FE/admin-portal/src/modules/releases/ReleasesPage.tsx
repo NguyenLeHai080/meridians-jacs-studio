@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import type { FormEvent } from "react";
 import {
   Rocket,
@@ -17,8 +17,9 @@ import {
   Zap,
 } from "lucide-react";
 import { apiRequest } from "../../core/api";
+import { getToken } from "../../core/session";
 import { useI18n } from "../../core/i18n";
-import { Pagination } from "../../components/common/Pagination";
+import { Table, StatusBadge, Pagination } from "../../components/common";
 
 export type Release = {
   id: string;
@@ -37,27 +38,55 @@ export type Release = {
 };
 
 interface ReleasesPageProps {
-  releases: Release[];
-  token: string;
-  onRefresh: () => Promise<void>;
-  setMessage: (msg: string) => void;
-  setError: (err: string) => void;
+  releases?: Release[];
+  token?: string;
+  onRefresh?: () => Promise<void>;
+  setMessage?: (msg: string) => void;
+  setError?: (err: string) => void;
+  onNotify?: (msg: string, type?: "success" | "error") => void;
 }
 
 export function ReleasesPage({
-  releases,
-  token,
-  onRefresh,
-  setMessage,
-  setError,
+  releases: propReleases,
+  token: propToken,
+  onRefresh: propOnRefresh,
+  setMessage: propSetMessage,
+  setError: propSetError,
+  onNotify,
 }: ReleasesPageProps) {
+  const token = propToken || getToken() || "";
   const { language, t } = useI18n();
+  const [localReleases, setLocalReleases] = useState<Release[]>(propReleases || []);
+  const releases = propReleases || localReleases;
+
+  const notify = (msg: string, type: "success" | "error" = "success") => {
+    if (onNotify) onNotify(msg, type);
+    else if (type === "error" && propSetError) propSetError(msg);
+    else if (propSetMessage) propSetMessage(msg);
+  };
+
+  const fetchReleases = useCallback(async () => {
+    try {
+      const data = await apiRequest<Release[]>("/api/v1/releases", {}, token);
+      if (Array.isArray(data)) setLocalReleases(data);
+    } catch {
+      // Handled
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!propReleases) {
+      fetchReleases();
+    }
+  }, [propReleases, fetchReleases]);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [filterPlatform, setFilterPlatform] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -77,9 +106,14 @@ export function ReleasesPage({
     setTimeout(() => setCopiedId(null), 2000);
   }
 
+  const handleRefresh = async () => {
+    if (propOnRefresh) await propOnRefresh();
+    else await fetchReleases();
+  };
+
+
   async function handleCreateRelease(e: FormEvent) {
     e.preventDefault();
-    setError("");
     setLoadingAction("create");
     try {
       let finalSha512 = sha512.trim();
@@ -107,43 +141,41 @@ export function ReleasesPage({
         await apiRequest(`/api/v1/releases/${created.id}/publish`, {
           method: "POST",
         }, token);
-        setMessage(`🚀 Đã tạo và phát hành bản cập nhật ${finalVersion} (${platform}) cho toàn bộ khách hàng!`);
+        notify(`🚀 Đã tạo và phát hành bản cập nhật ${finalVersion} (${platform}) cho toàn bộ khách hàng!`, "success");
       } else {
-        setMessage(`Đã lưu bản cập nhật ${finalVersion} dạng bản nháp (Draft).`);
+        notify(`Đã lưu bản cập nhật ${finalVersion} dạng bản nháp (Draft).`, "success");
       }
 
       setShowCreateModal(false);
-      await onRefresh();
+      await handleRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tạo bản phát hành");
+      notify(err instanceof Error ? err.message : "Không thể tạo bản phát hành", "error");
     } finally {
       setLoadingAction(null);
     }
   }
 
   async function handlePublish(id: string, ver: string) {
-    setError("");
     setLoadingAction(id);
     try {
       await apiRequest(`/api/v1/releases/${id}/publish`, { method: "POST" }, token);
-      setMessage(`🎉 Đã phát hành bản cập nhật ${ver} cho toàn bộ khách hàng! Các máy khách đang mở sẽ nhận được thông báo cập nhật ngay.`);
-      await onRefresh();
+      notify(`🎉 Đã phát hành bản cập nhật ${ver} cho toàn bộ khách hàng! Các máy khách đang mở sẽ nhận được thông báo cập nhật ngay.`, "success");
+      await handleRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể phát hành bản cập nhật");
+      notify(err instanceof Error ? err.message : "Không thể phát hành bản cập nhật", "error");
     } finally {
       setLoadingAction(null);
     }
   }
 
   async function handleUnpublish(id: string, ver: string) {
-    setError("");
     setLoadingAction(id);
     try {
       await apiRequest(`/api/v1/releases/${id}/unpublish`, { method: "POST" }, token);
-      setMessage(`Đã chuyển bản ${ver} về trạng thái Bản nháp (Draft). Khách hàng sẽ không nhận thông báo bản này.`);
-      await onRefresh();
+      notify(`Đã chuyển bản ${ver} về trạng thái Bản nháp (Draft). Khách hàng sẽ không nhận thông báo bản này.`, "success");
+      await handleRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể thu hồi bản cập nhật");
+      notify(err instanceof Error ? err.message : "Không thể thu hồi bản cập nhật", "error");
     } finally {
       setLoadingAction(null);
     }
@@ -151,18 +183,18 @@ export function ReleasesPage({
 
   async function handleDelete(id: string, ver: string) {
     if (!window.confirm(`Bạn có chắc chắn muốn xóa bản cập nhật ${ver}?`)) return;
-    setError("");
     setLoadingAction(id);
     try {
       await apiRequest(`/api/v1/releases/${id}`, { method: "DELETE" }, token);
-      setMessage(`Đã xóa bản cập nhật ${ver} thành công.`);
-      await onRefresh();
+      notify(`Đã xóa bản cập nhật ${ver} thành công.`, "success");
+      await handleRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể xóa bản cập nhật");
+      notify(err instanceof Error ? err.message : "Không thể xóa bản cập nhật", "error");
     } finally {
       setLoadingAction(null);
     }
   }
+
 
   const safeReleases = Array.isArray(releases) ? releases : [];
   const filteredReleases = safeReleases.filter((r) => {

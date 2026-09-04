@@ -47,22 +47,29 @@ code, pre {
   display: flex;
   min-height: 100vh;
   background-color: $bg-app;
+  position: relative;
 }
 
+.main-content,
 .main-wrapper {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 100vh;
   overflow-x: hidden;
+  background-color: $bg-app;
 }
 
-.page-body-content {
+.content-body,
+.page-body-content,
+.view-container {
   flex: 1;
-  padding: 1.5rem 2rem 3.5rem;
-  max-width: 1440px;
+  padding: 1.75rem 2rem 3.5rem;
+  max-width: 1480px;
   width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .breadcrumb-nav {
@@ -80,16 +87,19 @@ code, pre {
   }
 }
 
-.page-header-row {
+.page-header-row,
+.view-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 1.5rem;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
-.page-title-group {
-  h1 {
+.page-title-group,
+.view-header > div:first-child {
+  h1, .view-title {
     font-size: 1.55rem;
     font-weight: 800;
     color: #0f172a;
@@ -98,16 +108,18 @@ code, pre {
     align-items: center;
     gap: 0.5rem;
     line-height: 1.2;
+    margin: 0;
   }
 
-  p {
+  p, .view-subtitle {
     color: #64748b;
     font-size: 0.82rem;
     margin-top: 0.25rem;
   }
 }
 
-.page-actions-group {
+.page-actions-group,
+.view-actions {
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -115,7 +127,8 @@ code, pre {
 }
 
 // Button Components
-.btn-white-outline {
+.btn-white-outline,
+.btn-secondary {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -130,13 +143,19 @@ code, pre {
   box-shadow: $shadow-xs;
   transition: all 0.15s ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: #f8fafc;
     border-color: #cbd5e1;
   }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 }
 
-.btn-primary-orange {
+.btn-primary-orange,
+.btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
@@ -151,9 +170,34 @@ code, pre {
   box-shadow: 0 2px 6px rgba(249, 87, 56, 0.25);
   transition: all 0.15s ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(249, 87, 56, 0.35);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1rem;
+  background: #ef4444;
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: #dc2626;
   }
 }
 
@@ -168,6 +212,20 @@ code, pre {
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
 .animate-scale-in {
   animation: scaleIn 0.2s ease-out;
+}
+
+.spin,
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
