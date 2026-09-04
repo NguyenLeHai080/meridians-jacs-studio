@@ -30,7 +30,7 @@ Desktop App (Windows/macOS) -- HTTPS/WSS --> Cloud Services <-- HTTPS --> Admin 
 ## Monorepo đề xuất
 
 ```text
-Tool/desktop-app        Desktop shell và renderer
+FE/desktop-app          Desktop shell và renderer
 FE/admin-portal         ReactJS web quản trị
 BE/api-server           Python API và workers
 packages/core           Contract, kiểu dữ liệu và tiện ích không phụ thuộc UI

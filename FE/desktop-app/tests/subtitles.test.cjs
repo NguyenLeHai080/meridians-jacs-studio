@@ -14,7 +14,9 @@ const mediaBinary = (name) => {
   if (!platformDir) return "";
   const archPath = path.join(root, "bin", architectureDir, `${name}${extension}`);
   const legacyPath = path.join(root, "bin", platformDir, `${name}${extension}`);
-  return fs.existsSync(archPath) ? archPath : legacyPath;
+  if (fs.existsSync(archPath)) return archPath;
+  if (fs.existsSync(legacyPath)) return legacyPath;
+  return "";
 };
 
 test("builds clip-relative UTF-8 SRT cues and splits long narration", () => {

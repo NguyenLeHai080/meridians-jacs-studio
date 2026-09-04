@@ -31,7 +31,7 @@
 - Prompt yêu cầu khôi phục mạch chuyện, giữ chủ ngữ/đại từ và phân bổ câu đúng mốc scene.
 - Job tách scene chỉ chạy khi mọi scene có voice-over riêng; cache cũ sẽ được phân tích lại.
 
-`Tool/desktop-app` là ứng dụng Desktop JACS Studio gồm React renderer và
+`FE/desktop-app` là ứng dụng Desktop JACS Studio gồm React renderer và
 Electron shell. UI được tách thành `core`, `modules` và `shared`; editor chính
 gồm inspector cài đặt narrator, preview Original/Auto-reframe, timeline nhiều
 track (video, AI voice, audio, subtitle), đồng thời vẫn giữ các module batch
@@ -105,7 +105,7 @@ Chạy voice worker để QA trước khi phát hành (đường dẫn macOS tư
 `.exe` trên Windows):
 
 ```bash
-Tool/desktop-app/voice-runtime/jacs-voice-worker list --language vi
+FE/desktop-app/voice-runtime/jacs-voice-worker list --language vi
 ```
 
 License material được Electron mã hóa bằng OS secure storage. Khi mở app, tool
@@ -138,15 +138,15 @@ dev:desktop` chỉ là renderer trong trình duyệt, không có file picker, m�
 thật, secure storage hoặc render native.
 
 ```bash
-pnpm --dir Tool/desktop-app dist:mac   # macOS .dmg + .zip (tự chuẩn bị FFmpeg)
-pnpm --dir Tool/desktop-app dist:win   # Windows NSIS .exe (chạy trên Windows)
+pnpm --dir FE/desktop-app dist:mac   # macOS .dmg + .zip (tự chuẩn bị FFmpeg)
+pnpm --dir FE/desktop-app dist:win   # Windows NSIS .exe (chạy trên Windows)
 ```
 
 Lệnh đóng gói sẽ chạy `prepare:media` trước khi build. Script này tìm
 `ffmpeg`/`ffprobe` trên máy và copy vào thư mục tạm `bin/<platform>`; CI cũng
 thực hiện bước này trên runner native nên installer luôn có media engine.
 
-File cài đặt nằm trong `Tool/desktop-app/release/`: macOS Universal bản mới nhất
+File cài đặt nằm trong `FE/desktop-app/release/`: macOS Universal bản mới nhất
 `JACS Studio-0.3.15-universal.dmg`/`.zip`, cùng artifact macOS ARM64/Intel và
 Windows x64 được build trên Windows runner của
 workflow; artifact local dùng cho QA. Workflow

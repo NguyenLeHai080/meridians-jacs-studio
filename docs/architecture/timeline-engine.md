@@ -1,6 +1,6 @@
 # Timeline Engine
 
-Timeline của Desktop Tool được xử lý bằng module thuần trong `Tool/desktop-app/src/core/timeline.ts`. Module không phụ thuộc React, Electron hay FFmpeg nên có thể tái sử dụng cho editor, batch queue và test.
+Timeline của Desktop Tool được xử lý bằng module thuần trong `FE/desktop-app/src/core/timeline.ts`. Module không phụ thuộc React, Electron hay FFmpeg nên có thể tái sử dụng cho editor, batch queue và test.
 
 ## Mô hình
 

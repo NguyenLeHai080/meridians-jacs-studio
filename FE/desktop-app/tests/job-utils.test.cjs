@@ -3,7 +3,18 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const test = require("node:test");
-const typescript = require("../node_modules/typescript");
+const typescript = (() => {
+  const candidates = [
+    path.resolve(__dirname, "../../admin-portal/node_modules/typescript"),
+    path.resolve(__dirname, "../node_modules/typescript"),
+    path.resolve(__dirname, "../../../node_modules/typescript"),
+    "typescript",
+  ];
+  for (const c of candidates) {
+    try { return require(c); } catch (_) {}
+  }
+  return require("typescript");
+})();
 
 function loadTypeScriptModule(relativePath) {
   const sourcePath = path.resolve(__dirname, "..", relativePath);

@@ -19,7 +19,7 @@ export const activationService = {
   },
 
   async activate(licenseKey: string, machine: MachineInfo) {
-    return await activateLicense(licenseKey, machine.machineId, machine.appVersion, machine.platform);
+    return await activateLicense(licenseKey, machine.machineId);
   },
 
   async heartbeat(licenseKey: string, machine: MachineInfo) {
