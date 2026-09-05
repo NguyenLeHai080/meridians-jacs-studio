@@ -607,7 +607,7 @@ export function App() {
           )}
 
           {/* Active Module Page Body */}
-          <main className="app-content-body">
+          <main className={`app-content-body ${active === "timeline" ? "page-content-fullscreen-studio" : ""}`}>
             <Page
               jobs={jobs}
               metrics={metrics}

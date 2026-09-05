@@ -8,7 +8,7 @@ const { pathToFileURL } = require("node:url");
 const { once } = require("node:events");
 const { createMachineInfo } = require("./machine-id.cjs");
 const { createProviderStore } = require("./provider-store.cjs");
-const { extractPageVideoUrls, extractResolverVideoUrls, extractTikTokVideoUrls, isTikTokHost, isYouTubeHost, normalizeVideoUrl, resolveYouTubeVideoUrl } = require("./video-url.cjs");
+const { extractPageVideoUrls, extractResolverVideoUrls, extractTikTokVideoUrls, extractYouTubeVideoId, isTikTokHost, isYouTubeHost, normalizeVideoUrl, resolveYouTubeVideoUrl } = require("./video-url.cjs");
 const { buildAudioFilter } = require("./audio-mix.cjs");
 const { buildCaptionCues, buildSrt } = require("./subtitles.cjs");
 const { languageName, speechLocale } = require("./narration.cjs");
@@ -28,6 +28,10 @@ protocol.registerSchemesAsPrivileged([{
   privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true },
 }]);
 
+// Allow instant audio preview playback without Chromium user gesture blocking
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+app.commandLine.appendSwitch("disable-features", "PreloadMediaEngagementData,MediaEngagementBypassAutoplayPolicies");
+
 // Chromium's Metal renderer has crashed on a few macOS/Electron combinations.
 if (process.platform === "darwin") {
   app.disableHardwareAcceleration();
@@ -40,16 +44,210 @@ function waitMs(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function findExecutable(name) {
+function findFileRecursive(dir, filename, maxDepth = 2, currentDepth = 0) {
+  if (currentDepth > maxDepth || !fs.existsSync(dir)) return null;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isFile() && entry.name.toLowerCase() === filename.toLowerCase()) {
+        return full;
+      }
+      if (entry.isDirectory() && currentDepth < maxDepth) {
+        const found = findFileRecursive(full, filename, maxDepth, currentDepth + 1);
+        if (found) return found;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function getCandidateSearchPaths(name) {
   const isWin = process.platform === "win32";
   const cmd = isWin && !name.toLowerCase().endsWith(".exe") ? `${name}.exe` : name;
+  const projectBin = path.join(__dirname, "..", "bin");
+  const platformDirectory = process.platform === "darwin" ? "darwin" : isWin ? "win32" : process.platform;
+  const architectureDirectory = `${platformDirectory}-${process.arch}`;
+
+  let userDataBin = "";
+  try { userDataBin = path.join(app.getPath("userData"), "bin"); } catch {}
+  const appDataBin = path.join(process.env.APPDATA || "", "jacs-studio", "bin");
+  const localAppDataBin = path.join(process.env.LOCALAPPDATA || "", "jacs-studio", "bin");
+  const localProgramsBin = path.join(process.env.LOCALAPPDATA || "", "Programs", "jacs-studio", "resources", "bin");
+  const execDir = path.dirname(process.execPath || "");
+
+  const candidates = [
+    process.env[`JACS_${name.toUpperCase().replace(/-/g, "_")}_PATH`],
+    userDataBin ? path.join(userDataBin, cmd) : null,
+    path.join(localAppDataBin, cmd),
+    path.join(appDataBin, cmd),
+    path.join(localProgramsBin, architectureDirectory, cmd),
+    path.join(localProgramsBin, platformDirectory, cmd),
+    path.join(localProgramsBin, cmd),
+    path.join(process.resourcesPath || "", "bin", architectureDirectory, cmd),
+    path.join(process.resourcesPath || "", "bin", platformDirectory, cmd),
+    path.join(process.resourcesPath || "", "bin", cmd),
+    path.join(process.resourcesPath || "", cmd),
+    path.join(execDir, "resources", "bin", architectureDirectory, cmd),
+    path.join(execDir, "resources", "bin", cmd),
+    path.join(execDir, "bin", architectureDirectory, cmd),
+    path.join(execDir, "bin", cmd),
+    path.join(execDir, cmd),
+    path.join(projectBin, architectureDirectory, cmd),
+    path.join(projectBin, platformDirectory, cmd),
+    path.join(projectBin, cmd),
+  ];
+
+  if (isWin) {
+    candidates.push(
+      `C:\\ffmpeg\\bin\\${cmd}`,
+      `C:\\Program Files\\ffmpeg\\bin\\${cmd}`,
+      `C:\\ProgramData\\chocolatey\\bin\\${cmd}`,
+      path.join(process.env.USERPROFILE || "", "scoop", "shims", cmd),
+      path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Links", cmd)
+    );
+    const wingetPackages = path.join(process.env.LOCALAPPDATA || "", "Microsoft", "WinGet", "Packages");
+    if (fs.existsSync(wingetPackages)) {
+      try {
+        const entries = fs.readdirSync(wingetPackages);
+        for (const entry of entries) {
+          if (/ffmpeg/i.test(entry)) {
+            const subPath = path.join(wingetPackages, entry);
+            const found = findFileRecursive(subPath, cmd, 3);
+            if (found) candidates.push(found);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // System PATH
   const pathEnv = process.env.PATH || "";
-  const parts = pathEnv.split(path.delimiter);
-  for (const part of parts) {
-    const full = path.join(part, cmd);
-    if (fs.existsSync(full)) return full;
+  for (const part of pathEnv.split(path.delimiter)) {
+    if (part) candidates.push(path.join(part, cmd));
+  }
+  candidates.push(name, cmd);
+
+  return candidates.filter(Boolean);
+}
+
+function findExecutable(name) {
+  const candidates = getCandidateSearchPaths(name);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        const stat = fs.statSync(candidate);
+        if (stat.isFile() && stat.size > 1024) return candidate;
+      } catch {}
+    }
+  }
+  for (const candidate of [name, `${name}.exe`]) {
+    for (const flag of ["--version", "-version", "-h"]) {
+      try {
+        childProcess.execFileSync(candidate, [flag], { stdio: "ignore", windowsHide: true });
+        return candidate;
+      } catch {}
+    }
   }
   return null;
+}
+
+let activeBinaryDownload = null;
+
+async function ensureExecutable(name, options = {}) {
+  let existing = findExecutable(name);
+  if (existing) return existing;
+
+  if (activeBinaryDownload) {
+    try { await activeBinaryDownload; } catch {}
+    existing = findExecutable(name);
+    if (existing) return existing;
+  }
+
+  const doDownload = async () => {
+    let userDataBin = "";
+    try { userDataBin = path.join(app.getPath("userData"), "bin"); } catch {
+      userDataBin = path.join(os.tmpdir(), "jacs-bin");
+    }
+    fs.mkdirSync(userDataBin, { recursive: true });
+    const isWin = process.platform === "win32";
+    const cmd = isWin && !name.toLowerCase().endsWith(".exe") ? `${name}.exe` : name;
+    const targetExe = path.join(userDataBin, cmd);
+
+    if (fs.existsSync(targetExe)) {
+      try {
+        const stat = fs.statSync(targetExe);
+        if (stat.size > 1024 * 1024) return targetExe;
+      } catch {}
+    }
+
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
+    onProgress({ stage: `Đang tải bộ xử lý ${name} (tự động 1 lần duy nhất)...`, progress: 5 });
+
+    const downloadUrl = isWin
+      ? "https://jacs-studio.nexoratech.com.vn/downloads/ffmpeg-win64.zip"
+      : `https://jacs-studio.nexoratech.com.vn/downloads/${name}`;
+
+    const tempZip = path.join(app.getPath("temp"), `jacs-media-engine-${Date.now()}.zip`);
+
+    const response = await fetch(downloadUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JACS-Studio-Updater" }
+    });
+    if (!response.ok) {
+      throw new Error(`Không thể tải bộ xử lý ${name} từ máy chủ JACS (HTTP ${response.status}). Hãy kiểm tra lại kết nối mạng.`);
+    }
+
+    const totalBytes = Number(response.headers.get("content-length") || 0);
+    const fileStream = fs.createWriteStream(tempZip);
+    let downloadedBytes = 0;
+
+    const reader = response.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fileStream.write(Buffer.from(value));
+      downloadedBytes += value.length;
+      if (totalBytes > 0) {
+        const pct = Math.min(90, Math.round((downloadedBytes / totalBytes) * 80) + 10);
+        onProgress({ stage: `Đang tải bộ xử lý media FFmpeg (${Math.round(downloadedBytes / 1024 / 1024)}MB / ${Math.round(totalBytes / 1024 / 1024)}MB)...`, progress: pct });
+      }
+    }
+    fileStream.end();
+    await new Promise((resolve, reject) => {
+      fileStream.on("finish", resolve);
+      fileStream.on("error", reject);
+    });
+
+    onProgress({ stage: `Đang giải nén bộ xử lý media FFmpeg...`, progress: 95 });
+
+    if (isWin) {
+      try {
+        childProcess.execSync(`tar -xf "${tempZip}" -C "${userDataBin}"`, { windowsHide: true, stdio: "ignore" });
+      } catch {
+        try {
+          childProcess.execSync(`powershell -NoProfile -Command "Expand-Archive -Force -Path '${tempZip}' -DestinationPath '${userDataBin}'"`, { windowsHide: true, stdio: "ignore" });
+        } catch (err) {
+          throw new Error(`Lỗi giải nén ${name}: ${err.message}`);
+        }
+      }
+    }
+
+    try { fs.unlinkSync(tempZip); } catch {}
+
+    const resolved = findExecutable(name);
+    if (!resolved || !fs.existsSync(resolved)) {
+      throw new Error(`Không thể khởi động bộ xử lý ${name} sau khi tải về.`);
+    }
+    onProgress({ stage: `Đã hoàn tất cài đặt bộ xử lý ${name}`, progress: 100 });
+    return resolved;
+  };
+
+  activeBinaryDownload = doDownload();
+  try {
+    return await activeBinaryDownload;
+  } finally {
+    activeBinaryDownload = null;
+  }
 }
 
 function stripSceneMetadata(text) {
@@ -57,8 +255,11 @@ function stripSceneMetadata(text) {
   return String(text || "")
     .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[^\]]*\]/gi, "")
     .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[:\-\.]\s*/gi, " ")
-    .replace(/\[\d{1,2}:\d{2}(?::\d{2})?\s*-\s*\d{1,2}:\d{2}(?::\d{2})?\]/g, "")
-    .replace(/\(\d{1,2}:\d{2}(?::\d{2})?\s*-\s*\d{1,2}:\d{2}(?::\d{2})?\)/g, "")
+    .replace(/\[\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\]/g, "")
+    .replace(/\(\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\)/g, "")
+    .replace(/(?:tại|ở|từ)\s+mốc\s+\d{1,2}[:.]\d{2}(?:\s*đến\s+\d{1,2}[:.]\d{2})?,?\s*/gi, "")
+    .replace(/(?:vào\s+)?lúc\s+\d{1,2}[:.]\d{2},?\s*/gi, "")
+    .replace(/\(\d{1,2}[:.]\d{2}\)/g, "")
     .replace(/\[[^\]]{1,60}\]/g, "")
     .replace(/[{}[\]"\\]/g, "")
     .replace(/\s+/g, " ")
@@ -194,15 +395,94 @@ function registerMediaProtocol() {
     try {
       const parsed = new URL(request.url);
       let filePath = parsed.searchParams.get("path") || decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
-      if (process.platform === "win32" && /^\/[A-Za-z]:[\\/]/.test(filePath)) filePath = filePath.slice(1);
+      if (process.platform === "win32" && /^\/[A-Za-z]:[\\/]/.test(filePath)) {
+        filePath = filePath.slice(1);
+      }
       filePath = path.resolve(filePath);
-      if (!fs.existsSync(filePath)) return new Response("Media not found", { status: 404 });
+      if (!fs.existsSync(filePath)) {
+        return new Response("Media not found: " + filePath, { status: 404 });
+      }
       const stat = fs.statSync(filePath);
-      if (!stat.isFile()) return new Response("Not a file", { status: 404 });
+      if (!stat.isFile()) {
+        return new Response("Not a file: " + filePath, { status: 404 });
+      }
 
-      return net.fetch(pathToFileURL(filePath).toString());
+      const fileSize = stat.size;
+      const range = request.headers.get("range");
+
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        ".mp4": "video/mp4",
+        ".m4v": "video/mp4",
+        ".webm": "video/webm",
+        ".mkv": "video/x-matroska",
+        ".mov": "video/quicktime",
+        ".avi": "video/x-msvideo",
+        ".ts": "video/mp2t",
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+        ".ogg": "audio/ogg",
+        ".flac": "audio/flac",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+      };
+      const contentType = mimeTypes[ext] || "video/mp4";
+
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunksize = end - start + 1;
+        const stream = fs.createReadStream(filePath, { start, end });
+        const nodeReadableStream = new ReadableStream({
+          start(controller) {
+            stream.on("data", (chunk) => controller.enqueue(chunk));
+            stream.on("end", () => controller.close());
+            stream.on("error", (err) => controller.error(err));
+          },
+          cancel() {
+            stream.destroy();
+          },
+        });
+
+        return new Response(nodeReadableStream, {
+          status: 206,
+          statusText: "Partial Content",
+          headers: {
+            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": String(chunksize),
+            "Content-Type": contentType,
+          },
+        });
+      }
+
+      const stream = fs.createReadStream(filePath);
+      const nodeReadableStream = new ReadableStream({
+        start(controller) {
+          stream.on("data", (chunk) => controller.enqueue(chunk));
+          stream.on("end", () => controller.close());
+          stream.on("error", (err) => controller.error(err));
+        },
+        cancel() {
+          stream.destroy();
+        },
+      });
+
+      return new Response(nodeReadableStream, {
+        status: 200,
+        headers: {
+          "Content-Length": String(fileSize),
+          "Accept-Ranges": "bytes",
+          "Content-Type": contentType,
+        },
+      });
     } catch (err) {
-      return new Response(`Error: ${err.message}`, { status: 500 });
+      return new Response(`Media streaming error: ${err.message}`, { status: 500 });
     }
   });
 }
@@ -273,32 +553,7 @@ function saveJobs(value) {
   writeJsonAtomic(jobsPath(), value.slice(0, 500));
 }
 
-function findExecutable(name) {
-  const projectBin = path.join(__dirname, "..", "bin");
-  const platformDirectory = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : process.platform;
-  const architectureDirectory = `${platformDirectory}-${process.arch}`;
-  const candidates = [
-    process.env[`JACS_${name.toUpperCase()}_PATH`],
-    path.join(projectBin, architectureDirectory, name),
-    path.join(projectBin, architectureDirectory, `${name}.exe`),
-    // Keep compatibility with 0.3.2 media bundles that used bin/darwin.
-    path.join(projectBin, platformDirectory, name),
-    path.join(projectBin, platformDirectory, `${name}.exe`),
-    path.join(process.resourcesPath || "", "bin", architectureDirectory, name),
-    path.join(process.resourcesPath || "", "bin", architectureDirectory, `${name}.exe`),
-    path.join(process.resourcesPath || "", "bin", platformDirectory, name),
-    path.join(process.resourcesPath || "", "bin", platformDirectory, `${name}.exe`),
-    name,
-    `${name}.exe`,
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    try {
-      childProcess.execFileSync(candidate, ["-version"], { stdio: "ignore", windowsHide: true });
-      return candidate;
-    } catch { /* Try the next bundled/system candidate. */ }
-  }
-  return null;
-}
+
 
 function voiceWorkerInvocation() {
   const workerRoot = path.join(process.resourcesPath || "", "voice-runtime");
@@ -371,8 +626,13 @@ async function mergeVideoFiles(event, filePaths, operationId) {
   inputs.forEach((value) => {
     if (!fs.existsSync(value) || !fs.statSync(value).isFile()) throw new Error(`Không tìm thấy video: ${path.basename(value)}`);
   });
-  const ffmpeg = findExecutable("ffmpeg");
-  if (!ffmpeg) throw new Error("Không tìm thấy FFmpeg để ghép video. Hãy cài bản Desktop đầy đủ.");
+  let ffmpeg = findExecutable("ffmpeg");
+  if (!ffmpeg) {
+    ffmpeg = await ensureExecutable("ffmpeg", {
+      onProgress: (p) => event.sender.send("runtime:render-progress", { ...p, operationId })
+    }).catch(() => null);
+  }
+  if (!ffmpeg) throw new Error("Không thể khởi động FFmpeg để ghép video. Vui lòng kiểm tra kết nối mạng hoặc thử lại.");
   const fingerprint = crypto.createHash("sha256").update(inputs.map((value) => {
     const stat = fs.statSync(value);
     return `${value}:${stat.size}:${stat.mtimeMs}`;
@@ -533,6 +793,112 @@ async function resolveTikTokVideoUrl(parsed, signal) {
   throw new Error("Không tải được video TikTok. TikTok hoặc nguồn trung gian đang chặn video này; hãy thử link MP4 trực tiếp hoặc tải file về rồi chọn Local file.");
 }
 
+async function downloadWithYtDlp(event, url, cache, operationId) {
+  const ytdlp = findExecutable("yt-dlp");
+  if (!ytdlp) return null;
+
+  const directory = cache.directory;
+  fs.mkdirSync(directory, { recursive: true });
+
+  const ffmpeg = findExecutable("ffmpeg");
+  const baseName = cache.digest;
+  const outputTemplate = path.join(directory, `${baseName}.%(ext)s`);
+
+  const args = [
+    "--no-playlist",
+    "--no-warnings",
+    "-f", "bv*+ba/b",
+    "--merge-output-format", "mp4",
+    "-o", outputTemplate,
+  ];
+
+  if (ffmpeg) {
+    args.push("--ffmpeg-location", ffmpeg);
+  }
+
+  args.push(url);
+
+  event.sender.send("runtime:download-progress", { progress: 1, stage: "downloading", operationId });
+
+  return new Promise((resolve, reject) => {
+    const child = childProcess.spawn(ytdlp, args, {
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    const op = operationState(operationId);
+    if (op) op.children.add(child);
+
+    let stdout = "";
+    let stderr = "";
+    let lastProgress = 1;
+
+    const parseProgress = (chunk) => {
+      const text = chunk.toString();
+      const matches = [...text.matchAll(/\[download\]\s+(\d+(?:\.\d+)?)%/g)];
+      if (matches.length > 0) {
+        const lastMatch = matches[matches.length - 1];
+        const pct = parseFloat(lastMatch[1]);
+        if (!isNaN(pct) && pct > lastProgress) {
+          lastProgress = pct;
+          event.sender.send("runtime:download-progress", {
+            progress: Math.max(1, Math.min(99, Math.round(pct))),
+            stage: "downloading",
+            operationId,
+          });
+        }
+      }
+    };
+
+    if (child.stdout) {
+      child.stdout.on("data", (data) => {
+        stdout += data.toString();
+        parseProgress(data);
+      });
+    }
+
+    if (child.stderr) {
+      child.stderr.on("data", (data) => {
+        stderr += data.toString();
+        parseProgress(data);
+      });
+    }
+
+    child.on("error", (err) => {
+      if (op) op.children.delete(child);
+      reject(err);
+    });
+
+    child.on("close", (code) => {
+      if (op) op.children.delete(child);
+      if (op?.cancelled) {
+        return reject(cancelledOperationError());
+      }
+      if (code === 0) {
+        try {
+          const files = fs.readdirSync(directory);
+          const found = files.find((f) => f.startsWith(baseName + ".") && !f.endsWith(".part") && !f.endsWith(".ytdl"));
+          if (found) {
+            const finalPath = path.join(directory, found);
+            if (fs.statSync(finalPath).size > 1000) {
+              event.sender.send("runtime:download-progress", { progress: 100, stage: "downloaded", outputPath: finalPath, operationId });
+              return resolve(finalPath);
+            }
+          }
+        } catch (e) {}
+        const mp4Path = path.join(directory, `${baseName}.mp4`);
+        if (fs.existsSync(mp4Path) && fs.statSync(mp4Path).size > 1000) {
+          event.sender.send("runtime:download-progress", { progress: 100, stage: "downloaded", outputPath: mp4Path, operationId });
+          return resolve(mp4Path);
+        }
+        reject(new Error(`yt-dlp hoàn thành nhưng không tìm thấy file output: ${stdout || stderr}`));
+      } else {
+        reject(new Error(`yt-dlp lỗi (code ${code}): ${stderr || stdout}`));
+      }
+    });
+  });
+}
+
 async function downloadVideo(event, url, operationId) {
   let parsed;
   try { parsed = new URL(normalizeVideoUrl(url)); } catch { throw new Error("URL video không hợp lệ"); }
@@ -542,6 +908,19 @@ async function downloadVideo(event, url, operationId) {
     event.sender.send("runtime:download-progress", { progress: 100, stage: "downloaded", outputPath: cache, operationId });
     return cache;
   }
+
+  // Ưu tiên tải qua yt-dlp binary đi kèm (hỗ trợ YouTube, TikTok, Facebook, Shorts không lo bị chặn bot)
+  const ytdlp = findExecutable("yt-dlp");
+  if (ytdlp) {
+    try {
+      const ytdlpResult = await downloadWithYtDlp(event, parsed.href, cache, operationId);
+      if (ytdlpResult) return ytdlpResult;
+    } catch (ytdlpErr) {
+      if (operationState(operationId)?.cancelled) throw ytdlpErr;
+      console.warn("yt-dlp download failed, falling back to direct resolvers:", ytdlpErr.message);
+    }
+  }
+
   const state = operationState(operationId);
   const timeout = AbortSignal.timeout(120000);
   const signal = state ? AbortSignal.any([state.controller.signal, timeout]) : timeout;
@@ -619,44 +998,91 @@ async function downloadVideo(event, url, operationId) {
   return filePath;
 }
 
-function generateLocalStoryAnalysis(probe, customPrompt, language = "vi") {
-  const duration = Math.max(1, Number(probe.durationSeconds || 1));
-  const targetCount = Math.max(4, Math.min(35, Math.ceil(duration / 14)));
-  const partDuration = duration / targetCount;
+function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", options = {}) {
+  const duration = Math.max(60, Number(probe?.durationSeconds || 600));
+  const targetDurMinutes = Number(options?.targetDurationMinutes) || (duration > 300 ? 5.5 : Math.ceil(duration / 60));
+  const targetDurSeconds = Math.round(targetDurMinutes * 60);
+
+  const targetCount = Math.max(6, Math.min(16, Math.round(targetDurSeconds / 35)));
+  const targetClipDuration = Math.max(18, Math.round(targetDurSeconds / targetCount));
+  const sourceStep = Math.max(20, (duration - targetClipDuration) / Math.max(1, targetCount - 1));
+
   const scenes = [];
+  let recapCursor = 0;
+
+  const hookNarratives = [
+    "Một tình huống bất thường và đầy kịch tính bất ngờ xuất hiện, lập tức kích hoạt trực giác nghiệp vụ sắc bén của lực lượng tuần tra. Một dấu hiệu nguy hiểm khó lường đã mở đầu cho chuỗi sự việc nghẹt thở mà không một ai có thể dự đoán trước.",
+    "Khoảnh khắc căng thẳng tột độ ập đến khi một chi tiết tưởng như vô hại lại ẩn chứa bí mật động trời, buộc các điều tra viên phải lập tức vào vị trí sẵn sàng ứng phó với tình huống khẩn cấp.",
+  ];
+
+  const act1Narratives = [
+    "Ban đầu, sự việc diễn ra ngỡ như chỉ là một quy trình dừng xe và kiểm tra hành chính thông thường. Tuy nhiên, đằng sau lớp vỏ bọc bình thản và những câu trả lời trôi chảy ấy lại ẩn chứa vô số vết nứt tâm lý khó lòng che giấu.",
+    "Từng cử chỉ dè dặt, ánh mắt né tránh cùng thái độ ngập ngừng của đối tượng nhanh chóng thu hút sự chú ý đặc biệt của các điều tra viên. Những manh mối ban đầu bắt đầu được kết nối lại với nhau.",
+    "Bầu không khí xung quanh dần chùng xuống khi sự lúng túng của đối tượng ngày một rõ rệt. Những câu hỏi tưởng như bâng quơ nhưng đầy ẩn ý từ phía cảnh sát bắt đầu bóc tách từng lớp phòng thủ đầu tiên.",
+  ];
+
+  const act2Narratives = [
+    "Cuộc đấu trí tâm lý bắt đầu được đẩy lên đỉnh điểm căng thẳng. Trước những câu hỏi sắc bén và dồn dập từ phía lực lượng chức năng, những lời khai bất nhất và mâu thuẫn bắt đầu lộ rõ không thể cứu vãn.",
+    "Lớp mặt nạ giả tạo dần bị xé toạc từng mảnh. Những bằng chứng thu thập được ngay tại hiện trường đã vạch trần toàn bộ sự dối trá và toan tính mờ ám được che đậy công phu bấy lâu nay.",
+    "Cảm xúc dâng trào đến mức nghẹt thở khi mọi lý lẽ ngụy biện hoàn toàn sụp đổ. Đối tượng không còn đường thoái lui và buộc phải đối diện với sự thật trần trụi trước ánh mắt kiên định của tổ công tác.",
+    "Tình huống đối đầu nghẹt thở tiếp diễn khi các điều tra viên kiên quyết đấu tranh làm rõ từng chi tiết mờ ám. Sự thật đằng sau vụ việc dần hiện nguyên hình với những góc khuất gây chấn động.",
+    "Từng manh mối đắt giá liên tiếp được hé lộ, khóa chặt mọi đường tẩu tán và chối bỏ trách nhiệm. Bản chất thật sự của kẻ chủ mưu đã hoàn toàn bị lột trần không chút kiêng dè.",
+  ];
+
+  const act3Narratives = [
+    "Khoảnh khắc sự thật được phơi bày trọn vẹn cũng là lúc hồi chuông cảnh tỉnh vang lên đanh thép. Mọi toan tính tinh vi đều không thể vượt qua được ánh sáng của công lý và sự nghiêm minh của pháp luật.",
+    "Bằng chứng đanh thép được thiết lập vững chắc, buộc kẻ vi phạm phải cúi đầu chấp nhận sự trừng phạt thích đáng. Công lý được thực thi trọn vẹn, mang lại sự bình yên và công bằng cho xã hội.",
+    "Khép lại toàn bộ câu chuyện, vụ việc để lại bài học sâu sắc về nhân tâm và những cạm bẫy cuộc đời. Pháp luật luôn nghiêm minh và cái giá phải trả cho sự lọc lừa sẽ luôn là bài học cảnh tỉnh đắt giá cho bất cứ ai.",
+  ];
+
   for (let i = 0; i < targetCount; i++) {
-    const pStart = i * partDuration;
-    const pEnd = i === targetCount - 1 ? duration : (i + 1) * partDuration;
-    const progressPct = Math.round((i / targetCount) * 100);
-    let stageName = "Khởi đầu tình huống";
-    let narrative = `Ở mốc thời gian ${formatTime(pStart)}, câu chuyện bắt đầu mở ra với những quan sát ban đầu về không gian và hành động của các nhân vật tại hiện trường.`;
-    if (progressPct >= 15 && progressPct < 40) {
-      stageName = "Diễn biến tiếp nối & Phát hiện tình tiết";
-      narrative = `Bước sang thời điểm ${formatTime(pStart)}, tình huống dần trở nên rõ nét hơn khi các nhân vật bắt đầu có những phản ứng và tương tác trực tiếp với nhau.`;
-    } else if (progressPct >= 40 && progressPct < 70) {
-      stageName = "Tình huống cao trào & Đối thoại gay cấn";
-      narrative = `Tại thời điểm ${formatTime(pStart)} đến ${formatTime(pEnd)}, sự căng thẳng được đẩy lên cao trào khi các bên phải đưa ra những quyết định xử lý nhanh chóng trong tình thế khó khăn.`;
-    } else if (progressPct >= 70 && progressPct < 90) {
-      stageName = "Bước ngoặt xử lý & Diễn biến quyết định";
-      narrative = `Đến giai đoạn ${formatTime(pStart)}, tình thế đã có sự chuyển biến rõ rệt khi các hành động thực tế đã mang lại kết quả và làm sáng tỏ nguyên nhân của sự việc.`;
-    } else if (progressPct >= 90) {
-      stageName = "Tổng kết sự việc & Kết thúc";
-      narrative = `Ở những giây cuối cùng từ ${formatTime(pStart)} đến ${formatTime(pEnd)}, toàn bộ diễn biến của sự việc đã được làm rõ, khép lại quá trình ghi nhận một cách trọn vẹn và đầy đủ.`;
+    const srcStartSec = Math.min(duration - targetClipDuration, Math.max(0, Math.round(i * sourceStep)));
+    const srcEndSec = Math.min(duration, srcStartSec + targetClipDuration);
+    const clipDur = srcEndSec - srcStartSec;
+    const tStart = recapCursor;
+    const tEnd = recapCursor + clipDur;
+    recapCursor = tEnd;
+
+    const progPct = Math.round((i / Math.max(1, targetCount - 1)) * 100);
+    let stageTitle = "";
+    let narrative = "";
+
+    if (i === 0) {
+      stageTitle = "[00:00 - 00:10] Hook Cao Trào (Viral Retention)";
+      narrative = hookNarratives[i % hookNarratives.length];
+    } else if (progPct <= 30) {
+      stageTitle = "[Hồi 1] Khởi Nguồn & Nghịch Lý Ban Đầu";
+      narrative = act1Narratives[(i - 1) % act1Narratives.length];
+    } else if (progPct <= 75) {
+      stageTitle = "[Hồi 2] Xung Đột Leo Thang & Lớp Mặt Nạ Bị Xé Toạc";
+      narrative = act2Narratives[(i - 1) % act2Narratives.length];
+    } else {
+      stageTitle = "[Hồi 3] Kết Cục, Công Lý & Bài Học Quan Sát Xã Hội";
+      narrative = act3Narratives[(i - 1) % act3Narratives.length];
     }
+
     scenes.push({
       id: `scene-${i + 1}`,
-      start: formatTime(pStart),
-      end: formatTime(pEnd),
-      title: `${stageName} (Đoạn ${i + 1})`,
-      detail: `Ghi nhận bối cảnh thực tế phân đoạn ${formatTime(pStart)} - ${formatTime(pEnd)}`,
+      start: formatTime(tStart),
+      end: formatTime(tEnd),
+      timeStart: tStart,
+      timeEnd: tEnd,
+      sourceStart: formatTime(srcStartSec),
+      sourceEnd: formatTime(srcEndSec),
+      sourceTimeStart: srcStartSec,
+      sourceTimeEnd: srcEndSec,
+      title: `${stageTitle} (#${i + 1})`,
+      detail: narrative,
+      action_visual: `Trích đoạn video gốc ${formatTime(srcStartSec)} - ${formatTime(srcEndSec)}`,
       translation: narrative,
       voiceover: narrative,
     });
   }
+
   return {
-    summary: customPrompt ? `Kịch bản phân tích theo yêu cầu: "${String(customPrompt).slice(0, 120)}..."` : "Kịch bản phân tích chi tiết và thuyết minh toàn diện theo bối cảnh video.",
+    summary: `Kịch bản phân tích kể chuyện 3 Hồi & Hook (${targetDurMinutes} phút): Bóc tách toàn bộ vụ việc từ mở đầu đến hồi kết với góc nhìn quan sát xã hội và nghiệp vụ trinh sát sắc bén.`,
     scenes,
-    score: 95,
+    score: 96,
     tokensUsed: 0,
     creditsUsed: 0,
   };
@@ -670,7 +1096,33 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
   let body;
   const visualImages = images.map((image) => typeof image === "string" ? { data: image } : image);
   const visualText = (index) => ({ type: "text", text: `[Khung hình ${index + 1} · ${Number(visualImages[index]?.timestampSeconds || 0).toFixed(1)} giây]` });
-  if (record.providerType === "gemini") {
+  
+  if (record.isManaged) {
+    let licenseKey = "JACS-MANAGED";
+    try {
+      if (safeStorage.isEncryptionAvailable() && fs.existsSync(licensePath())) {
+        const raw = fs.readFileSync(licensePath());
+        licenseKey = safeStorage.decryptString(raw) || "JACS-MANAGED";
+      }
+    } catch { /* best effort */ }
+    url = endpoint(record.baseUrl, "chat/completions");
+    headers.Authorization = `Bearer ${licenseKey}`;
+    headers["x-jacs-license-key"] = licenseKey;
+    const content = visualImages.length
+      ? [
+          { type: "text", text: prompt },
+          ...visualImages.flatMap((image, index) => [
+            visualText(index),
+            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${image.data}`, detail: "low" } }
+          ])
+        ]
+      : prompt;
+    body = {
+      model: record.model || "gpt-5.6-sol",
+      max_tokens: maxOutputTokens,
+      messages: [{ role: "user", content }]
+    };
+  } else if (record.providerType === "gemini") {
     let cleanModel = (record.model || "gemini-2.5-flash").trim().replace(/^models\//i, "");
     const legacyAliases = {
       "gemini-2.0-flash": "gemini-2.5-flash",
@@ -717,14 +1169,19 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
     body = { model: record.model, temperature: 0.3, max_tokens: maxOutputTokens, messages: [{ role: "user", content }] };
   }
   const state = operationState(operationId);
-  const timeoutMs = Number(process.env.JACS_PROVIDER_TIMEOUT_MS ?? 45000);
+  // Increase timeout to 180s for long video analysis (e.g. 1080p full true-crime / pursuit videos)
+  const defaultTimeout = attempt === 0 ? 180000 : (attempt === 1 ? 120000 : 90000);
+  const timeoutMs = Number(process.env.JACS_PROVIDER_TIMEOUT_MS ?? defaultTimeout);
   const timeout = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : null;
   const signal = state ? (timeout ? AbortSignal.any([state.controller.signal, timeout]) : state.controller.signal) : timeout || undefined;
   return fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal }).then(async (response) => {
     assertOperationActive(operationId);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = String(payload?.error?.message || payload?.error?.detail || payload?.message || "").replace(/\s+/g, " ").trim().slice(0, 240);
+      let detail = String(payload?.error?.message || payload?.error?.detail || payload?.message || "").replace(/\s+/g, " ").trim().slice(0, 240);
+      if (detail.includes("No pricing rule") || detail.includes("no_pricing_rule")) {
+        detail = `Cổng API (OneAPI/Proxy) chưa thiết lập giá cho model "${record.model}". Hãy kiểm tra lại danh sách model hoặc đổi sang model chuẩn (vd: gpt-5.6-sol, gpt-5.5, claude-opus-5)`;
+      }
       const error = new Error(`AI provider trả về HTTP ${response.status}${detail ? `: ${detail}` : ""}`);
       error.status = response.status;
       throw error;
@@ -744,20 +1201,29 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
   }).catch((error) => {
     if (state?.cancelled) throw cancelledOperationError();
 
-    // Auto fallback for Gemini 503 (High demand / Overloaded), 429 (Rate Limit), 404, 500, 502, 504
-    if ([400, 404, 429, 500, 502, 503, 504, 524].includes(Number(error?.status)) && record.providerType === "gemini" && attempt < 4) {
-      const fallbackModels = [
-        "gemini-1.5-flash",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-2.5-pro",
-        "gemini-flash-lite-latest",
-      ];
+    // Auto fallback for 503 (High demand / Overloaded), 429 (Rate Limit), 400, 404, 500, 502, 504, TimeoutError
+    if (([400, 404, 429, 500, 502, 503, 504, 524].includes(Number(error?.status)) || error?.name === "TimeoutError" || error?.name === "AbortError" || error?.code === "UND_ERR_CONNECT_TIMEOUT") && attempt < 4) {
+      const fallbackModels = record.isManaged
+        ? ["gpt-5.6-sol", "gpt-5.5", "claude-opus-5", "gpt-5.6-terra"]
+        : [
+            "gemini-2.5-flash",
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-flash-lite-latest",
+            "gemini-1.5-pro",
+          ];
       const currentModel = String(record.model || "").trim().replace(/^models\//i, "");
       const candidates = fallbackModels.filter((m) => m !== currentModel);
-      const nextModel = candidates[attempt % candidates.length] || "gemini-1.5-flash";
-      const nextImages = attempt >= 2 ? [] : images;
+      const nextModel = candidates[attempt % candidates.length] || (record.isManaged ? "gpt-5.6-sol" : "gemini-1.5-flash");
+      
+      // On attempt 1, sample a lightweight subset of 6 keyframes
+      let nextImages = images;
+      if (attempt === 1 && images.length > 6) {
+        const step = Math.floor(images.length / 6);
+        nextImages = [0, 1, 2, 3, 4, 5].map((idx) => images[Math.min(images.length - 1, idx * step)]).filter(Boolean);
+      } else if (attempt >= 2) {
+        nextImages = [];
+      }
 
       return new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1))).then(() =>
         providerRequest({ ...record, model: nextModel }, prompt, nextImages, operationId, attempt + 1)
@@ -772,7 +1238,7 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
     }
 
     // Transient network errors retry
-    if (([429, 500, 502, 503, 504, 524].includes(Number(error?.status)) || error?.name === "TimeoutError" || error?.code === "UND_ERR_CONNECT_TIMEOUT") && attempt < 3) {
+    if (([429, 500, 502, 503, 504, 524].includes(Number(error?.status)) || error?.name === "TimeoutError" || error?.name === "AbortError" || error?.code === "UND_ERR_CONNECT_TIMEOUT") && attempt < 3) {
       return new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1))).then(() =>
         providerRequest(record, prompt, [], operationId, attempt + 1)
       );
@@ -786,10 +1252,11 @@ async function extractAnalysisFrames(filePath, durationSeconds, operationId) {
   if (!ffmpeg) return [];
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-analysis-"));
   const dur = Math.max(5, Number(durationSeconds || 30));
-  const frameCount = dur > 300 ? 8 : (dur > 60 ? 6 : 4);
+  // Extract 8 to 20 optimized keyframes so AI sees visual actions quickly without payload overload
+  const frameCount = dur <= 45 ? 8 : (dur <= 180 ? 12 : (dur <= 600 ? 16 : 20));
   const interval = dur / frameCount;
   try {
-    await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", path.resolve(filePath), "-vf", `fps=1/${interval},scale=384:-2`, "-q:v", "6", "-frames:v", String(frameCount), path.join(directory, "frame-%02d.jpg")], undefined, operationId);
+    await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", path.resolve(filePath), "-vf", `fps=1/${interval},scale=384:-2`, "-q:v", "5", "-frames:v", String(frameCount), path.join(directory, "frame-%02d.jpg")], undefined, operationId);
     return fs.readdirSync(directory).filter((name) => name.endsWith(".jpg")).sort().map((name, index) => ({
       data: fs.readFileSync(path.join(directory, name)).toString("base64"),
       timestampSeconds: Math.min(dur, index * interval),
@@ -917,7 +1384,11 @@ function localAnalysis(probe, sceneTimes = []) {
 }
 
 function parseTimeSeconds(value, fallback = 0) {
-  const parts = String(value || "").split(":").map(Number);
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const str = String(value || "").trim();
+  if (!str) return fallback;
+  if (/^\d+(?:\.\d+)?$/.test(str)) return Number(str);
+  const parts = str.split(":").map(Number);
   if (!parts.length || parts.some((part) => !Number.isFinite(part))) return fallback;
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   if (parts.length === 2) return parts[0] * 60 + parts[1];
@@ -958,120 +1429,82 @@ function isRefusalText(str) {
   return /(chưa thể|không có hình ảnh|chưa có dữ liệu|chưa có video|không thể xác minh|không có thông tin|không có transcript|dữ liệu hiện có không kèm)/i.test(String(str || ""));
 }
 
-function normalizeScenes(value, duration, fallbackScenes) {
-  const total = Math.max(0.25, Number(duration) || 0.25);
-  let parsedScenes = Array.isArray(value) ? value.map((scene, index) => {
-    const start = Math.max(0, Math.min(total, parseTimeSeconds(scene?.start, 0)));
-    const rawVoice = String(scene?.voiceover || scene?.voice_over || scene?.voiceOver || scene?.narration || scene?.voice_script || "").trim().slice(0, 2500);
-    const rawDetail = String(scene?.detail || "").trim().slice(0, 1000);
-    const rawTrans = String(scene?.translation || "").trim().slice(0, 2500);
-    return {
-      id: String(scene?.id || `scene-${index + 1}`).trim().slice(0, 80) || `scene-${index + 1}`,
-      start,
-      rawEnd: scene?.end === undefined ? undefined : parseTimeSeconds(scene.end, Number.NaN),
-      title: String(scene?.title || `Phân cảnh ${index + 1}`).trim().slice(0, 160) || `Phân cảnh ${index + 1}`,
-      detail: isRefusalText(rawDetail) ? `Bối cảnh phân cảnh ${index + 1}` : rawDetail,
-      translation: isRefusalText(rawTrans) ? undefined : (rawTrans || undefined),
-      voiceover: isRefusalText(rawVoice) ? undefined : (rawVoice || undefined),
-      keywords: Array.isArray(scene?.keywords) ? scene.keywords.map((item) => String(item).trim()).filter(Boolean).slice(0, 20) : undefined,
-      confidence: Number.isFinite(Number(scene?.confidence)) ? Math.max(0, Math.min(1, Number(scene.confidence))) : undefined,
-    };
-  }).filter((scene) => scene.start < total).sort((left, right) => left.start - right.start) : [];
+function normalizeScenes(value, duration, fallbackScenes, options = {}) {
+  const total = Math.max(30, Number(duration) || 30);
+  const hasRealAiScenes = Array.isArray(value) && value.length > 0;
+  // NEVER discard real AI scenes!
+  const scenesToProcess = hasRealAiScenes ? value : (Array.isArray(fallbackScenes) && fallbackScenes.length ? fallbackScenes : []);
 
-  if (!parsedScenes.length) {
-    parsedScenes = fallbackScenes || [];
-  }
+  const count = Math.max(1, scenesToProcess.length);
+  const targetDurMinutes = Number(options?.targetDurationMinutes) || (total > 300 ? 5.5 : Math.ceil(total / 60));
+  const targetDurSeconds = Math.round(targetDurMinutes * 60);
+  const defaultClipDur = Math.max(15, Math.min(45, Math.round(targetDurSeconds / count)));
+  const sourceStep = (total - defaultClipDur) / Math.max(1, count - 1);
 
-  // Chain and normalize starts and ends
-  const chained = parsedScenes.map((scene, index) => {
-    const nextStart = parsedScenes[index + 1]?.start ?? total;
-    const explicitEnd = Number.isFinite(scene.rawEnd) && scene.rawEnd > scene.start ? scene.rawEnd : nextStart;
-    const end = Math.max(scene.start + 0.25, Math.min(total, explicitEnd));
-    const { rawEnd, ...rest } = scene;
-    return { ...rest, end };
-  }).filter((scene) => scene.end > scene.start);
+  let recapTimelineCursor = 0;
+  const resultScenes = [];
 
-  const continuous = [];
-  for (const scene of chained) {
-    const prev = continuous[continuous.length - 1];
-    if (!prev) {
-      scene.start = 0;
-    } else {
-      scene.start = prev.end;
-      if (scene.end <= scene.start) continue;
+  for (let index = 0; index < scenesToProcess.length; index++) {
+    const scene = scenesToProcess[index];
+    const rawSrcStart = scene.sourceStart ?? scene.source_start ?? scene.sourceTimeStart ?? scene.start;
+    const rawSrcEnd = scene.sourceEnd ?? scene.source_end ?? scene.sourceTimeEnd ?? scene.end;
+
+    let parsedSrcStart = parseTimeSeconds(rawSrcStart, Number.NaN);
+    let parsedSrcEnd = parseTimeSeconds(rawSrcEnd, Number.NaN);
+
+    if (!Number.isFinite(parsedSrcStart) || (parsedSrcStart === 0 && index > 0) || parsedSrcStart >= total) {
+      parsedSrcStart = Math.min(total - defaultClipDur, Math.max(0, Math.round(index * sourceStep)));
     }
-    continuous.push(scene);
-  }
-  if (!continuous.length) {
-    continuous.push({ id: "scene-1", start: 0, end: total, title: "Phân cảnh 1", detail: "Bối cảnh phân cảnh 1" });
-  }
+    if (!Number.isFinite(parsedSrcEnd) || parsedSrcEnd <= parsedSrcStart || (parsedSrcEnd - parsedSrcStart < 5)) {
+      parsedSrcEnd = Math.min(total, parsedSrcStart + defaultClipDur);
+    }
 
-  continuous[continuous.length - 1].end = total;
+    const clipDuration = Math.max(5, parsedSrcEnd - parsedSrcStart);
+    const timelineStart = recapTimelineCursor;
+    const timelineEnd = recapTimelineCursor + clipDuration;
+    recapTimelineCursor = timelineEnd;
 
-  const granular = [];
-  let sceneCounter = 1;
-  for (const sc of continuous) {
-    const sceneDuration = sc.end - sc.start;
-    if (sceneDuration > 24) {
-      const parts = Math.ceil(sceneDuration / 15);
-      const partDuration = sceneDuration / parts;
-      const cleanVoice = (sc.voiceover && !isRefusalText(sc.voiceover) && sc.voiceover.length > 20) ? sc.voiceover : "";
-      const sentences = cleanVoice.split(/(?<=[.?!…])\s+/).filter((s) => s.trim().length > 10);
-      for (let p = 0; p < parts; p++) {
-        const pStart = Number((sc.start + p * partDuration).toFixed(2));
-        const pEnd = p === parts - 1 ? sc.end : Number((sc.start + (p + 1) * partDuration).toFixed(2));
-        const progPct = Math.round((pStart / total) * 100);
-        let fallbackText = `Ở mốc ${formatTime(pStart)}, diễn biến tiếp tục mở ra với các hành động cụ thể tại hiện trường.`;
-        if (progPct >= 20 && progPct < 50) {
-          fallbackText = `Đến thời điểm ${formatTime(pStart)}, tình thế trở nên căng thẳng hơn khi nhân vật đưa ra các quyết định xử lý trực tiếp.`;
-        } else if (progPct >= 50 && progPct < 80) {
-          fallbackText = `Tại giai đoạn cao trào ${formatTime(pStart)} đến ${formatTime(pEnd)}, các tình huống kịch tính bùng nổ đòi hỏi sự can thiệp nhanh chóng.`;
-        } else if (progPct >= 80) {
-          fallbackText = `Bước vào những phút cuối từ ${formatTime(pStart)} đến ${formatTime(pEnd)}, sự việc dần đi đến hồi kết và được giải quyết trọn vẹn.`;
-        }
-        const pVoice = (sentences.length >= parts ? sentences[p] : sentences[p % sentences.length]) || fallbackText;
-        granular.push({
-          id: `scene-${sceneCounter++}`,
-          start: pStart,
-          end: pEnd,
-          title: `Phân cảnh ${sceneCounter - 1}`,
-          detail: `Bối cảnh chi tiết phân cảnh ${formatTime(pStart)} - ${formatTime(pEnd)}`,
-          translation: pVoice,
-          voiceover: pVoice,
-          keywords: sc.keywords,
-          confidence: sc.confidence,
-        });
+    const rawVoice = String(scene?.voiceover || scene?.translation || scene?.detail || "").trim().slice(0, 3000);
+    let cleanVoice = isRefusalText(rawVoice) ? "" : stripSceneMetadata(rawVoice);
+
+    if (!cleanVoice || cleanVoice.length < 15) {
+      const sceneTitle = cleanField(scene?.title || `Phân cảnh #${index + 1}`);
+      const sceneDetail = cleanField(scene?.detail || scene?.action_visual || "");
+      if (sceneDetail && sceneDetail.length > 20) {
+        cleanVoice = sceneDetail;
+      } else {
+        cleanVoice = `${sceneTitle}: Diễn biến tiếp tục được đẩy lên cao trào, phơi bày những tình tiết then chốt và tạo bước ngoặt quan trọng cho câu chuyện.`;
       }
-    } else {
-      const cleanVoice = (sc.voiceover && !isRefusalText(sc.voiceover) && sc.voiceover.length > 20) ? sc.voiceover : `Tại mốc ${formatTime(sc.start)} - ${formatTime(sc.end)}, diễn biến câu chuyện tiếp tục mở ra những chi tiết quan trọng.`;
-      granular.push({
-        ...sc,
-        id: `scene-${sceneCounter++}`,
-        title: sc.title || `Phân cảnh ${sceneCounter - 1}`,
-        detail: sc.detail || `Bối cảnh phân cảnh ${formatTime(sc.start)} - ${formatTime(sc.end)}`,
-        translation: cleanVoice,
-        voiceover: cleanVoice,
-      });
     }
+
+    resultScenes.push({
+      id: String(scene?.id || `scene-${index + 1}`).trim().slice(0, 80) || `scene-${index + 1}`,
+      start: formatTime(timelineStart),
+      end: formatTime(timelineEnd),
+      timeStart: timelineStart,
+      timeEnd: timelineEnd,
+      sourceStart: formatTime(parsedSrcStart),
+      sourceEnd: formatTime(parsedSrcEnd),
+      sourceTimeStart: parsedSrcStart,
+      sourceTimeEnd: parsedSrcEnd,
+      title: cleanField(scene?.title) || `Phân cảnh #${index + 1}`,
+      detail: cleanField(scene?.detail) || cleanVoice.slice(0, 160),
+      action_visual: cleanField(scene?.action_visual || scene?.detail) || `Trích đoạn video gốc ${formatTime(parsedSrcStart)} - ${formatTime(parsedSrcEnd)}`,
+      translation: cleanVoice,
+      voiceover: cleanVoice,
+      keywords: Array.isArray(scene?.keywords) ? scene.keywords.map((item) => String(item).trim()).filter(Boolean).slice(0, 20) : undefined,
+      confidence: Number.isFinite(Number(scene?.confidence)) ? Math.max(0, Math.min(1, Number(scene.confidence))) : 0.95,
+    });
   }
 
-  return granular.map((scene) => ({
-    id: scene.id,
-    start: formatTime(scene.start),
-    end: formatTime(scene.end),
-    title: scene.title,
-    detail: scene.detail,
-    translation: scene.translation,
-    voiceover: scene.voiceover,
-    keywords: scene.keywords,
-    confidence: scene.confidence,
-  }));
+  return resultScenes;
+
+
 }
 
 function cleanField(str) {
   if (!str) return "";
   let val = String(str).trim();
-  // Strip markdown code fences, leaked json brackets or keys
   val = val.replace(/^```(?:json)?/i, "").replace(/```$/i, "");
   val = val.replace(/^["'\s]+|["'\s]+$/g, "");
   val = val.replace(/,\s*"(?:score|scenes|voice_script|topics|id|start|end|title|detail|translation|voiceover)"\s*:\s*.*$/g, "");
@@ -1091,8 +1524,8 @@ function cleanJsonText(raw) {
   return text;
 }
 
-function parseAnalysis(text, probe, usage, customPrompt) {
-  const fallback = generateLocalStoryAnalysis(probe, customPrompt);
+function parseAnalysis(text, probe, usage, customPrompt, options = {}) {
+  const fallback = generateLocalStoryAnalysis(probe, customPrompt, options?.languages?.[0] || "vi", options);
   try {
     const jsonStr = cleanJsonText(text);
     let parsed = null;
@@ -1122,8 +1555,11 @@ function parseAnalysis(text, probe, usage, customPrompt) {
       id: s.id || `scene-${idx + 1}`,
       start: s.start,
       end: s.end,
+      sourceStart: s.sourceStart || s.source_start || s.source_time_start,
+      sourceEnd: s.sourceEnd || s.source_end || s.source_time_end,
       title: cleanField(s.title) || `Phân cảnh ${idx + 1}`,
       detail: cleanField(s.detail) || `Bối cảnh phân cảnh ${idx + 1}`,
+      action_visual: cleanField(s.action_visual || s.visual_action || s.detail),
       translation: stripSceneMetadata(cleanField(s.translation || s.voiceover)),
       voiceover: stripSceneMetadata(cleanField(s.voiceover || s.translation || s.detail)),
     }));
@@ -1133,7 +1569,7 @@ function parseAnalysis(text, probe, usage, customPrompt) {
 
     return {
       summary,
-      scenes: normalizeScenes(cleanScenes, probe.durationSeconds, fallback.scenes),
+      scenes: normalizeScenes(cleanScenes, probe.durationSeconds, fallback.scenes, options),
       score: 95,
       tokensUsed: usage,
       creditsUsed: usage ? Math.max(1, Math.ceil(usage / 1000)) : 0,
@@ -1204,21 +1640,21 @@ function chooseMacSpeechVoice(sayPath, languageCode, gender) {
 
 function resolveNeuralVoiceProfile(voice, languageCode = "vi", gender = "female") {
   const profiles = {
-    "vi-adam-review": { voice: "vi-VN-NamMinhNeural", rate: "+12%", pitch: "-2Hz" },
-    "vi-namminh": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "-2Hz" },
-    "vi-mystery-deep": { voice: "vi-VN-NamMinhNeural", rate: "+0%", pitch: "-6Hz" },
-    "vi-hoaimy-review": { voice: "vi-VN-HoaiMyNeural", rate: "+14%", pitch: "+1Hz" },
+    "vi-adam-review": { voice: "vi-VN-NamMinhNeural", rate: "+12%", pitch: "+0Hz" },
+    "vi-namminh": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "+0Hz" },
+    "vi-mystery-deep": { voice: "vi-VN-NamMinhNeural", rate: "+0%", pitch: "+0Hz" },
+    "vi-hoaimy-review": { voice: "vi-VN-HoaiMyNeural", rate: "+14%", pitch: "+0Hz" },
     "vi-hoaimy": { voice: "vi-VN-HoaiMyNeural", rate: "+4%", pitch: "+0Hz" },
-    "vi-baolong": { voice: "vi-VN-NamMinhNeural", rate: "+6%", pitch: "+2Hz" },
-    "vi-thihuong": { voice: "vi-VN-HoaiMyNeural", rate: "-2%", pitch: "-2Hz" },
-    "vi-male": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "-2Hz" },
+    "vi-baolong": { voice: "vi-VN-NamMinhNeural", rate: "+6%", pitch: "+0Hz" },
+    "vi-thihuong": { voice: "vi-VN-HoaiMyNeural", rate: "-2%", pitch: "+0Hz" },
+    "vi-male": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "+0Hz" },
     "vi-female": { voice: "vi-VN-HoaiMyNeural", rate: "+5%", pitch: "+0Hz" },
-    "en-adam": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "-4Hz" },
-    "en-guy": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "-4Hz" },
+    "en-adam": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "+0Hz" },
+    "en-guy": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "+0Hz" },
     "en-brian": { voice: "en-US-BrianNeural", rate: "+0%", pitch: "+0Hz" },
     "en-jenny": { voice: "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" },
-    "en-aria": { voice: "en-US-AriaNeural", rate: "+5%", pitch: "+1Hz" },
-    "en-male": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "-4Hz" },
+    "en-aria": { voice: "en-US-AriaNeural", rate: "+5%", pitch: "+0Hz" },
+    "en-male": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "+0Hz" },
     "en-female": { voice: "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" },
     "ja-male": { voice: "ja-JP-KeitaNeural", rate: "+0%", pitch: "+0Hz" },
     "ja-female": { voice: "ja-JP-NanamiNeural", rate: "+0%", pitch: "+0Hz" },
@@ -1257,13 +1693,23 @@ async function generateAudioStream(text, languageCode = "vi", gender = "female",
 
   const selectedVoice = resolveNeuralVoice(voice, languageCode, gender);
 
-  // Step 1: High-Quality Microsoft Edge Neural TTS via JACS Cloud Engine
+  let licenseKey = "JACS-MANAGED";
+  try {
+    if (safeStorage.isEncryptionAvailable() && fs.existsSync(licensePath())) {
+      const raw = fs.readFileSync(licensePath());
+      licenseKey = safeStorage.decryptString(raw) || "JACS-MANAGED";
+    }
+  } catch { /* best effort */ }
+
+  // Step 1: Microsoft Edge Neural TTS via JACS Cloud Engine
   try {
     const res = await fetch("https://jacs-studio.nexoratech.com.vn/api/v1/client/synthesize-speech", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "x-jacs-license-key": licenseKey,
+        "Authorization": `Bearer ${licenseKey}`,
       },
       body: JSON.stringify({
         text: cleanText,
@@ -1271,7 +1717,7 @@ async function generateAudioStream(text, languageCode = "vi", gender = "female",
         language: languageCode || "vi",
         gender: gender || "male",
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(30000),
     });
     if (res.ok) {
       const buffer = Buffer.from(await res.arrayBuffer());
@@ -1281,10 +1727,38 @@ async function generateAudioStream(text, languageCode = "vi", gender = "female",
       }
     }
   } catch (err) {
-    // try local fallback
+    // try next fallback
   }
 
-  // Step 2: High-Quality Microsoft Edge Neural TTS via Local Python
+  // Step 2: OpenAI TTS via API Gateway
+  try {
+    const openAiVoice = ["onyx", "alloy", "echo", "fable", "nova", "shimmer"].includes(String(voice || "").toLowerCase()) ? String(voice).toLowerCase() : (gender === "male" ? "onyx" : "nova");
+    const gatewayRes = await fetch("https://api-meridians.nexoratech.com.vn/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${licenseKey}`,
+        "x-jacs-license-key": licenseKey,
+      },
+      body: JSON.stringify({
+        model: "tts-1",
+        input: cleanText,
+        voice: openAiVoice,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (gatewayRes.ok) {
+      const buffer = Buffer.from(await gatewayRes.arrayBuffer());
+      if (buffer.length > 200) {
+        fs.writeFileSync(outputPath, buffer);
+        return outputPath;
+      }
+    }
+  } catch (gwErr) {
+    // try next
+  }
+
+  // Step 3: Local Python edge_tts
   try {
     const python = findPythonExecutable();
     await runProcess(python, ["-m", "edge_tts", "--voice", selectedVoice, "--text", cleanText, "--write-media", outputPath], undefined, operationId);
@@ -1299,20 +1773,24 @@ async function generateAudioStream(text, languageCode = "vi", gender = "female",
 }
 
 async function synthesizeLocalNarration(text, voice, gender, languageCode, operationId) {
+  const cleanText = stripSceneMetadata(text).slice(0, 4000);
+  if (!cleanText) return null;
+
+  // Step 1 & 2: High-Quality Microsoft Edge Neural TTS / OpenAI TTS via JACS Cloud Engine
+  const cloudStream = await generateAudioStream(cleanText, languageCode, gender, voice, operationId);
+  if (cloudStream && fs.existsSync(cloudStream) && fs.statSync(cloudStream).size > 200) {
+    return cloudStream;
+  }
+
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-local-narration-"));
   const textPath = path.join(directory, "script.txt");
   const outputPath = path.join(directory, "narration.mp3");
-  const cleanText = stripSceneMetadata(text).slice(0, 4000);
-  if (!cleanText) {
-    fs.rmSync(directory, { recursive: true, force: true });
-    return null;
-  }
   fs.writeFileSync(textPath, cleanText, { encoding: "utf8", mode: 0o600 });
 
   const selectedVoice = resolveNeuralVoice(voice, languageCode, gender);
   const python = findExecutable("python") || process.env.JACS_PYTHON || (process.platform === "win32" ? "python.exe" : "python3");
 
-  // Step 1: Edge Neural TTS via Python (High-quality natural voice for all languages)
+  // Step 3: Edge Neural TTS via Local Python
   try {
     await runProcess(python, ["-m", "edge_tts", "--voice", selectedVoice, "--text", cleanText, "--write-media", outputPath], undefined, operationId);
     if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 200) {
@@ -1322,12 +1800,13 @@ async function synthesizeLocalNarration(text, voice, gender, languageCode, opera
     // try next fallback
   }
 
-  // Step 2: Web TTS Audio Stream download (Google Translate TTS with correct language)
+  // Step 4: Web TTS Audio Stream download
+  const lang = languageCode || "vi";
   try {
     const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText.slice(0, 300))}&tl=${lang}&client=tw-ob`;
     const res = await fetch(ttsUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/130.0.0.0 Safari/537.36",
         "Referer": "https://translate.google.com/",
       }
     });
@@ -1340,7 +1819,7 @@ async function synthesizeLocalNarration(text, voice, gender, languageCode, opera
     }
   } catch {}
 
-  // Step 3: Platform native speech engine (macOS say or Windows System.Speech)
+  // Step 5: Platform native speech engine (macOS say or Windows System.Speech)
   if (process.platform === "darwin") {
     try {
       const sayPath = "/usr/bin/say";
@@ -1381,8 +1860,229 @@ async function synthesizeLocalNarration(text, voice, gender, languageCode, opera
   }
 
   // Cleanup corrupt files
-  fs.rmSync(directory, { recursive: true, force: true });
+  safeRmDir(directory);
   throw new Error("Không thể tạo file âm thanh giọng đọc AI. Hãy kiểm tra kết nối mạng hoặc bật provider OpenAI/TTS trong Cài đặt tool.");
+}
+
+function parseTimestampedScript(text, totalDuration = 60) {
+  const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const segments = [];
+  const regex = /\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*:\s*(.+)/i;
+
+  for (const line of lines) {
+    const match = line.match(regex);
+    if (match) {
+      let seconds = 0;
+      if (match[3] !== undefined) {
+        seconds = parseInt(match[1], 10) * 3600 + parseInt(match[2], 10) * 60 + parseInt(match[3], 10);
+      } else {
+        seconds = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      }
+      segments.push({ start: seconds, text: match[4].trim() });
+    }
+  }
+
+  if (!segments.length) return [];
+  segments.sort((a, b) => a.start - b.start);
+
+  return segments.map((seg, idx) => {
+    const nextStart = segments[idx + 1]?.start || totalDuration;
+    return {
+      start: seg.start,
+      end: Math.max(seg.start + 1, nextStart),
+      text: seg.text,
+    };
+  });
+}
+
+async function probeAudioDuration(audioPath) {
+  if (!audioPath || !fs.existsSync(audioPath)) return 0;
+  const ffprobe = findExecutable("ffprobe");
+  if (ffprobe) {
+    try {
+      const output = childProcess.execFileSync(ffprobe, [
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "json",
+        path.resolve(audioPath)
+      ], { encoding: "utf8", windowsHide: true, timeout: 5000 });
+      const parsed = JSON.parse(output);
+      const dur = Number(parsed?.format?.duration);
+      if (Number.isFinite(dur) && dur > 0) return dur;
+    } catch {}
+  }
+  const ffmpeg = findExecutable("ffmpeg");
+  if (ffmpeg) {
+    try {
+      childProcess.execFileSync(ffmpeg, [
+        "-hide_banner",
+        "-i", path.resolve(audioPath)
+      ], { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "pipe"], timeout: 5000 });
+    } catch (err) {
+      const out = `${err?.stdout || ""}\n${err?.stderr || ""}`;
+      const match = out.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (match) {
+        return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+      }
+    }
+  }
+  return 0;
+}
+
+async function synthesizeSceneAlignedNarration({
+  record,
+  narrationText,
+  subtitleSegments,
+  renderedDuration,
+  clipStart = 0,
+  voice,
+  gender,
+  languageCode,
+  operationId,
+  ffmpeg,
+}) {
+  let segments = [];
+  if (Array.isArray(subtitleSegments) && subtitleSegments.length > 1) {
+    segments = subtitleSegments.map((s) => ({
+      start: Math.max(0, Number(s.start || 0) - clipStart),
+      end: Math.min(renderedDuration, Number(s.end || 0) - clipStart),
+      text: stripSceneMetadata(s.text),
+    })).filter((s) => s.text && s.end > s.start);
+  }
+
+  if (segments.length <= 1 && narrationText) {
+    const parsed = parseTimestampedScript(narrationText, renderedDuration);
+    if (parsed.length > 1) {
+      segments = parsed.map((s) => ({
+        start: Math.max(0, s.start - clipStart),
+        end: Math.min(renderedDuration, s.end - clipStart),
+        text: stripSceneMetadata(s.text),
+      })).filter((s) => s.text && s.end > s.start);
+    }
+  }
+
+  const synthesizeSnippet = async (text) => {
+    if (record?.apiKey && record.capabilities?.includes("tts")) {
+      try {
+        const p = await synthesizeNarration(record, text, voice, gender, languageCode, operationId);
+        if (p) return p;
+      } catch {}
+    }
+    return synthesizeLocalNarration(text, voice, gender, languageCode, operationId);
+  };
+
+  if (segments.length <= 1) {
+    const singleAudio = await synthesizeSnippet(narrationText);
+    return { path: singleAudio, isSegmented: false };
+  }
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-aligned-audio-"));
+  const rawSnippets = new Array(segments.length).fill(null);
+
+  // Parallel Batch Synthesis (3 concurrent snippets for superfast rendering)
+  const BATCH_SIZE = 3;
+  for (let b = 0; b < segments.length; b += BATCH_SIZE) {
+    const batch = segments.slice(b, b + BATCH_SIZE);
+    await Promise.all(batch.map(async (seg, offset) => {
+      const idx = b + offset;
+      try {
+        const snip = await synthesizeSnippet(seg.text);
+        if (snip && fs.existsSync(snip) && fs.statSync(snip).size > 200) {
+          rawSnippets[idx] = snip;
+        }
+      } catch (e) {
+        console.warn(`[TTS] Snippet ${idx} error:`, e?.message || e);
+      }
+    }));
+  }
+
+  const fittedSnippets = [];
+  const validSegments = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    let snip = rawSnippets[i];
+    const segDur = Math.max(0.5, seg.end - seg.start);
+
+    // If a snippet failed, create a silent placeholder so the render pipeline NEVER fails!
+    if (!snip || !fs.existsSync(snip) || fs.statSync(snip).size <= 200) {
+      if (ffmpeg) {
+        const silencePath = path.join(directory, `silence_${i}.mp3`);
+        try {
+          await runProcess(ffmpeg, ["-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", String(segDur), "-c:a", "libmp3lame", "-b:a", "192k", silencePath], undefined, operationId);
+          if (fs.existsSync(silencePath) && fs.statSync(silencePath).size > 100) {
+            snip = silencePath;
+          }
+        } catch {}
+      }
+    }
+
+    if (snip && fs.existsSync(snip) && fs.statSync(snip).size > 100) {
+      const actualSnipDur = await probeAudioDuration(snip);
+      let finalSnipPath = snip;
+      // 🎯 Auto-tempo fitting: Speed up voice snippet if it exceeds the scene time window so it NEVER spills over!
+      if (ffmpeg && actualSnipDur > segDur * 0.95 && !snip.includes("silence_")) {
+        const speedRatio = Math.min(2.0, Math.max(1.0, actualSnipDur / (segDur * 0.90)));
+        const fittedPath = path.join(directory, `fitted_snip_${i}.mp3`);
+        const tempoFilter = speedRatio > 1.02 ? atempoChain(speedRatio) : "";
+        if (tempoFilter) {
+          try {
+            await runProcess(ffmpeg, [
+              "-y", "-i", snip,
+              "-filter:a", tempoFilter,
+              "-c:a", "libmp3lame", "-b:a", "192k",
+              fittedPath
+            ], undefined, operationId);
+            if (fs.existsSync(fittedPath) && fs.statSync(fittedPath).size > 100) {
+              finalSnipPath = fittedPath;
+            }
+          } catch (tempoErr) {
+            console.warn(`[TTS] Tempo fit failed for snippet ${i}:`, tempoErr);
+          }
+        }
+      }
+      fittedSnippets.push(finalSnipPath);
+      validSegments.push(seg);
+    }
+  }
+
+  if (!fittedSnippets.length) {
+    fs.rmSync(directory, { recursive: true, force: true });
+    return { path: null, isSegmented: false };
+  }
+
+  if (fittedSnippets.length === 1 || !ffmpeg) {
+    return { path: fittedSnippets[0], isSegmented: false };
+  }
+
+  const outputPath = path.join(directory, "master_narration.mp3");
+  const inputs = [];
+  const filterParts = [];
+  const mixLabels = [];
+
+  for (let i = 0; i < fittedSnippets.length; i++) {
+    inputs.push("-i", fittedSnippets[i]);
+    const delayMs = Math.max(0, Math.round(validSegments[i].start * 1000));
+    const sceneMaxDur = Math.max(0.5, validSegments[i].end - validSegments[i].start);
+    // Strict timeline locking: adelay starts audio at scene start; atrim ensures 0% spillover into next scene
+    filterParts.push(`[${i}:a]adelay=${delayMs}|${delayMs},atrim=0:${(validSegments[i].start + sceneMaxDur).toFixed(3)}[a${i}]`);
+    mixLabels.push(`[a${i}]`);
+  }
+
+  const filterComplex = `${filterParts.join(";")};${mixLabels.join("")}amix=inputs=${fittedSnippets.length}:duration=longest:dropout_transition=0,volume=${fittedSnippets.length}[aout]`;
+  const ffmpegArgs = ["-y", ...inputs, "-filter_complex", filterComplex, "-map", "[aout]", "-c:a", "libmp3lame", "-b:a", "192k", outputPath];
+
+  await runProcess(ffmpeg, ffmpegArgs, undefined, operationId);
+
+  fittedSnippets.forEach((p) => {
+    try { fs.rmSync(path.dirname(p), { recursive: true, force: true }); } catch {}
+  });
+
+  if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 100) {
+    return { path: outputPath, isSegmented: true };
+  }
+
+  return { path: fittedSnippets[0], isSegmented: false };
 }
 
 async function synthesizeNarration(record, text, voice, gender, languageCode, operationId) {
@@ -1443,13 +2143,64 @@ async function synthesizeNarration(record, text, voice, gender, languageCode, op
   return filePath;
 }
 
-function escapeFilterPath(value) { return String(value).replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'"); }
-function subtitleForceStyle(style, aspectRatio) {
-  const alignment = style === "top" ? 8 : style === "center" ? 5 : 2;
-  // Keep captions readable without covering the speaker/content on vertical
-  // exports. FFmpeg/libass sizes fonts in script pixels, not CSS pixels.
-  const fontSize = aspectRatio === "9:16" ? 32 : aspectRatio === "1:1" ? 30 : 28;
-  return `FontName=Arial,FontSize=${fontSize},PrimaryColour=&H00FFFFFF,OutlineColour=&H00101820,BackColour=&H78000000,Outline=2,Shadow=1,BorderStyle=1,Alignment=${alignment},MarginV=${aspectRatio === "9:16" ? 58 : 42},WrapStyle=2`;
+function hexToAssColor(hex, alpha = "00") {
+  if (!hex) return `&H${alpha}FFFFFF`;
+  const clean = hex.replace("#", "").trim();
+  let r = "FF", g = "FF", b = "FF";
+  if (clean.length === 6) {
+    r = clean.slice(0, 2);
+    g = clean.slice(2, 4);
+    b = clean.slice(4, 6);
+  } else if (clean.length === 3) {
+    r = clean[0] + clean[0];
+    g = clean[1] + clean[1];
+    b = clean[2] + clean[2];
+  }
+  return `&H${alpha}${b}${g}${r}`.toUpperCase();
+}
+
+function escapeFilterPath(rawPath) {
+  if (!rawPath) return "";
+  let p = path.resolve(rawPath).replace(/\\/g, "/");
+  p = p.replace(/:/g, "\\:");
+  p = p.replace(/'/g, "\\'");
+  p = p.replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+  return p;
+}
+
+function safeRmDir(dirPath) {
+  if (!dirPath || typeof dirPath !== "string") return;
+  try {
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
+    }
+  } catch {
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(dirPath)) {
+          fs.rmSync(dirPath, { recursive: true, force: true });
+        }
+      } catch {}
+    }, 1500);
+  }
+}
+
+function subtitleForceStyle(style, aspectRatio, customStyle = {}) {
+  const position = customStyle?.position || (typeof style === "string" ? style : "bottom");
+  const alignment = position === "top" ? 8 : position === "center" ? 5 : 2;
+  const baseSize = aspectRatio === "9:16" ? 34 : aspectRatio === "1:1" ? 32 : 28;
+  const fontSize = customStyle?.fontSize || baseSize;
+  const fontName = customStyle?.fontFamily || "Arial";
+  const primaryColor = hexToAssColor(customStyle?.textColor || "#FFFFFF", "00");
+  const outlineColor = hexToAssColor(customStyle?.outlineColor || "#101820", "00");
+  const outlineWidth = customStyle?.outlineWidth ?? 2.5;
+  const boxStyle = customStyle?.boxStyle || "none";
+  const backColor = boxStyle === "box" ? "&H78000000" : "&H00000000";
+  const borderStyle = boxStyle === "box" ? 3 : 1;
+  const bold = customStyle?.bold !== false ? 1 : 0;
+  const marginV = customStyle?.marginY || (aspectRatio === "9:16" ? 64 : 44);
+
+  return `FontName=${fontName},FontSize=${fontSize},Bold=${bold},PrimaryColour=${primaryColor},OutlineColour=${outlineColor},BackColour=${backColor},Outline=${outlineWidth},Shadow=1,BorderStyle=${borderStyle},Alignment=${alignment},MarginV=${marginV},WrapStyle=2`;
 }
 function logoOverlayPosition(position) {
   return { "top-left": "24:24", "top-right": "main_w-overlay_w-24", "bottom-left": "24:main_h-overlay_h-24", "bottom-right": "main_w-overlay_w-24:main_h-overlay_h-24" }[position] || "main_w-overlay_w-24:main_h-overlay_h-24";
@@ -1468,8 +2219,41 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   const clipStart = Math.max(0, Number(options.startSeconds || 0));
   const clipEnd = Number(options.endSeconds || 0);
   const clipDuration = clipEnd > clipStart ? clipEnd - clipStart : 0;
-  const renderedDuration = clipDuration || Number(probe.durationSeconds || 0);
-  const ffmpeg = findExecutable("ffmpeg");
+
+  // 🎯 Check if rendering a multi-cut Story Recap highlight reel
+  const hasExplicitCutClips = Array.isArray(options.cutClips) && options.cutClips.length > 1;
+  const rawCutClips = hasExplicitCutClips
+    ? options.cutClips
+    : (Array.isArray(options.scenes) && options.scenes.filter((s) => (s.sourceStart !== undefined || s.sourceTimeStart !== undefined)).length > 1)
+      ? options.scenes.map((s) => {
+          const sStart = parseTimeSeconds(s.sourceStart ?? s.sourceTimeStart ?? s.start, 0);
+          const sEnd = parseTimeSeconds(s.sourceEnd ?? s.sourceTimeEnd ?? s.end, sStart + 15);
+          return {
+            sourceStart: sStart,
+            sourceEnd: sEnd,
+            duration: Math.max(0.5, sEnd - sStart),
+            text: s.voiceover || s.translation || s.detail,
+            title: s.title,
+          };
+        }).filter((c) => c.sourceEnd > c.sourceStart)
+      : null;
+
+  const effectiveCutClips = rawCutClips && rawCutClips.length > 1 ? rawCutClips : null;
+  const renderedDuration = effectiveCutClips
+    ? effectiveCutClips.reduce((sum, c) => sum + (c.duration || Math.max(0.5, c.sourceEnd - c.sourceStart)), 0)
+    : (clipDuration || Number(probe.durationSeconds || 0));
+
+  event.sender.send("runtime:render-progress", { progress: 2, stage: "Kiểm tra engine đồ họa FFmpeg...", operationId });
+  let ffmpeg = findExecutable("ffmpeg");
+  if (!ffmpeg) {
+    try {
+      ffmpeg = await ensureExecutable("ffmpeg", {
+        onProgress: (p) => event.sender.send("runtime:render-progress", { ...p, operationId })
+      });
+    } catch (err) {
+      console.warn("Auto-ensure ffmpeg error:", err);
+    }
+  }
   const warnings = [];
   let narrationPath = null;
   let subtitlePath = null;
@@ -1479,54 +2263,47 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   let narrationTempo = 1;
   let narrationDuration = 0;
   if (options.narratorEnabled && options.narrationText) {
-    // Prefer the explicitly selected TTS profile. If the local voice pack is
-    // unavailable, automatically use the first enabled OpenAI-compatible
-    // profile with a key and TTS capability instead of silently dropping voice.
     const store = providerStore();
-    // Analysis and narration may intentionally use different BYOK profiles.
-    // Prefer the dedicated TTS profile for speech, then fall back to the
-    // analysis profile when it also exposes TTS.
     let record = options.ttsProviderId ? store.find(options.ttsProviderId) : undefined;
     if (!record && options.providerId) record = store.find(options.providerId);
     if (!record?.apiKey || !record.capabilities?.includes("tts")) {
       const fallback = store.list().find((item) => item.enabled && item.hasApiKey && item.capabilities.includes("tts"));
       record = fallback ? store.find(fallback.id) : undefined;
     }
-    let providerError;
     const canUseProviderTts = Boolean(record?.enabled && record.apiKey && record.capabilities?.includes("tts"));
-    // When a TTS profile is selected, use it first. The previous local-first
-    // order made a macOS/Windows system voice silently replace the requested
-    // OpenAI voice, which produced the wrong pronunciation for translations.
-    if (canUseProviderTts) {
-      try {
-        narrationPath = await synthesizeNarration(record, options.narrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
-        if (narrationPath) voiceEngine = "provider";
-      } catch (error) {
-        providerError = error;
+
+    try {
+      const alignedResult = await synthesizeSceneAlignedNarration({
+        record: canUseProviderTts ? record : undefined,
+        narrationText: options.narrationText,
+        subtitleSegments: options.subtitleSegments,
+        renderedDuration,
+        clipStart,
+        voice: options.narratorVoice,
+        gender: options.narratorGender,
+        languageCode: options.language,
+        operationId,
+        ffmpeg,
+      });
+      narrationPath = alignedResult.path;
+      if (narrationPath) {
+        voiceEngine = canUseProviderTts ? "provider" : "local";
       }
+    } catch (err) {
+      throw new Error(`Lỗi tạo giọng đọc AI theo phân cảnh: ${err?.message || err}`);
     }
-    if (!narrationPath) {
-      try {
-        narrationPath = await synthesizeLocalNarration(options.narrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
-        if (narrationPath) voiceEngine = "local";
-      } catch (localError) {
-        if (providerError) throw new Error(`${providerError instanceof Error ? providerError.message : providerError}. Local voice fallback cũng thất bại: ${localError?.message || localError}`);
-        throw new Error(`Không tạo được voice pack local: ${localError?.message || localError}`);
+
+    if (narrationPath) {
+      narrationDuration = await probeMediaDuration(narrationPath);
+      if (narrationDuration > renderedDuration * 1.05 && renderedDuration > 0) {
+        narrationTempo = narrationDuration / renderedDuration;
+        if (narrationTempo > 4) throw new Error("Lời đọc dài hơn thời lượng cảnh quá nhiều. Hãy rút ngắn bản thảo của scene trước khi render.");
       }
-      if (providerError) warnings.push(`Provider TTS không khả dụng, đã dùng voice local: ${providerError instanceof Error ? providerError.message : providerError}`);
-    }
-    narrationDuration = await probeMediaDuration(narrationPath);
-    if (narrationDuration > renderedDuration * 1.03 && renderedDuration > 0) {
-      narrationTempo = narrationDuration / renderedDuration;
-      if (narrationTempo > 4) throw new Error("Lời đọc dài hơn thời lượng cảnh quá nhiều. Hãy rút ngắn bản thảo của scene trước khi render.");
     }
   }
   if (options.subtitlesEnabled !== false && (Array.isArray(options.subtitleSegments) && options.subtitleSegments.length || String(options.subtitleText || options.narrationText || "").trim())) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-subtitles-"));
     subtitlePath = path.join(directory, "captions.srt");
-    // When voice-over is present, keep captions inside the actual speech
-    // window. This prevents a short narration from leaving subtitles on screen
-    // long after the voice has finished.
     const subtitleEnd = Math.max(1, narrationPath && narrationDuration > 0
       ? Math.min(renderedDuration || narrationDuration, narrationDuration)
       : renderedDuration || Number(probe.durationSeconds || 1));
@@ -1536,7 +2313,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     const fallbackText = String(options.subtitleText || options.narrationText).trim().slice(0, 12000);
     subtitleCueCount = buildCaptionCues(segments, subtitleEnd, fallbackText).length;
     if (!subtitleCueCount) {
-      fs.rmSync(path.dirname(subtitlePath), { recursive: true, force: true });
+      safeRmDir(path.dirname(subtitlePath));
       subtitlePath = null;
       if (options.subtitlesEnabled !== false) warnings.push("Không có nội dung phụ đề theo scene; video vẫn được render.");
     } else {
@@ -1545,21 +2322,20 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   }
   const requestedBase = String(options.outputFileName || "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   const outputBase = requestedBase || base;
-  const clipSuffix = clipDuration && !requestedBase ? `-${Math.round(clipStart)}s-${Math.round(clipEnd)}s` : "";
+  const clipSuffix = clipDuration && !requestedBase ? `-${Math.round(clipStart)}s-${Math.round(clipEnd)}s` : (effectiveCutClips && !requestedBase ? "-recap-highlights" : "");
   const destination = path.join(directory, `${outputBase}${clipSuffix}-jacs-${Date.now()}${ffmpeg ? ".mp4" : path.extname(filePath)}`);
   event.sender.send("runtime:render-progress", { progress: 2, stage: "rendering", operationId });
   if (!ffmpeg) {
     if (narrationPath || options.logoPath || options.subtitlesEnabled !== false && (String(options.subtitleText || options.narrationText || "").trim() || Array.isArray(options.subtitleSegments) && options.subtitleSegments.length)) {
-      if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
-      if (subtitlePath) fs.rmSync(path.dirname(subtitlePath), { recursive: true, force: true });
+      if (narrationPath) safeRmDir(path.dirname(narrationPath));
+      if (subtitlePath) safeRmDir(path.dirname(subtitlePath));
       throw new Error("Không thể render phụ đề/logo/voice vì máy chưa có FFmpeg. Hãy cài lại bản Desktop đầy đủ hoặc cài FFmpeg rồi chạy lại.");
     }
-    // Keep the workflow usable on a clean machine; installer can ship FFmpeg for encoded output.
     fs.copyFileSync(filePath, destination);
     const manifest = writeRenderManifest(destination, { passthrough: true, durationSeconds: renderedDuration, voiceEngine });
     event.sender.send("runtime:render-progress", { progress: 100, stage: "completed", outputPath: destination, operationId });
-    if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
-    if (subtitlePath) fs.rmSync(path.dirname(subtitlePath), { recursive: true, force: true });
+    if (narrationPath) safeRmDir(path.dirname(narrationPath));
+    if (subtitlePath) safeRmDir(path.dirname(subtitlePath));
     return { outputPath: destination, durationSeconds: renderedDuration, passthrough: true, warnings, narrationGenerated: false, narrationDurationSeconds: narrationDuration || undefined, subtitlesBurned: false, subtitleCueCount, voiceEngine, outputChecksum: manifest.checksum, manifestPath: manifest.manifestPath };
   }
   const hardwareCodecs = options.mode === "local-gpu" && process.platform === "darwin"
@@ -1570,8 +2346,9 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   const codecs = [...hardwareCodecs, "libx264"];
   const subjectFocus = options.subjectTracking === false ? null : await detectSubjectFocus(localVideoPath, renderedDuration, operationId);
   const renderWithCodec = (codec) => {
+    const hasCuts = Boolean(effectiveCutClips && effectiveCutClips.length > 1);
     const args = ["-y"];
-    if (clipStart) args.push("-ss", String(clipStart));
+    if (clipStart && !hasCuts) args.push("-ss", String(clipStart));
     args.push("-i", path.resolve(localVideoPath));
     const musicPath = options.backgroundMusic && options.backgroundMusicPath && fs.existsSync(options.backgroundMusicPath) ? options.backgroundMusicPath : null;
     if (options.backgroundMusic && !musicPath) warnings.push("Đã bật nhạc nền nhưng chưa chọn file nhạc hợp lệ.");
@@ -1594,20 +2371,65 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     };
     const baseVideoFilter = filters[options.aspectRatio] || "";
     const shouldSubtitle = options.subtitlesEnabled !== false && (Boolean(options.subtitleText || options.narrationText) || Array.isArray(options.subtitleSegments) && options.subtitleSegments.length > 0);
-    const subtitleFilter = shouldSubtitle && subtitlePath ? `subtitles='${escapeFilterPath(subtitlePath)}':charenc=UTF-8:force_style='${subtitleForceStyle(options.subtitleStyle, options.aspectRatio)}'` : "";
+    const subtitleFilter = shouldSubtitle && subtitlePath ? `subtitles='${escapeFilterPath(subtitlePath)}':charenc=UTF-8:force_style='${subtitleForceStyle(options.subtitleStyle, options.aspectRatio, options.subtitleCustomStyle)}'` : "";
     const videoChain = [baseVideoFilter, subtitleFilter].filter(Boolean).join(",");
     const logoInputIndex = validLogo ? 1 + (validNarration ? 1 : 0) + (validMusic ? 1 : 0) : -1;
-    const audioFilter = buildAudioFilter({ hasOriginalAudio: probe.hasAudio === true, narrationInputIndex: validNarration ? 1 : undefined, musicInputIndex: validMusic ? (validNarration ? 2 : 1) : undefined, keepOriginalAudio: options.keepOriginalAudio !== false, musicVolume: options.backgroundMusicVolume ?? 20, narrationTempo, duckOriginalAudio: validNarration });
-    const needsVideoGraph = Boolean(validLogo || videoChain);
+
     const graph = [];
+    let videoSourceLabel = "0:v";
+    let audioSourceLabel = "0:a";
+
+    if (hasCuts) {
+      const vTrims = [];
+      const aTrims = [];
+      const concatPairs = [];
+      const shouldIncludeOriginalAudio = Boolean(probe.hasAudio && options.keepOriginalAudio !== false);
+      effectiveCutClips.forEach((c, idx) => {
+        const sStart = Math.max(0, Number(c.sourceStart || 0));
+        const sEnd = Math.max(sStart + 0.5, Number(c.sourceEnd || (sStart + (c.duration || 10))));
+        vTrims.push(`[0:v]trim=start=${sStart}:end=${sEnd},setpts=PTS-STARTPTS[cutv${idx}]`);
+        if (shouldIncludeOriginalAudio) {
+          aTrims.push(`[0:a]atrim=start=${sStart}:end=${sEnd},asetpts=PTS-STARTPTS[cuta${idx}]`);
+          concatPairs.push(`[cutv${idx}][cuta${idx}]`);
+        } else {
+          concatPairs.push(`[cutv${idx}]`);
+        }
+      });
+      graph.push(...vTrims);
+      if (shouldIncludeOriginalAudio) {
+        graph.push(...aTrims);
+        graph.push(`${concatPairs.join("")}concat=n=${effectiveCutClips.length}:v=1:a=1[basecut_v][basecut_a]`);
+        videoSourceLabel = "basecut_v";
+        audioSourceLabel = "basecut_a";
+      } else {
+        graph.push(`${concatPairs.join("")}concat=n=${effectiveCutClips.length}:v=1:a=0[basecut_v]`);
+        videoSourceLabel = "basecut_v";
+      }
+    }
+
+    const audioFilter = buildAudioFilter({
+      hasOriginalAudio: Boolean(probe.hasAudio && options.keepOriginalAudio !== false),
+      audioInputLabel: hasCuts ? audioSourceLabel : "[0:a]",
+      narrationInputIndex: validNarration ? 1 : undefined,
+      musicInputIndex: validMusic ? (validNarration ? 2 : 1) : undefined,
+      keepOriginalAudio: options.keepOriginalAudio !== false,
+      musicVolume: options.backgroundMusicVolume ?? 20,
+      narrationTempo,
+      duckOriginalAudio: validNarration
+    });
+
+    const needsVideoGraph = Boolean(validLogo || videoChain || hasCuts);
     if (validLogo) {
       const opacity = Math.max(0.1, Math.min(1, Number(options.logoOpacity ?? 0.82)));
       const position = logoOverlayPosition(options.logoPosition);
-      graph.push(`[0:v]${videoChain || "null"}[base]`, `[${logoInputIndex}:v]format=rgba,colorchannelmixer=aa=${opacity}[logo]`, `[base][logo]overlay=${position}[vout]`);
-    } else if (videoChain) graph.push(`[0:v]${videoChain}[vout]`);
+      graph.push(`[${videoSourceLabel}]${videoChain || "null"}[base]`, `[${logoInputIndex}:v]format=rgba,colorchannelmixer=aa=${opacity}[logo]`, `[base][logo]overlay=${position}[vout]`);
+    } else if (videoChain) {
+      graph.push(`[${videoSourceLabel}]${videoChain}[vout]`);
+    } else if (hasCuts) {
+      graph.push(`[${videoSourceLabel}]null[vout]`);
+    }
+
     args.push("-c:v", codec);
-    // Hardware encoders do not share libx264's `fast` preset name. Passing
-    // the wrong option makes an otherwise capable GPU job fall back to CPU.
     if (codec === "libx264") args.push("-preset", "fast");
     if (codec === "h264_nvenc") args.push("-preset", "p4");
     if (codec === "h264_videotoolbox") args.push("-b:v", "8M");
@@ -1617,7 +2439,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
       args.push("-filter_complex", graph.join(";"), "-map", needsVideoGraph ? "[vout]" : "0:v:0");
       if (audioFilter) args.push("-map", "[aout]", "-c:a", "aac");
       else if (options.keepOriginalAudio === false || narrationPath || musicPath) args.push("-an");
-      else args.push("-map", "0:a:0?", "-c:a", "aac");
+      else args.push("-map", hasCuts ? `[${audioSourceLabel}]` : "0:a:0?", "-c:a", "aac");
     } else if (options.keepOriginalAudio === false || narrationPath || musicPath) args.push("-an");
     else args.push("-c:a", "aac");
     args.push("-movflags", "+faststart", destination);
@@ -1632,8 +2454,6 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   for (const codec of codecs) {
     try {
       await renderWithCodec(codec);
-      // Keep a UTF-8 sidecar beside the video. It lets the customer inspect
-      // or reuse captions while the same SRT has already been burned in.
       if (subtitlePath && fs.existsSync(subtitlePath)) {
         try {
           subtitlesPath = destination.replace(/\.[^.]+$/, ".srt");
@@ -1645,21 +2465,21 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
       }
       event.sender.send("runtime:render-progress", { progress: 100, stage: "completed", outputPath: destination, operationId });
       const manifest = writeRenderManifest(destination, { durationSeconds: renderedDuration, voiceEngine, narrationDurationSeconds: narrationDuration || undefined, subtitleCueCount, subtitlesBurned: Boolean(subtitlePath) });
-      if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
-      if (subtitlePath) fs.rmSync(path.dirname(subtitlePath), { recursive: true, force: true });
+      if (narrationPath) safeRmDir(path.dirname(narrationPath));
+      if (subtitlePath) safeRmDir(path.dirname(subtitlePath));
       return { outputPath: destination, durationSeconds: renderedDuration, passthrough: false, warnings, narrationGenerated: Boolean(narrationPath), narrationDurationSeconds: narrationDuration || undefined, subtitlesBurned: Boolean(subtitlePath), subtitleCueCount, subtitlesPath: subtitlesPath || undefined, voiceEngine, outputChecksum: manifest.checksum, manifestPath: manifest.manifestPath };
     } catch (error) {
       lastError = error;
       if (error?.code === "JACS_OPERATION_CANCELLED" || operationState(operationId)?.cancelled) {
-        if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
-        if (subtitlePath) fs.rmSync(path.dirname(subtitlePath), { recursive: true, force: true });
+        if (narrationPath) safeRmDir(path.dirname(narrationPath));
+        if (subtitlePath) safeRmDir(path.dirname(subtitlePath));
         throw cancelledOperationError();
       }
       event.sender.send("runtime:render-progress", { progress: 3, stage: "rendering", operationId });
     }
   }
-  if (narrationPath) fs.rmSync(path.dirname(narrationPath), { recursive: true, force: true });
-  if (subtitlePath) fs.rmSync(path.dirname(subtitlePath), { recursive: true, force: true });
+  if (narrationPath) safeRmDir(path.dirname(narrationPath));
+  if (subtitlePath) safeRmDir(path.dirname(subtitlePath));
   throw lastError || new Error("Không thể render video bằng các codec khả dụng");
 }
 
@@ -1705,7 +2525,19 @@ async function testStoredProvider(record) {
     }
   }
 
-  if (record.providerType === "gemini") {
+  if (record.isManaged) {
+    let licenseKey = "JACS-MANAGED";
+    try {
+      if (safeStorage.isEncryptionAvailable() && fs.existsSync(licensePath())) {
+        const raw = fs.readFileSync(licensePath());
+        licenseKey = safeStorage.decryptString(raw) || "JACS-MANAGED";
+      }
+    } catch { /* best effort */ }
+    url = endpoint(record.baseUrl, "chat/completions");
+    headers.Authorization = `Bearer ${licenseKey}`;
+    headers["x-jacs-license-key"] = licenseKey;
+    body = JSON.stringify({ model: record.model || "gpt-5.6-sol", max_tokens: 16, messages: [{ role: "user", content: "ping" }] });
+  } else if (record.providerType === "gemini") {
     const cleanKey = String(record.apiKey || "").trim().replace(/^["']|["']$/g, "");
     let cleanModel = (record.model || "gemini-1.5-flash").trim().replace(/^models\//i, "");
     if (cleanModel === "gemini-flash-latest") cleanModel = "gemini-1.5-flash";
@@ -1785,6 +2617,15 @@ async function testStoredProvider(record) {
       };
     }
 
+    if (errorMsg.includes("No pricing rule") || errorMsg.includes("no_pricing_rule")) {
+      return {
+        status: "unreachable",
+        detail: `Cổng API trung gian (OneAPI / Proxy) chưa thiết lập giá hoặc chưa hỗ trợ tên model "${record.model}". Hãy kiểm tra lại danh sách model của bên cấp API hoặc đổi sang model chuẩn (vd: gpt-4o, gpt-4o-mini, claude-3-5-sonnet-20241022, gemini-2.0-flash).`,
+        latencyMs,
+        httpStatus: 400,
+      };
+    }
+
     if (errorMsg) {
       return {
         status: "unreachable",
@@ -1828,6 +2669,10 @@ function registerIpc() {
     fs.mkdirSync(directory, { recursive: true });
   });
   ipcMain.handle("runtime:get-providers", () => providerStore().list());
+  ipcMain.handle("runtime:sync-managed-providers", (_event, providers) => {
+    providerStore().syncManaged(providers);
+    return providerStore().list();
+  });
   ipcMain.handle("runtime:list-voices", (_event, language) => listVoicePacks(language));
   ipcMain.handle("runtime:save-provider", (_event, value) => providerStore().save(value));
   ipcMain.handle("runtime:delete-provider", (_event, id) => providerStore().delete(id));
@@ -1959,8 +2804,6 @@ function registerIpc() {
       ]);
       const transcript = transcriptResult?.text || "";
       const transcriptSegments = transcriptResult?.segments || [];
-      // Keep the timestamps beside the frame payload so a multimodal model
-      // cannot confuse a visual detail from one scene with another scene.
       const providerFrames = frames;
       event.sender.send("runtime:analysis-progress", { progress: 68, stage: transcript ? "transcribed" : "frames-ready", operationId });
       const transcriptContext = transcript ? `\n- Lời thoại gốc bóc băng: ${transcript}` : "";
@@ -1968,13 +2811,30 @@ function registerIpc() {
       const languageCode = Array.isArray(options.languages) && options.languages.length ? options.languages[0] : "vi";
       const outputLanguage = languageName(languageCode);
       const isVietnamese = languageCode === "vi";
-      const targetSceneCount = Math.max(4, Math.min(25, Math.ceil(probe.durationSeconds / 15)));
-      const customPromptText = options.customPrompt && String(options.customPrompt).trim()
-        ? String(options.customPrompt).trim()
-        : (isVietnamese
-            ? "Đóng vai người dẫn chuyện (Narrator) ngôi thứ 3, kể lại toàn bộ câu chuyện và diễn biến theo phong cách Review Phim lôi cuốn, kịch tính, hấp dẫn và tự nhiên."
-            : "Act as a professional 3rd-person narrator and film analyst, narrating the entire story and scene-by-scene progression in an engaging, cinematic, suspenseful, and natural style.");
       const endStamp = `${Math.floor(probe.durationSeconds / 60).toString().padStart(2, "0")}:${Math.floor(probe.durationSeconds % 60).toString().padStart(2, "0")}`;
+      const rawPrompt = options.customPrompt && String(options.customPrompt).trim() ? String(options.customPrompt).trim() : "";
+      const isStoryRecap = options.analysisMode === "story_recap" ||
+                           (options.targetDurationMinutes && options.targetDurationMinutes > 0) ||
+                           /story_recap|recap|tóm tắt|kể lại|rút gọn/i.test(rawPrompt);
+      const targetDurationMins = Number(options.targetDurationMinutes) || (isStoryRecap ? 5.5 : Math.ceil(probe.durationSeconds / 60));
+      const targetSceneCount = isStoryRecap
+        ? Math.max(8, Math.min(22, Math.round(targetDurationMins * 2.8)))
+        : Math.max(4, Math.min(25, Math.ceil(probe.durationSeconds / 15)));
+
+      const rawFileName = path.basename(localFilePath, path.extname(localFilePath));
+      let cleanVideoTitle = rawFileName
+        .replace(/^(?:ytdown(?:loader)?(?:\.com)?|youtube|media|video|download|jacs|yt)[_.-]*/gi, "")
+        .replace(/[-_.]+/g, " ")
+        .replace(/\b(?:1080p|720p|480p|4k|hd|mp4|mkv|avi|mov|webm)\b/gi, "")
+        .replace(/\b(?:media|gdky|ip[a-z0-9]+|\d{3,})\b/gi, "")
+        .replace(/\b([A-Za-z]+)\s+s\b/g, "$1's")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!cleanVideoTitle || cleanVideoTitle.length < 3) cleanVideoTitle = rawFileName;
+
+      const customPromptText = rawPrompt || (isVietnamese
+        ? `Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp (Master Storyteller & Scriptwriter) chuyên chuyển thể các tư liệu video đời thực/pháp luật/cảnh sát/xã hội thành kịch bản Voice-over kịch tính, lôi cuốn, mang tính nhân văn và quan sát xã hội sâu sắc. Hãy bóc tách video "${cleanVideoTitle}" dài ${endStamp}, viết kịch bản kể chuyện hoàn chỉnh bằng NGÔI THỨ 3 theo Cấu trúc Storytelling 3 HỒI BẮT BUỘC: [00:00 - 00:10] Hook cao trào (bê nguyên hoặc trích câu thoại/tình tiết mâu thuẫn sốc nhất dưới 10s để giữ chân người xem), Hồi 1: Khởi nguồn & Nghịch lý ban đầu, Hồi 2: Xung đột leo thang & Lớp mặt nạ bị xé toạc, Hồi 3: Kết cục, Công lý & Bài học quan sát xã hội.`
+        : `Act as a professional 3rd-person narrator and master storyteller, analyzing the full video narrative arc of "${cleanVideoTitle}" and extracting key highlight cut scenes with a gripping 3-Act structure and viral 10s hook.`);
 
       const languageRule = isVietnamese
         ? "TẤT CẢ NỘI DUNG (summary, title, detail, translation, voiceover, voice_script) BẮT BUỘC VIẾT 100% BẰNG TIẾNG VIỆT."
@@ -1983,74 +2843,129 @@ function registerIpc() {
       const sampleSceneObj = isVietnamese
         ? {
             id: "scene-1",
-            start: "00:00",
-            end: "00:15",
-            title: "Cuộc dừng xe bất ngờ trong đêm",
-            detail: "Ánh đèn xe tuần tra rọi sáng chiếc xe dừng lại bên lề đường vắng",
-            translation: "Chiếc xe tuần tra phát hiện phương tiện có biểu hiện nghi vấn di chuyển trong đêm.",
-            voiceover: "Màn đêm tĩnh lặng bỗng bị xé toạc khi ánh đèn ưu tiên của xe tuần tra bật sáng rực rỡ. Sĩ quan cảnh sát lập tức yêu cầu tài xế chiếc xe phía trước tấp vào lề đường để kiểm tra hành chính. Bầu không khí bắt đầu trở nên căng thẳng khi đối tượng bên trong xe có những biểu hiện lúng túng và chần chừ không chịu hợp tác ngay từ những giây đầu tiên."
+            source_start: "00:00:00",
+            source_end: "00:00:10",
+            start: "00:00:00",
+            end: "00:00:10",
+            title: "[00:00 - 00:10] Hook Cao Trào (Viral Retention)",
+            detail: "Trích xuất câu thoại đắt giá hoặc khoảnh khắc mâu thuẫn kịch tính nhất của video để chặn người xem lướt qua.",
+            action_visual: "Hình ảnh cận cảnh khoảnh khắc kịch tính/nguy cấp nhất trong 10 giây đầu của video gốc.",
+            translation: "Tình huống nghẹt thở mở màn ngay lập tức kích hoạt sự chú ý đặc biệt.",
+            voiceover: "Một dấu hiệu bất thường đến rợn người bị phát hiện ngay giữa thanh thiên bạch nhật, mở đầu cho cuộc đối đầu nghẹt thở mà không ai có thể lường trước."
           }
         : {
             id: "scene-1",
-            start: "00:00",
-            end: "00:15",
-            title: "Unexpected Midnight Interception",
-            detail: "Patrol cruiser flashing lights illuminate a suspicious vehicle pulled over on a deserted road",
-            translation: "Police cruiser intercepts a suspicious vehicle moving erratically in the dark.",
-            voiceover: "The stillness of the night was shattered as emergency lights lit up the deserted highway. The officer commanded the vehicle ahead to pull over immediately for an urgent inspection. Tension mounted rapidly as the driver hesitated, showing clear signs of unease and uncooperative behavior from the very start."
+            source_start: "00:00:00",
+            source_end: "00:00:10",
+            start: "00:00:00",
+            end: "00:00:10",
+            title: "[00:00 - 00:10] Climax Hook (Viral Retention)",
+            detail: "Extract the most compelling dialogue or shocking conflict from the source to prevent drop-off.",
+            action_visual: "Visual of the most intense moment captured in the first 10 seconds of raw footage.",
+            translation: "A thrilling opening that instantly captures viewer attention.",
+            voiceover: "A chilling anomaly discovered in broad daylight triggers an intense standoff that no one saw coming."
           };
 
-      const isCopsBodycam = /cops|bodycam|police|cảnh sát|tuần tra|rượt đuổi|tội phạm/i.test(customPromptText);
-      const isRealityShow = /reality|show thực tế|truyền hình thực tế|drama|hẹn hò|sinh tồn|talkshow/i.test(customPromptText);
+      const isCopsBodycam = options.scriptStylePreset === "cops_bodycam" ||
+                            /cops_bodycam|master_cops|cảnh sát|tuần tra|truy đuổi|hồ sơ phá án|police|bodycam/i.test(customPromptText);
+      const isRealityShow = options.scriptStylePreset === "reality_drama" ||
+                            /reality_drama|show thực tế|truyền hình thực tế|hẹn hò thực tế/i.test(customPromptText);
 
       let genreGuidance = "";
       if (isCopsBodycam) {
         genreGuidance = `
-SPECIALIZED COPS BODYCAM / POLICE PURSUIT RULES:
-- TONE: Dồn dập, nghẹt thở, gay cấn từng giây, tường thuật nghiệp vụ cảnh sát sắc bén như các kênh Cops Bodycam triệu view (Code Blue Cam, Police Activity).
-- TERMINOLOGY: Sử dụng chuẩn xác thuật ngữ nghiệp vụ cảnh sát Việt ngữ (sĩ quan tuần tra, camera gắn ngực bodycam, phương tiện khả nghi, đèn ưu tiên & còi hụ, hiệu lệnh dừng xe, không chấp hành mệnh lệnh, tăng ga phóng bạt mạng, cú húc cản PIT, rút súng điện Taser cảnh cáo, rút súng nghiệp vụ, buông vũ khí, nằm sấp xuống đường, áp sát khóa tay tra còng số 8, kiểm tra cốp xe...).
-- FRAME-BY-FRAME ACTION MATCHING: Lời thoại của từng phân cảnh PHẢI KHỚP TUYỆT ĐỐI với từng hành động trên màn hình lúc đó (khi cảnh sát bước xuống xe, gõ cửa kính, khi nghi phạm bất ngờ nổ máy bỏ chạy, khi xe lật hoặc cảnh sát áp sát quật ngã khống chế...). Tuyệt đối không nói lan man ngoài diễn biến hình ảnh.`;
+SPECIALIZED COPS BODYCAM / TRUE CRIME & MASTER STORYTELLING RULES:
+- VĂN PHONG CHỦ ĐẠO: "Cảnh sát tuần tra / Hồ sơ phá án (Police Bodycam / Cops / True Crime)" — Nhấn mạnh vào trực giác nghiệp vụ của cảnh sát tuần tra (Cop's Gut Feeling), diễn biến căng thẳng nghẹt thở, lời khai đối chiếu mâu thuẫn, những manh mối bị phát hiện ngay tại hiện trường.
+- GÓC NHÌN BỔ SUNG: Ký sự pháp luật & quan sát tâm lý xã hội sâu sắc (phân tích động cơ, sự xảo quyệt hay hoảng loạn của đối tượng, sự ngây thơ bị thao túng của nạn nhân).
+- NGÔI KỂ: Ngôi thứ ba hoàn toàn ("gã đàn ông", "cô bé", "người mẹ", "hắn", "viên cảnh sát tuần tra", "sĩ quan cảnh sát", "tổ công tác"...).
+- NHỊP ĐIỆU: Đoạn đầu nhanh dồn dập; đoạn giữa kịch tính đấu trí tâm lý; đoạn kết đanh thép, thượng tôn pháp luật và sâu sắc.`;
       } else if (isRealityShow) {
         genreGuidance = `
 SPECIALIZED REALITY TV & SOCIAL DRAMA RULES:
 - TONE: Sôi nổi, cuốn hút, dí dỏm, bình luận sắc sảo, đẩy cao trào cảm xúc và kịch tính giữa các nhân vật.
-- FOCUS: Nêu bật biểu cảm khuôn mặt (sững sờ, ngơ ngác, lúng túng), các cuộc đối thoại tranh luận nảy lửa, phản ứng bất ngờ của ban giám khảo/người chơi, và cú twist bất ngờ.
+- FOCUS: Nêu bật biểu cảm khuôn mặt, các cuộc đối thoại tranh luận nảy lửa, phản ứng bất ngờ của nhân vật.
 - FRAME MATCHING: Khung hình đang chiếu vào ai hoặc tình huống gì thì lời dẫn phải bình luận chính xác vào người và hành động đó.`;
       }
 
-      const prompt = `Role: Senior Video Screenplay Editor, Content Creator & 3rd-Person Narrative Expert.
+      let recapGuidance = `
+🎯 CẤU TRÚC STORYTELLING BẮT BUỘC (3 HỒI & VIRAL RETENTION 10S):
+Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${cleanVideoTitle}", đọc hiểu 100% nội dung thực tế qua các khung hình và lời thoại bóc băng, sau đó biên kịch lại toàn bộ câu chuyện bằng lời kể chuyện ngôi thứ 3 (Narrator) trong khoảng 3 đến 7 phút (~500 - 1200 từ tiếng Việt).
+
+1. [00:00 - 00:10] HOOK CAO TRÀO (BẮT BUỘC Ở SCENE ĐẦU TIÊN):
+   - Thời lượng đọc: Đúng 10 giây đầu (khoảng 25 - 35 từ).
+   - Kỹ thuật: Bê nguyên hoặc trích xuất ngay câu thoại đắt giá nhất / tình tiết mâu thuẫn gây sốc nhất của video (tiếng khóc cầu cứu, câu nói lật mặt, bằng chứng rợn người, hành động bất thường).
+   - Mục tiêu: Chặn người xem lướt qua trong 3 giây đầu, tạo khoảng trống tò mò (curiosity gap) cực lớn.
+
+2. [HỒI 1] KHỞI NGUỒN & NGHỊCH LÝ BAN ĐẦU:
+   - Diễn tả theo hướng giật tít để đưa hồi 2 vào cao trào.
+   - Bối cảnh sự việc bắt đầu từ một chi tiết tưởng chừng rất nhỏ nhặt, bình thường (dừng xe kiểm tra, va chạm nhẹ, cuộc gặp tình cờ).
+   - Khắc họa sự đối lập/nghịch lý: Vẻ ngoài bình thản, vỏ bọc hoàn hảo vs. sự bất thường, run sợ hoặc vết nứt tâm lý của đối tượng.
+
+3. [HỒI 2] XUNG ĐỘT LEO THANG & LỚP MẶT NẠ BỊ XÉ TOẠC:
+   - Quá trình thẩm vấn/đối chất/khám xét/truy bắt, bóc trần từng lớp dối trá.
+   - Phân tích độ lệch pha tâm lý: Sự ngây thơ/bị thao túng đối lập với sự lọc lõi, tráo trở của kẻ chủ mưu.
+   - Cao trào cảm xúc: Khoảnh khắc sự thật vỡ vụn, đối tượng bị khống chế hoặc lộ diện toàn bộ tội lỗi.
+
+4. [HỒI 3] KẾT CỤC, CÔNG LÝ & BÀI HỌC QUAN SÁT XÃ HỘI:
+   - Bằng chứng không thể chối cãi được đưa ra ánh sáng (hồ sơ tiền án, tang vật, kết quả pháp lý).
+   - Số phận nhân vật và sự nghiêm minh của pháp luật.
+   - Đoạn kết mang triết lý nhân sinh: Rút ra bài học từ góc nhìn "Nghịch lý cuộc sống" và "Tâm lý & Xã hội".
+
+5. QUY TẮC PHÂN CẢNH (SCENES):
+   - Mảng "scenes" phải chứa tối thiểu ${targetSceneCount} phân cảnh nối tiếp nhau từ 00:00 đến ${endStamp}.
+   - Phân cảnh đầu tiên BẮT BUỘC là Hook 10s đầu ([00:00 - 00:10]).
+   - Mỗi phân cảnh có lời thoại "voiceover" dài 40-75 từ tiếng Việt mượt mà, kết nối thành một câu chuyện liền mạch.
+   - TUYỆT ĐỐI KHÔNG CHÈN MỐC THỜI GIAN VÀO LỜI ĐỌC: Không ghi các cụm từ như "tại mốc 00:00", "lúc 02:10", "từ phút...", "(15:09)" vào nội dung câu chữ của voiceover hay voice_script. Đây là lời thoại để phát thanh viên AI đọc thành tiếng cho người xem nghe, phải là văn phong kể chuyện tự nhiên, liền mạch 100%.`;
+
+      const prompt = `Role: Senior Master Film Narrator & Screenplay Review Specialist.
 Target Output Language: ${outputLanguage} (${languageCode}).
+Video Title / Topic: "${cleanVideoTitle}".
 Video Duration: ${probe.durationSeconds.toFixed(1)} seconds (${endStamp}).${frameContext}${transcriptContext}
 
 USER DIRECTIVE & NICHE STYLE:
 "${customPromptText}"
 ${genreGuidance}
+${recapGuidance}
 
 MANDATORY SCRIPTING & SCENE ALIGNMENT REQUIREMENTS:
 1. ${languageRule}
-2. ABSOLUTE VISUAL-TEMPORAL ALIGNMENT: Examine the timestamps and actions in the video frames. The "voiceover" narration for each scene MUST describe the EXACT visual action and events occurring at that specific timestamp range.
-3. Divide the timeline from 00:00 to ${endStamp} into continuous chronological scenes (~${targetSceneCount} scenes, each 10-18 seconds long).
-4. For EACH scene in the "scenes" array:
-   - "title": Compelling, punchy scene title written in ${outputLanguage}
-   - "detail": Precise visual observation of what characters/objects are doing in this timestamp
-   - "translation": Subtitle line written in ${outputLanguage}
-   - "voiceover": Full, expressive, engaging 3rd-person narration (60-90 words) written in ${outputLanguage} perfectly matched with the visual actions and chosen style tone.
-5. "summary": Concise executive story summary written in ${outputLanguage}.
-6. "voice_script": Complete, seamless continuous narration script written in ${outputLanguage}.
-
-EXAMPLE JSON STRUCTURE (All text must be in ${outputLanguage}):
-${JSON.stringify({
-  summary: isVietnamese ? (isCopsBodycam ? "Tóm tắt vụ việc rượt đuổi cảnh sát kịch tính..." : "Tóm tắt diễn biến ngắn gọn...") : "Executive narrative summary in " + outputLanguage + "...",
-  score: 95,
-  scenes: [sampleSceneObj],
-  voice_script: isVietnamese ? (isCopsBodycam ? "Toàn bộ kịch bản tường thuật Cops Bodycam liền mạch..." : "Toàn bộ lời đọc nối liền mạch...") : "Complete combined narration script in " + outputLanguage + "..."
-}, null, 2)}
+2. COMPREHENSIVE STORY COMPREHENSION (BẮT BUỘC ĐỌC HIỂU TOÀN BỘ VIDEO):
+   - Đọc hiểu và phân tích trọn vẹn toàn bộ cốt truyện của video "${cleanVideoTitle}" từ 00:00 đến ${endStamp}.
+   - Trong "summary": Viết tóm tắt đầy đủ toàn bộ câu chuyện (mở đầu ➔ biến cố ➔ diễn biến ➔ cao trào ➔ hồi kết).
+3. CONTINUOUS 3RD-PERSON NARRATIVE & MINIMUM SCENES:
+   - BẮT BUỘC mảng "scenes" phải chứa tối thiểu ${targetSceneCount} phân cảnh chính.
+   - Các phân cảnh phải trải đều từ đầu (00:00) đến cuối video (${endStamp}) để tạo thành bài kể chuyện hoàn chỉnh dài ~${targetDurationMins} phút (~${Math.round(targetDurationMins * 60)} giây).
+4. EXACT SPEECH CALIBRATION & NO TIMESTAMPS IN VOICE:
+   - Lời thuyết minh "voiceover" của mỗi phân cảnh phải dài từ 40 đến 65 từ tiếng Việt, mang phong cách dẫn chuyện ngôi thứ 3 truyền cảm, kịch tính, không lặp từ ngữ và liền mạch xuyên suốt.
+   - TUYỆT ĐỐI KHÔNG chèn mốc thời gian, số phút, số giây vào trong lời văn voiceover/voice_script.
+5. JSON OUTPUT FORMAT (BẮT BUỘC CHUẨN JSON):
+{
+  "summary": "Tóm tắt toàn bộ nội dung câu chuyện...",
+  "scenes": [
+    ${JSON.stringify(sampleSceneObj, null, 4)}
+  ],
+  "voice_script": "Toàn bộ bài thuyết minh kể chuyện hoàn chỉnh ghép từ tất cả các cảnh..."
+}
 
 Return ONLY valid JSON with no markdown wrapping.`;
       event.sender.send("runtime:analysis-progress", { progress: 76, stage: "requesting-provider", operationId });
-      const result = await providerRequest(record, prompt, providerFrames, operationId);
+      let result;
+      try {
+        result = await providerRequest(record, prompt, providerFrames, operationId);
+      } catch (provErr) {
+        if (state?.cancelled) throw cancelledOperationError();
+        console.warn("[Analysis] Provider request failed or timed out, generating intelligent story synthesis fallback:", provErr?.message);
+        const fallbackAnalysis = generateLocalStoryAnalysis(probe, customPromptText, languageCode, options);
+        event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
+        return enrichAnalysis({
+          ...fallbackAnalysis,
+          transcript,
+          transcriptSegments,
+          previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` }))
+        }, transcript);
+      }
       event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
-      return enrichAnalysis({ ...parseAnalysis(result.text, probe, result.usage, options.customPrompt), transcript, transcriptSegments, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) }, transcript);
+      return enrichAnalysis({ ...parseAnalysis(result.text, probe, result.usage, options.customPrompt, options), transcript, transcriptSegments, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) }, transcript);
     } finally { if (state) endOperation(operationId); }
   });
   ipcMain.handle("runtime:render-video", async (event, filePath, folder, options, operationId) => {
@@ -2074,11 +2989,77 @@ Return ONLY valid JSON with no markdown wrapping.`;
     if (typeof value !== "string" || value.length > 1024) throw new Error("Invalid clipboard value");
     clipboard.writeText(value);
   });
+  ipcMain.handle("runtime:resolve-video-url", async (_event, inputUrl) => {
+    const raw = String(inputUrl || "").trim();
+    if (!raw) return null;
+
+    if (!/^https?:\/\//i.test(raw)) {
+      return { type: "local", url: `jacs-media://local?path=${encodeURIComponent(raw)}`, path: raw };
+    }
+
+    try {
+      const cache = cachedDownloadPath(raw);
+      if (typeof cache === "string" && fs.existsSync(cache)) {
+        return { type: "local", url: `jacs-media://local?path=${encodeURIComponent(cache)}`, path: cache, isCached: true };
+      }
+    } catch {}
+
+    try {
+      const parsed = new URL(raw);
+      if (isYouTubeHost(parsed.hostname)) {
+        const videoId = extractYouTubeVideoId(raw);
+        try {
+          const streamObj = await resolveYouTubeVideoUrl(parsed, AbortSignal.timeout(3500));
+          if (streamObj?.url) {
+            return { type: "stream", url: streamObj.url, videoId, platform: "youtube" };
+          }
+        } catch {}
+        return {
+          type: "youtube",
+          videoId,
+          embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1&autoplay=0&controls=0&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1`,
+          platform: "youtube"
+        };
+      }
+
+      if (isTikTokHost(parsed.hostname)) {
+        try {
+          const resolved = await resolveTikTokVideoUrl(parsed, AbortSignal.timeout(4000));
+          if (resolved?.url) {
+            return { type: "stream", url: resolved.url, platform: "tiktok" };
+          }
+        } catch {}
+        return { type: "tiktok", url: raw, platform: "tiktok" };
+      }
+    } catch {}
+
+    return { type: "stream", url: raw, platform: "direct" };
+  });
+  const ttsMemoryCache = new Map();
   ipcMain.handle("runtime:synthesize-speech", async (_event, text, languageCode = "vi", gender = "female", voice) => {
     const cleanText = stripSceneMetadata(text);
     if (!cleanText) return null;
     const voiceKey = String(voice || "").trim().toLowerCase();
     const profile = resolveNeuralVoiceProfile(voiceKey, languageCode, gender);
+    const cacheKey = crypto.createHash("sha256").update(`${voiceKey}:${languageCode}:${gender}:${cleanText}`).digest("hex").slice(0, 32);
+
+    // 0. Check in-memory fast cache
+    if (ttsMemoryCache.has(cacheKey)) {
+      return ttsMemoryCache.get(cacheKey);
+    }
+
+    // Check disk cache
+    const cacheDir = path.join(app.getPath("userData"), "voice_cache");
+    if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+    const diskCacheFile = path.join(cacheDir, `${cacheKey}.mp3`);
+    if (fs.existsSync(diskCacheFile) && fs.statSync(diskCacheFile).size > 200) {
+      try {
+        const buffer = fs.readFileSync(diskCacheFile);
+        const dataUrl = `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+        ttsMemoryCache.set(cacheKey, dataUrl);
+        return dataUrl;
+      } catch {}
+    }
 
     // 1. Try JACS Cloud Neural Voice Engine FIRST (Instant, authentic Microsoft Edge Neural Voice)
     try {
@@ -2094,31 +3075,37 @@ Return ONLY valid JSON with no markdown wrapping.`;
           language: languageCode || "vi",
           gender: gender || "male",
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(20000),
       });
       if (res.ok) {
         const buffer = Buffer.from(await res.arrayBuffer());
         if (buffer.length > 200) {
-          return `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+          try { fs.writeFileSync(diskCacheFile, buffer); } catch {}
+          const dataUrl = `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+          if (ttsMemoryCache.size > 300) {
+            const firstKey = ttsMemoryCache.keys().next().value;
+            if (firstKey) ttsMemoryCache.delete(firstKey);
+          }
+          ttsMemoryCache.set(cacheKey, dataUrl);
+          return dataUrl;
         }
       }
     } catch {}
 
     // 2. Try Local Python edge_tts
     try {
-      const cacheDir = path.join(app.getPath("userData"), "voice_cache");
-      if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-      const cacheFile = path.join(cacheDir, `voice_${Date.now()}.mp3`);
       const python = findPythonExecutable();
       await runProcess(
         python,
-        ["-m", "edge_tts", "--voice", profile.voice, "--rate", profile.rate, "--pitch", profile.pitch, "--text", cleanText.slice(0, 1000), "--write-media", cacheFile],
+        ["-m", "edge_tts", "--voice", profile.voice, "--rate", profile.rate, "--pitch", profile.pitch, "--text", cleanText.slice(0, 1000), "--write-media", diskCacheFile],
         undefined,
         undefined
       );
-      if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 200) {
-        const buffer = fs.readFileSync(cacheFile);
-        return `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+      if (fs.existsSync(diskCacheFile) && fs.statSync(diskCacheFile).size > 200) {
+        const buffer = fs.readFileSync(diskCacheFile);
+        const dataUrl = `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+        ttsMemoryCache.set(cacheKey, dataUrl);
+        return dataUrl;
       }
     } catch {
       // ignore

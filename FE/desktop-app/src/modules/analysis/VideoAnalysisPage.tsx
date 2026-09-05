@@ -28,6 +28,13 @@ import {
   ChatQuoteFill,
   ArrowRepeat,
   CollectionPlayFill,
+  CpuFill,
+  GearFill,
+  KeyFill,
+  ExclamationTriangleFill,
+  Sliders,
+  ShieldCheck,
+  BoxArrowUpRight,
 } from "react-bootstrap-icons";
 
 const ANALYSIS_LANGUAGES = [
@@ -51,42 +58,166 @@ const SCENE_CATEGORIES = [
   { key: "cta", label: "📣 Kêu Gọi (CTA)" },
 ];
 
+export const PROVIDER_MODEL_PRESETS: Record<string, { label: string; tag: string }[]> = {
+  gemini: [
+    { label: "gemini-2.5-flash", tag: "⚡ Mới nhất & Khuyên dùng (Siêu nhanh, chuẩn xác)" },
+    { label: "gemini-2.0-flash", tag: "⚡ Tốc độ cao" },
+    { label: "gemini-1.5-flash", tag: "Ổn định & Hạn mức rộng" },
+    { label: "gemini-1.5-pro", tag: "🧠 Phân tích sâu ngữ cảnh (2M Tokens)" },
+    { label: "gemini-2.5-pro", tag: "🧠 Suy luận chuyên sâu" },
+    { label: "gemini-flash-latest", tag: "Flash mới nhất" },
+    { label: "gemini-pro-latest", tag: "Pro mới nhất" },
+  ],
+  openai: [
+    { label: "gpt-4o-mini", tag: "⚡ Khuyên dùng (Nhanh & Tiết kiệm)" },
+    { label: "gpt-4o", tag: "🧠 Đỉnh cao thị giác & kịch bản" },
+    { label: "gpt-4-turbo", tag: "Ngữ cảnh lớn 128k" },
+    { label: "o1-mini", tag: "Tư duy logic cao cấp" },
+    { label: "o3-mini", tag: "Tư duy siêu tốc" },
+    { label: "gpt-3.5-turbo", tag: "Cơ bản" },
+  ],
+  anthropic: [
+    { label: "claude-3-5-sonnet-latest", tag: "✍️ Khuyên dùng (Kịch bản điện ảnh sắc sảo)" },
+    { label: "claude-3-5-haiku-latest", tag: "⚡ Tốc độ cao" },
+    { label: "claude-3-opus-latest", tag: "Phân tích chuyên sâu" },
+  ],
+  deepseek: [
+    { label: "deepseek-chat", tag: "⚡ DeepSeek-V3 (Cực rẻ & thông minh)" },
+    { label: "deepseek-reasoner", tag: "🧠 DeepSeek-R1 (Tư duy suy luận sâu)" },
+  ],
+  groq: [
+    { label: "llama-3.3-70b-versatile", tag: "⚡ Llama 3.3 70B (Siêu tốc độ)" },
+    { label: "llama-3.1-8b-instant", tag: "Llama 3.1 8B tức thì" },
+    { label: "whisper-large-v3", tag: "Bóc giọng nói phụ đề" },
+  ],
+  ollama: [
+    { label: "llama3.2", tag: "Local Offline" },
+    { label: "qwen2.5", tag: "Local Qwen" },
+    { label: "mistral", tag: "Local Mistral" },
+    { label: "llava", tag: "Local Vision" },
+  ],
+  "openai-compatible": [
+    { label: "openai/gpt-4o-mini", tag: "OpenRouter GPT-4o-mini" },
+    { label: "anthropic/claude-3.5-sonnet", tag: "OpenRouter Claude 3.5 Sonnet" },
+    { label: "google/gemini-2.0-flash-exp:free", tag: "OpenRouter Gemini Free" },
+    { label: "deepseek/deepseek-r1", tag: "OpenRouter DeepSeek R1" },
+  ],
+};
+
 const PRESET_PROMPTS = [
   {
-    id: "cops_bodycam",
-    title: "🚔 Cops Bodycam & Cảnh Sát Tuần Tra",
-    desc: "Tường thuật nghiệp vụ nghẹt thở, gay cấn từng giây, rượt đuổi dồn dập, dùng đúng thuật ngữ cảnh sát",
-    prompt: "Đóng vai người dẫn chuyện chuyên nghiệp của kênh Cops Bodycam / Police Chase. Kể lại diễn biến nghẹt thở, gay cấn từng giây bằng giọng văn tường thuật điều tra sắc bén, dồn dập. Sử dụng chính xác thuật ngữ cảnh sát (áp sát, dừng xe kiểm tra, đối tượng ngoan cố, húc cản PIT, rút súng cảnh cáo, khống chế còng tay...). Lời thoại của từng phân cảnh PHẢI KHỚP TUYỆT ĐỐI với từng hành động, cử chỉ của cảnh sát và nghi phạm trên khung hình.",
+    id: "master_cops_storytelling",
+    title: "🚔 Cops & Biên Kịch Kể Chuyện Chuyên Nghiệp (3 Hồi & Hook 10s)",
+    desc: "Chuẩn cấu trúc 3 hồi + Hook 10s đầu, ngôi thứ 3, văn phong trinh sát hình sự/cops, đào sâu tâm lý đối đầu",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp (Master Storyteller & Scriptwriter) chuyên chuyển thể các tư liệu video đời thực/pháp luật/cảnh sát/xã hội thành kịch bản Voice-over kịch tính, lôi cuốn, mang tính nhân văn và quan sát xã hội sâu sắc.
+
+# NHIỆM VỤ CHÍNH (CORE TASK)
+1. Xem và bóc tách dữ liệu video (phân đoạn mốc thời gian, lời thoại, hành động chính).
+2. Dịch nghĩa chính xác sang tiếng Việt.
+3. Viết lại toàn bộ câu chuyện thành kịch bản kể chuyện bằng NGÔI THỨ 3 (người kể chuyện giấu mặt/người quan sát).
+4. ĐẶC BIỆT: Kịch bản phải được thiết kế với thời lượng đọc từ 3 - 7 PHÚT TÙY THUỘC VÀO NỘI DUNG GỐC (~500 - 1200 từ tiếng Việt), tối ưu hóa giữ chân người xem (Retention).
+
+# QUY TRÌNH THỰC HIỆN
+Bước 1: Lập bảng phân tích phân đoạn: [Mốc thời gian] - [Hành động/Tình huống] - [Caption gốc] - [Dịch tiếng Việt].
+Bước 2: Viết kịch bản kể chuyện hoàn chỉnh theo Cấu trúc Storytelling bắt buộc dưới đây.
+
+# CẤU TRÚC STORYTELLING BẮT BUỘC (3 HỒI & VIRAL RETENTION)
+1. [00:00 - 00:10] HOOK CAO TRÀO (BẮT BUỘC ĐẨY LÊN ĐẦU):
+- Thời lượng đọc: Đúng 10 giây đầu (khoảng 25 - 35 từ).
+- Kỹ thuật: Bê nguyên video gốc đoạn hook dưới 10s hoặc trích xuất ngay câu thoại đắt giá nhất/tình tiết mâu thuẫn gây sốc nhất của video (Ví dụ: tiếng khóc cầu cứu, câu nói lật mặt, bằng chứng rợn người, hành động bất thường).
+- Mục tiêu: Chặn người xem lướt qua trong 3 giây đầu, tạo khoảng trống tò mò (curiosity gap) cực lớn.
+
+2. [00:10 - 01:15] HỒI 1: KHỞI NGUỒN & NGHỊCH LÝ BAN ĐẦU:
+- Diễn tả theo hướng giật tít để đưa hồi 2 vào cao trào.
+- Bối cảnh sự việc bắt đầu từ một chi tiết tưởng chừng rất nhỏ nhặt, bình thường (lỗi giao thông, dừng xe kiểm tra, va chạm nhẹ, cuộc gặp tình cờ).
+- Khắc họa sự đối lập/nghịch lý: Vẻ ngoài bình thản, vỏ bọc hoàn hảo của đối tượng vs. sự bất thường, run sợ hoặc vết nứt tâm lý của nạn nhân/nghi phạm.
+- Gieo mầm xung đột đầu tiên.
+
+3. [01:15 - 02:45] HỒI 2: XUNG ĐỘT LEO THANG & LỚP MẶT NẠ BỊ XÉ TOẠC:
+- Đi sâu vào diễn biến chi tiết nổi bật, tâm lý nhân vật.
+- Quá trình thẩm vấn/đối chất/khám xét/truy bắt.
+- Các chi tiết dối trá bị bóc trần từng lớp một.
+- Phân tích độ lệch pha tâm lý: Sự ngây thơ, bị thao túng của nạn nhân đối lập với sự lọc lõi, tráo trở của kẻ chủ mưu/nghi phạm.
+- Cao trào cảm xúc: Khoảnh khắc sự thật vỡ vụn, nạn nhân thức tỉnh hoặc hoảng loạn cực độ, đối tượng bị khống chế.
+
+4. [02:45 - 04:30+] HỒI 3: KẾT CỤC, CÔNG LÝ & BÀI HỌC QUAN SÁT XÃ HỘI:
+- Bằng chứng không thể chối cãi được đưa ra ánh sáng (hồ sơ tiền án, tang vật, kết quả pháp lý).
+- Số phận của các nhân vật (kẻ thủ ác đối diện pháp luật, nạn nhân được giải cứu/bảo vệ).
+- Đoạn kết mang triết lý: Rút ra bài học nhân sinh từ góc nhìn "Nghịch lý cuộc sống", "Tâm lý & Xã hội" và sự nghiêm minh của pháp luật (Cạm bẫy thường đội lốt sự quan tâm; bi kịch bắt đầu từ những lỗ hổng tâm lý đời thường; trực giác cảnh sát và công lý thực thi...).
+
+# PHONG CÁCH VĂN PHONG
+- Phong cách chủ đạo: "Cảnh sát tuần tra / Hồ sơ phá án (Police Bodycam / Cops / True Crime)" — Nhấn mạnh vào trực giác nghiệp vụ của cảnh sát tuần tra (Cop's Gut Feeling), diễn biến căng thẳng nghẹt thở, lời khai đối chiếu mâu thuẫn, những manh mối bị phát hiện ngay tại hiện trường.
+- Phong cách bổ sung: "Góc nhìn Ký sự Pháp luật & Tâm lý Tội phạm" — Phân tích động cơ, sự xảo quyệt hay hoảng loạn của đối tượng khi đối mặt với cơ quan thực thi pháp luật.
+- Ngôi kể: Ngôi thứ ba hoàn toàn (dùng "gã đàn ông", "cô bé", "người mẹ", "hắn", "viên cảnh sát tuần tra", "sĩ quan cảnh sát", "tổ công tác"...).
+- Nhịp điệu: Đoạn đầu nhanh, dồn dập; đoạn giữa kịch tính, đấu trí tâm lý; đoạn kết đanh thép, thượng tôn pháp luật và sâu sắc.
+
+# YÊU CẦU KỸ THUẬT & ĐỊNH DẠNG
+- Tổng số từ bài viết kể chuyện: Tùy vào độ dài video gốc (3 đến 7 phút, khoảng 500 - 1200 từ tiếng Việt).
+- Có phân chia rõ các phân cảnh: [00:00 - 00:10], [Hồi 1], [Hồi 2], [Hồi 3] để khớp video trên Timeline, NHƯNG trong nội dung lời đọc Voice-over (lời kể chuyện) TUYỆT ĐỐI KHÔNG đọc các con số mốc thời gian ("tại mốc 00:00", "lúc...", "ở phút...") mà phải kể chuyện tự nhiên, liền mạch 100%.`,
   },
   {
     id: "reality_show",
-    title: "📺 Show Truyền Hình Thực Tế (Reality Show)",
+    title: "📺 Show Truyền Hình Thực Tế & Drama Đời Sống",
     desc: "Bình luận drama sắc sảo, bắt trọn biểu cảm giật mình, tranh cãi đối đầu, phản ứng bất ngờ",
-    prompt: "Đóng vai người bình luận show truyền hình thực tế sôi động, dí dỏm và sắc sảo. Nêu bật cảm xúc, phản ứng bất ngờ, các cuộc tranh luận đối đầu gay cấn và tình huống drama đời thực của các nhân vật trong video, khớp chuẩn từng biểu cảm và cử chỉ trên khung hình.",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp chuyên phân tích Show truyền hình thực tế / Drama đời sống.
+
+# CẤU TRÚC STORYTELLING BẮT BUỘC:
+1. [00:00 - 00:10] HOOK CAO TRÀO: Trích đoạn drama/phản ứng giật mình nảy lửa nhất.
+2. [HỒI 1] KHỞI NGUỒN: Bối cảnh sự việc, sự đối đầu ban đầu của các nhân vật.
+3. [HỒI 2] XUNG ĐỘT CAO TRÀO: Tranh cãi nảy lửa, bóc trần cảm xúc thật.
+4. [HỒI 3] HỒI KẾT & DƯ ÂM: Bài học và phản ứng cuối cùng.
+
+# PHONG CÁCH:
+- Tone: Sôi nổi, cuốn hút, dí dỏm, bình luận sắc sảo.
+- Ngôi kể: Ngôi thứ 3 quan sát.`,
   },
   {
     id: "movie_review",
     title: "🎬 Review & Tóm Tắt Phim Siêu Kịch Tính",
     desc: "Tập trung vào plot twist, cao trào, diễn biến gay cấn, ngắt nghỉ kịch tính",
-    prompt: "Phân tích ngữ cảnh phim kịch tính, trích xuất các phân cảnh bước ngoặt cao trào, viết kịch bản tóm tắt hấp dẫn theo phong cách review phim triệu view, có câu hook mở đầu giật gân.",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là một Chuyên gia Kể chuyện & Review Phim Điện Ảnh chuyên nghiệp triệu view.
+
+# CẤU TRÚC:
+1. [00:00 - 00:10] HOOK: Câu dẫn giật gân về bí mật hoặc bước ngoặt lớn nhất của phim.
+2. [HỒI 1] Giới thiệu nhân vật & biến cố bất ngờ xảy đến.
+3. [HỒI 2] Đấu trí nghẹt thở, những cú plot twist bất ngờ.
+4. [HỒI 3] Hồi kết mãn nhãn và thông điệp triết lý của tác phẩm.`,
   },
   {
     id: "tiktok_viral",
     title: "⚡ Video Ngắn TikTok / Reels / Shorts Viral",
     desc: "Tối ưu hóa 3 giây đầu giữ chân người xem, nhịp điệu nhanh, dồn dập",
-    prompt: "Trích xuất các khoảnh khắc visual ấn tượng nhất, tối ưu câu hook trong 3 giây đầu tiên, kịch bản ngắn gọn, cô đọng, giàu cảm xúc và kích thích tương tác bình luận.",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là một Chuyên gia Sáng tạo Nội dung Ngắn Viral (TikTok/Shorts/Reels).
+
+# YÊU CẦU:
+- Hook cực gắt trong 3 giây đầu tiên để giữ chân người xem (Retention > 90%).
+- Nhịp điệu dồn dập, câu chữ gãy gọn, giàu cảm xúc, kích thích tương tác comment/share.`,
   },
   {
     id: "mystery_story",
     title: "🕵️ Kể Chuyện Trinh Thám & Huyền Bí",
     desc: "Hồi hộp, bí ẩn, gợi mở trí tò mò qua từng thước phim",
-    prompt: "Phân tích không gian và chi tiết bí ẩn trong video, xây dựng mạch kể chuyện hồi hộp, tạo cảm giác tò mò ly kỳ qua từng phân cảnh nối tiếp nhau.",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là Người Dẫn Chuyện Trinh Thám & Vụ Án Bí Ẩn.
+
+# YÊU CẦU:
+- Giọng văn hồi hộp, ma mị, gợi mở từng manh mối bí ẩn.
+- Kể chuyện theo cấu trúc 3 hồi: Manh mối ban đầu ➔ Đấu trí lần theo dấu vết ➔ Sự thật rùng mình được phơi bày.`,
   },
   {
     id: "news_digest",
     title: "📰 Tin Tức & Thời Sự Nóng Hổi",
     desc: "Khách quan, súc tích, tóm tắt sự kiện chính xác và rành mạch",
-    prompt: "Phân tích tóm tắt tin tức chính xác, diễn giải bối cảnh sự kiện rõ ràng, giọng văn trang trọng, mạch lạc, dễ hiểu theo phong cách bản tin thời sự.",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là Biên tập viên Thời sự & Phóng sự Điều tra.
+
+# YÊU CẦU:
+- Khách quan, trung thực, mạch lạc, giọng văn đanh thép chuẩn mực báo chí.
+- Bóc tách mốc thời gian, nhân vật, sự kiện và kết luận pháp lý rõ ràng.`,
   },
 ];
 
@@ -188,6 +319,11 @@ export function VideoAnalysisPage({
   // Providers & Settings
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
   const [defaultProviderId, setDefaultProviderId] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [isCustomModel, setIsCustomModel] = useState(false);
+  const [customModelInput, setCustomModelInput] = useState("");
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
   const [defaultVoiceId, setDefaultVoiceId] = useState("vi-adam-review");
   const [defaultLanguage, setDefaultLanguage] = useState("vi");
   const [defaultPrompt, setDefaultPrompt] = useState(PRESET_PROMPTS[0].prompt);
@@ -226,10 +362,134 @@ export function VideoAnalysisPage({
       .then((p) => {
         setProviders(p);
         const active = p.find((item) => item.enabled && item.hasApiKey && item.capabilities.includes("analysis"));
-        if (active) setDefaultProviderId(active.id);
+        if (active) {
+          setDefaultProviderId(active.id);
+          setSelectedModel(active.model || "");
+        } else if (p.length > 0) {
+          setDefaultProviderId(p[0].id);
+          setSelectedModel(p[0].model || "");
+        }
       })
       .catch(() => setProviders([]));
   }, []);
+
+  // Selected Provider & Models
+  const selectedProvider = useMemo(() => {
+    return providers.find((p) => p.id === defaultProviderId) || providers[0];
+  }, [providers, defaultProviderId]);
+
+  const availableModels = useMemo(() => {
+    const pType = selectedProvider?.providerType || "gemini";
+    const presets = PROVIDER_MODEL_PRESETS[pType] || [];
+    const currentModel = selectedProvider?.model;
+    if (currentModel && !presets.some((m) => m.label === currentModel)) {
+      return [{ label: currentModel, tag: "Đang lưu cấu hình" }, ...presets];
+    }
+    return presets;
+  }, [selectedProvider]);
+
+  // Sync selectedModel whenever selectedProvider changes
+  useEffect(() => {
+    if (selectedProvider && !selectedModel) {
+      setSelectedModel(selectedProvider.model || "");
+    }
+  }, [selectedProvider?.id, selectedProvider?.model]);
+
+  function handleSelectProvider(id: string) {
+    setDefaultProviderId(id);
+    const p = providers.find((item) => item.id === id);
+    if (p) {
+      setSelectedModel(p.model || "");
+      setIsCustomModel(false);
+      showToast(`✓ Đã chọn AI Provider: ${p.name}`);
+    }
+  }
+
+  async function handleSelectModel(newModel: string) {
+    if (newModel === "__custom__") {
+      setIsCustomModel(true);
+      return;
+    }
+    setIsCustomModel(false);
+    setSelectedModel(newModel);
+    if (selectedProvider) {
+      try {
+        await getRuntime().saveProviderProfile({
+          id: selectedProvider.id,
+          name: selectedProvider.name,
+          providerType: selectedProvider.providerType,
+          baseUrl: selectedProvider.baseUrl,
+          model: newModel,
+          capabilities: selectedProvider.capabilities,
+          enabled: selectedProvider.enabled,
+          ttsModel: selectedProvider.ttsModel,
+          transcriptionModel: selectedProvider.transcriptionModel,
+        });
+        const updated = await getRuntime().getProviderProfiles();
+        setProviders(updated);
+        showToast(`✓ Đã kích hoạt mô hình: ${newModel}`);
+      } catch (err: any) {
+        showToast(`⚠️ Không thể lưu mô hình: ${err?.message || err}`);
+      }
+    }
+  }
+
+  async function handleApplyCustomModel() {
+    const val = customModelInput.trim();
+    if (!val) return;
+    setSelectedModel(val);
+    setIsCustomModel(false);
+    if (selectedProvider) {
+      try {
+        await getRuntime().saveProviderProfile({
+          id: selectedProvider.id,
+          name: selectedProvider.name,
+          providerType: selectedProvider.providerType,
+          baseUrl: selectedProvider.baseUrl,
+          model: val,
+          capabilities: selectedProvider.capabilities,
+          enabled: selectedProvider.enabled,
+          ttsModel: selectedProvider.ttsModel,
+          transcriptionModel: selectedProvider.transcriptionModel,
+        });
+        const updated = await getRuntime().getProviderProfiles();
+        setProviders(updated);
+        showToast(`✓ Đã lưu mô hình tùy chỉnh: ${val}`);
+      } catch (err: any) {
+        showToast(`⚠️ Lỗi lưu mô hình: ${err?.message || err}`);
+      }
+    }
+  }
+
+  async function handleSaveApiKey() {
+    const key = apiKeyInput.trim();
+    if (!key) {
+      showToast("⚠️ Vui lòng nhập mã API Key");
+      return;
+    }
+    if (!selectedProvider) return;
+    try {
+      await getRuntime().saveProviderProfile({
+        id: selectedProvider.id,
+        name: selectedProvider.name,
+        providerType: selectedProvider.providerType,
+        baseUrl: selectedProvider.baseUrl,
+        model: selectedModel || selectedProvider.model,
+        apiKey: key,
+        capabilities: selectedProvider.capabilities.length ? selectedProvider.capabilities : ["analysis", "vision"],
+        enabled: true,
+        ttsModel: selectedProvider.ttsModel,
+        transcriptionModel: selectedProvider.transcriptionModel,
+      });
+      const updated = await getRuntime().getProviderProfiles();
+      setProviders(updated);
+      setShowApiKeyModal(false);
+      setApiKeyInput("");
+      showToast(`🎉 Đã kích hoạt thành công API Key cho ${selectedProvider.name}!`);
+    } catch (err: any) {
+      showToast(`❌ Lỗi lưu API Key: ${err?.message || err}`);
+    }
+  }
 
   // Listen to live analysis progress events from backend/Electron
   useEffect(() => {
@@ -793,6 +1053,129 @@ export function VideoAnalysisPage({
 
       </div>
 
+      {/* 2.5 AI Engine & Model Control Hub (Fast On-The-Fly Selection) */}
+      <div style={{ background: "linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.7))", border: "1px solid rgba(56, 189, 248, 0.28)", borderRadius: "12px", padding: "12px 16px", marginBottom: "14px", boxShadow: "0 6px 24px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", gap: "12px" }}>
+        
+        {/* Top title & status header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ width: "30px", height: "30px", borderRadius: "7px", background: "linear-gradient(135deg, #0284c7, #2563eb)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", boxShadow: "0 0 12px rgba(56, 189, 248, 0.4)" }}>
+              <CpuFill />
+            </div>
+            <div>
+              <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#f8fafc", letterSpacing: "0.3px", display: "flex", alignItems: "center", gap: "6px" }}>
+                BỘ XỬ LÝ AI & MÔ HÌNH PHÂN TÍCH (AI ENGINE & MODEL)
+                <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 700 }}>
+                  Trực Tiếp
+                </span>
+              </div>
+              <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                Chọn nhà cung cấp AI và mô hình phù hợp để phân tích hình ảnh bối cảnh, bóc tách phân cảnh & viết kịch bản lồng tiếng
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            {selectedProvider?.hasApiKey ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.35)", color: "#34d399", padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700 }}>
+                <CheckCircleFill size={11} /> API Key Sẵn Sàng ({selectedProvider.maskedKey})
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setApiKeyInput("");
+                  setShowApiKeyModal(true);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.4)", color: "#fbbf24", padding: "4px 12px", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}
+              >
+                <KeyFill size={12} /> ⚠️ Chưa có API Key · Bấm để nhập ngay
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => onNavigate?.("settings")}
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#cbd5e1", padding: "4px 10px", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
+              title="Quản lý toàn bộ API Provider trong Cài đặt"
+            >
+              <GearFill size={11} /> Quản Lý Provider
+            </button>
+          </div>
+        </div>
+
+        {/* Dropdowns Row */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "10px", alignItems: "flex-end" }}>
+          
+          {/* Provider Select */}
+          <div>
+            <label style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: 700, color: "#cbd5e1", marginBottom: "4px" }}>
+              <span>🤖 NHÀ CUNG CẤP AI (PROVIDER)</span>
+              <span style={{ color: "#38bdf8", fontSize: "10.5px" }}>{providers.length} nhà cung cấp</span>
+            </label>
+            <select
+              value={defaultProviderId}
+              onChange={(e) => handleSelectProvider(e.target.value)}
+              style={{ width: "100%", background: "#0f172a", border: "1px solid #334155", borderRadius: "6px", padding: "7px 10px", color: "#f8fafc", fontSize: "12px", outline: "none", cursor: "pointer" }}
+            >
+              {providers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} {p.hasApiKey ? "🟢 (Đã có Key)" : "🟡 (Chưa có Key)"} · {p.model}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Model Select */}
+          <div>
+            <label style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", fontWeight: 700, color: "#cbd5e1", marginBottom: "4px" }}>
+              <span>🧠 MÔ HÌNH AI (MODEL)</span>
+              <span style={{ color: "#c084fc", fontSize: "10.5px" }}>
+                Đang kích hoạt: <strong>{selectedModel || selectedProvider?.model || "Mặc định"}</strong>
+              </span>
+            </label>
+            <select
+              value={isCustomModel ? "__custom__" : (selectedModel || selectedProvider?.model || "")}
+              onChange={(e) => handleSelectModel(e.target.value)}
+              style={{ width: "100%", background: "#0f172a", border: "1px solid #334155", borderRadius: "6px", padding: "7px 10px", color: "#f8fafc", fontSize: "12px", outline: "none", cursor: "pointer" }}
+            >
+              {availableModels.map((m) => (
+                <option key={m.label} value={m.label}>
+                  {m.label} {m.tag ? `— ${m.tag}` : ""}
+                </option>
+              ))}
+              <option value="__custom__">✍️ [Nhập tên model tùy chỉnh khác...]</option>
+            </select>
+          </div>
+
+          {/* Custom Model Input if selected */}
+          {isCustomModel && (
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#cbd5e1", marginBottom: "4px" }}>
+                ✍️ NHẬP TÊN MODEL TÙY CHỈNH
+              </label>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <input
+                  type="text"
+                  value={customModelInput}
+                  onChange={(e) => setCustomModelInput(e.target.value)}
+                  placeholder="Ví dụ: gemini-2.5-flash hoặc gpt-4o"
+                  style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: "6px", padding: "7px 10px", color: "#f8fafc", fontSize: "12px", outline: "none" }}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCustomModel}
+                  style={{ background: "linear-gradient(135deg, #0284c7, #2563eb)", border: "none", color: "#fff", borderRadius: "6px", padding: "7px 14px", fontSize: "12px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  Lưu & Áp Dụng
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+
       {/* 3. Style Presets Quick Bar (Unified Cohesive Theme) */}
       <div style={{ background: "rgba(15, 23, 42, 0.75)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
         <span style={{ fontSize: "11px", fontWeight: 800, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "5px", marginRight: "4px" }}>
@@ -1159,12 +1542,21 @@ export function VideoAnalysisPage({
                         </span>
                       </div>
 
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px", fontSize: "10.5px", color: "#64748b" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", fontSize: "10.5px", color: "#64748b", flexWrap: "wrap" }}>
                         <span style={{ display: "flex", alignItems: "center", gap: "3px", flexShrink: 0 }}>
                           <ClockFill size={9} /> {formatDuration(job.durationSeconds)}
                         </span>
                         <span>•</span>
-                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={job.localPath || job.source}>
+                        {(() => {
+                          const assignedProvider = providers.find((p) => p.id === (job.providerId || defaultProviderId)) || selectedProvider;
+                          return (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.25)", color: "#38bdf8", padding: "1px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 700 }}>
+                              <CpuFill size={9} /> {assignedProvider ? `${assignedProvider.name.split(" ")[0]} · ${assignedProvider.model}` : "AI Auto"}
+                            </span>
+                          );
+                        })()}
+                        <span>•</span>
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "260px" }} title={job.localPath || job.source}>
                           {job.localPath || job.source}
                         </span>
                       </div>
@@ -1679,24 +2071,67 @@ export function VideoAnalysisPage({
               }}
               style={{ display: "flex", flexDirection: "column", gap: "14px" }}
             >
-              {/* Provider Selection */}
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#cbd5e1", marginBottom: "5px" }}>
-                  🤖 CHỌN AI PROVIDER PHÂN TÍCH (BYOK)
-                </label>
-                <select
-                  value={defaultProviderId}
-                  onChange={(e) => setDefaultProviderId(e.target.value)}
-                  style={{ width: "100%", background: "rgba(0,0,0,0.35)", border: "1px solid #334155", borderRadius: "6px", padding: "8px 10px", color: "#f8fafc", fontSize: "12.5px", outline: "none" }}
-                >
-                  <option value="">-- Mặc định (Hệ thống tối ưu tự động) --</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.model}) {p.hasApiKey ? "✓ Có API Key" : "⚠️ Chưa cấu hình key"}
-                    </option>
-                  ))}
-                </select>
+              {/* Provider & Model Selection Grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#cbd5e1", marginBottom: "5px" }}>
+                    🤖 NHÀ CUNG CẤP AI (PROVIDER)
+                  </label>
+                  <select
+                    value={defaultProviderId}
+                    onChange={(e) => handleSelectProvider(e.target.value)}
+                    style={{ width: "100%", background: "rgba(0,0,0,0.35)", border: "1px solid #334155", borderRadius: "6px", padding: "8px 10px", color: "#f8fafc", fontSize: "12px", outline: "none", cursor: "pointer" }}
+                  >
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.hasApiKey ? "🟢 (Có Key)" : "🟡 (Chưa có key)"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#cbd5e1", marginBottom: "5px" }}>
+                    🧠 MÔ HÌNH AI (MODEL)
+                  </label>
+                  <select
+                    value={isCustomModel ? "__custom__" : (selectedModel || selectedProvider?.model || "")}
+                    onChange={(e) => handleSelectModel(e.target.value)}
+                    style={{ width: "100%", background: "rgba(0,0,0,0.35)", border: "1px solid #334155", borderRadius: "6px", padding: "8px 10px", color: "#f8fafc", fontSize: "12px", outline: "none", cursor: "pointer" }}
+                  >
+                    {availableModels.map((m) => (
+                      <option key={m.label} value={m.label}>
+                        {m.label} {m.tag ? `— ${m.tag}` : ""}
+                      </option>
+                    ))}
+                    <option value="__custom__">✍️ [Nhập model tùy chỉnh khác...]</option>
+                  </select>
+                </div>
               </div>
+
+              {isCustomModel && (
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#cbd5e1", marginBottom: "4px" }}>
+                    ✍️ NHẬP MODEL TÙY CHỈNH
+                  </label>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <input
+                      type="text"
+                      value={customModelInput}
+                      onChange={(e) => setCustomModelInput(e.target.value)}
+                      placeholder="Ví dụ: gemini-2.5-flash hoặc gpt-4o"
+                      style={{ flex: 1, background: "rgba(0,0,0,0.35)", border: "1px solid #334155", borderRadius: "6px", padding: "7px 10px", color: "#f8fafc", fontSize: "12px", outline: "none" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyCustomModel}
+                      style={{ background: "linear-gradient(135deg, #0284c7, #2563eb)", border: "none", color: "#fff", borderRadius: "6px", padding: "7px 14px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      Áp Dụng
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Preset Prompts */}
               <div>
@@ -2161,6 +2596,90 @@ export function VideoAnalysisPage({
                 </div>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: QUICK API KEY CONFIG MODAL */}
+      {showApiKeyModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999999, padding: "20px" }}>
+          <div style={{ background: "#0f172a", border: "1px solid rgba(56, 189, 248, 0.4)", borderRadius: "12px", width: "100%", maxWidth: "520px", boxShadow: "0 25px 60px rgba(0,0,0,0.7)", padding: "20px" }}>
+            
+            {/* Modal header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: "10px", marginBottom: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <KeyFill size={17} color="#38bdf8" />
+                <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 800, color: "#f8fafc" }}>
+                  Cài Đặt API Key Cho {selectedProvider?.name || "AI Provider"}
+                </h3>
+              </div>
+              <button type="button" onClick={() => setShowApiKeyModal(false)} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}>
+                <XLg size={14} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "14px", lineHeight: 1.4 }}>
+              Dán mã API Key của bạn vào bên dưới để kích hoạt phân tích video trực tiếp. API Key được lưu và mã hóa an toàn trên máy tính của bạn.
+            </p>
+
+            {/* Input */}
+            <div style={{ marginBottom: "14px" }}>
+              <label style={{ display: "block", fontSize: "11.5px", fontWeight: 700, color: "#cbd5e1", marginBottom: "5px" }}>
+                MÃ API KEY (Google AI Studio / OpenAI / DeepSeek / Claude / Groq)
+              </label>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="Dán API Key (AIzaSy... hoặc sk-...)"
+                style={{ width: "100%", background: "rgba(0,0,0,0.4)", border: "1px solid #334155", borderRadius: "6px", padding: "8px 10px", color: "#f8fafc", fontSize: "13px", outline: "none" }}
+              />
+            </div>
+
+            {/* Helper Links */}
+            {selectedProvider?.providerType === "gemini" && (
+              <div style={{ background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "6px", padding: "8px 12px", marginBottom: "14px", fontSize: "11.5px", color: "#94a3b8" }}>
+                💡 Chưa có key Google Gemini? Lấy API Key miễn phí tại:{" "}
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline" }}>
+                  Google AI Studio ↗
+                </a>
+              </div>
+            )}
+            {selectedProvider?.providerType === "openai" && (
+              <div style={{ background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "6px", padding: "8px 12px", marginBottom: "14px", fontSize: "11.5px", color: "#94a3b8" }}>
+                💡 Lấy API Key OpenAI tại:{" "}
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline" }}>
+                  OpenAI Platform ↗
+                </a>
+              </div>
+            )}
+            {selectedProvider?.providerType === "deepseek" && (
+              <div style={{ background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "6px", padding: "8px 12px", marginBottom: "14px", fontSize: "11.5px", color: "#94a3b8" }}>
+                💡 Lấy API Key DeepSeek tại:{" "}
+                <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer" style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline" }}>
+                  DeepSeek Platform ↗
+                </a>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={() => setShowApiKeyModal(false)}
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", padding: "6px 14px", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveApiKey}
+                disabled={!apiKeyInput.trim()}
+                style={{ background: "linear-gradient(135deg, #0284c7, #2563eb)", color: "#fff", border: "none", padding: "6px 16px", borderRadius: "6px", fontSize: "12px", fontWeight: 700, cursor: apiKeyInput.trim() ? "pointer" : "not-allowed", opacity: apiKeyInput.trim() ? 1 : 0.6 }}
+              >
+                Lưu & Kích Hoạt
+              </button>
             </div>
           </div>
         </div>

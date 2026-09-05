@@ -8,9 +8,10 @@ function atempoChain(value) {
   return filters.join(",");
 }
 
-function buildAudioFilter({ hasOriginalAudio, narrationInputIndex, musicInputIndex, keepOriginalAudio = true, musicVolume = 20, narrationTempo = 1, duckOriginalAudio = false }) {
+function buildAudioFilter({ hasOriginalAudio, audioInputLabel = "[0:a]", narrationInputIndex, musicInputIndex, keepOriginalAudio = true, musicVolume = 20, narrationTempo = 1, duckOriginalAudio = false }) {
   const inputs = [];
-  if (keepOriginalAudio && hasOriginalAudio) inputs.push({ label: "[0:a]", volume: duckOriginalAudio && Number.isInteger(narrationInputIndex) ? 0.2 : 1 });
+  const srcAudio = String(audioInputLabel || "[0:a]").startsWith("[") ? String(audioInputLabel || "[0:a]") : `[${audioInputLabel}]`;
+  if (keepOriginalAudio && hasOriginalAudio) inputs.push({ label: srcAudio, volume: duckOriginalAudio && Number.isInteger(narrationInputIndex) ? 0.2 : 1 });
   if (Number.isInteger(narrationInputIndex)) inputs.push({ label: `[${narrationInputIndex}:a]`, volume: 1 });
   if (Number.isInteger(musicInputIndex)) inputs.push({ label: `[${musicInputIndex}:a]`, volume: Math.max(0, Math.min(1, Number(musicVolume) / 100)) });
   if (!inputs.length) return null;

@@ -1,7 +1,7 @@
 {
   "name": "@jacs/desktop-app",
   "private": true,
-  "version": "0.4.3",
+  "version": "0.8.18",
   "description": "JACS Studio desktop video analysis and rendering tool",
   "author": "NexoraTech",
   "type": "module",
@@ -75,14 +75,19 @@
       "category": "public.app-category.video"
     },
     "win": {
+      "sign": null,
+      "signAndEditExecutable": false,
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
+        "nsis",
+        "zip"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JACS Studio"
     }
   }
 }
