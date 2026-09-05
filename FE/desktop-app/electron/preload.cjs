@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   getMediaCapabilities: () => ipcRenderer.invoke("runtime:media-capabilities"),
   clearCache: () => ipcRenderer.invoke("runtime:clear-cache"),
   getProviderProfiles: () => ipcRenderer.invoke("runtime:get-providers"),
+  syncManagedProviders: (providers) => ipcRenderer.invoke("runtime:sync-managed-providers", providers),
   listVoices: (language) => ipcRenderer.invoke("runtime:list-voices", language),
   saveProviderProfile: (value) => ipcRenderer.invoke("runtime:save-provider", value),
   deleteProviderProfile: (id) => ipcRenderer.invoke("runtime:delete-provider", id),
@@ -33,6 +34,7 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   readJobs: () => ipcRenderer.invoke("runtime:read-jobs"),
   saveJobs: (value) => ipcRenderer.invoke("runtime:save-jobs", value),
   synthesizeSpeech: (text, language, gender, voice) => ipcRenderer.invoke("runtime:synthesize-speech", text, language, gender, voice),
+  resolveVideoUrl: (url) => ipcRenderer.invoke("runtime:resolve-video-url", url),
   onDownloadProgress: (listener) => {
     const handler = (_event, payload) => listener(payload);
     ipcRenderer.on("runtime:download-progress", handler);
