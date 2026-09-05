@@ -49,7 +49,7 @@ class LicenseService:
                         "message": "Bản quyền đã hết hạn sử dụng. Vui lòng gia hạn!",
                         "license": lic,
                     }
-            except Exception:
+            except (ValueError, TypeError):
                 pass
 
         # Device binding
@@ -111,7 +111,7 @@ class LicenseService:
                 if base_time.tzinfo is None:
                     base_time = base_time.replace(tzinfo=UTC)
                 base_time = max(base_time, now)
-            except Exception:
+            except (ValueError, TypeError):
                 base_time = now
         else:
             base_time = now
