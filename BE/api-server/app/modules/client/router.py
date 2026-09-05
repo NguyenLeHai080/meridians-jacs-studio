@@ -162,27 +162,32 @@ class SpeechSynthesisPayload(BaseModel):
 
 @router.post("/synthesize-speech")
 async def client_synthesize_speech(payload: SpeechSynthesisPayload):
+    import asyncio
     import hashlib
     import json
+    import logging
     import os
+    import pathlib
+    import urllib.error
     import urllib.request
 
     import edge_tts
     from fastapi import Response
+
+    logger = logging.getLogger(__name__)
 
     clean_text = str(payload.text or "").strip()
     voice_key = str(payload.voice or "").strip().lower()
     provider_key = str(payload.provider or "").strip().lower()
     api_key = payload.api_key or os.getenv("ELEVENLABS_API_KEY") or ""
 
-    cache_dir = "/tmp/tts_cache"
-    os.makedirs(cache_dir, exist_ok=True)
+    cache_dir = pathlib.Path("/tmp/tts_cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
     cache_key = hashlib.sha256(f"{voice_key}:{clean_text}:{api_key[:8]}".encode()).hexdigest()
-    cache_file = os.path.join(cache_dir, f"{cache_key}.mp3")
+    cache_file = cache_dir / f"{cache_key}.mp3"
 
-    if os.path.exists(cache_file) and os.path.getsize(cache_file) > 100:
-        with open(cache_file, "rb") as f:
-            cached_data = f.read()
+    if cache_file.exists() and cache_file.stat().st_size > 100:
+        cached_data = await asyncio.to_thread(cache_file.read_bytes)
         return Response(content=cached_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(cached_data)), "X-Cache": "HIT"})
 
     # 1. ELEVENLABS AI VOICE (Top 1 World for Human Rhythm, Emotion, Breath Pauses)
@@ -218,14 +223,17 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
                     "User-Agent": "JACS-Studio/1.0",
                 },
             )
-            with urllib.request.urlopen(req, timeout=25) as response:
-                content = response.read()
-                if len(content) > 200:
-                    with open(cache_file, "wb") as f:
-                        f.write(content)
-                    return Response(content=content, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(content)), "X-Cache": "MISS", "X-Engine": "ElevenLabs"})
-        except Exception as err:
-            print("ElevenLabs Error:", err)
+
+            def _fetch_elevenlabs():
+                with urllib.request.urlopen(req, timeout=25) as response:
+                    return response.read()
+
+            content = await asyncio.to_thread(_fetch_elevenlabs)
+            if len(content) > 200:
+                await asyncio.to_thread(cache_file.write_bytes, content)
+                return Response(content=content, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(content)), "X-Cache": "MISS", "X-Engine": "ElevenLabs"})
+        except (urllib.error.URLError, TimeoutError, OSError) as err:
+            logger.warning("ElevenLabs Error: %s", err)
 
     # 2. MICROSOFT NEURAL PROSODY ENGINE (High-Speed Authentic Prosody Profiles)
     voice_profiles = {
@@ -286,13 +294,12 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
             audio_data = b"".join(audio_chunks)
             if len(audio_data) > 100:
                 try:
-                    with open(cache_file, "wb") as f:
-                        f.write(audio_data)
-                except Exception:
-                    pass
+                    await asyncio.to_thread(cache_file.write_bytes, audio_data)
+                except OSError as write_err:
+                    logger.debug("Failed to write TTS cache: %s", write_err)
                 return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralProsody"})
-    except Exception as e:
-        print("TTS Stream Error:", e)
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("TTS Stream Error: %s", e)
 
     return Response(content=b"", media_type="audio/mpeg", status_code=500)
 

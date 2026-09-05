@@ -596,6 +596,64 @@
         }
       }
     },
+    "/api/v1/client/synthesize-speech": {
+      "post": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Client Synthesize Speech",
+        "operationId": "client_synthesize_speech_api_v1_client_synthesize_speech_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeechSynthesisPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client/config": {
+      "get": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Get Client Public Config",
+        "operationId": "get_client_public_config_api_v1_client_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/licenses": {
       "get": {
         "tags": [
@@ -1185,6 +1243,330 @@
         }
       }
     },
+    "/api/v1/billing/bank-accounts": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Bank Accounts",
+        "description": "Admin endpoint to list all configured beneficiary bank accounts.",
+        "operationId": "list_bank_accounts_api_v1_billing_bank_accounts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BankAccountResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Bank Accounts Api V1 Billing Bank Accounts Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Bank Account",
+        "description": "Admin endpoint to create a new bank account.",
+        "operationId": "create_bank_account_api_v1_billing_bank_accounts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBankAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/bank-accounts/{account_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Bank Account",
+        "description": "Admin endpoint to get a single bank account details.",
+        "operationId": "get_bank_account_api_v1_billing_bank_accounts__account_id__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Bank Account",
+        "description": "Admin endpoint to update bank account details.",
+        "operationId": "update_bank_account_api_v1_billing_bank_accounts__account_id__put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBankAccountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Delete Bank Account",
+        "description": "Admin endpoint to delete a bank account.",
+        "operationId": "delete_bank_account_api_v1_billing_bank_accounts__account_id__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Bank Account Api V1 Billing Bank Accounts  Account Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/bank-accounts/{account_id}/set-default": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Set Default Bank Account",
+        "description": "Admin endpoint to designate a bank account as the primary default beneficiary.",
+        "operationId": "set_default_bank_account_api_v1_billing_bank_accounts__account_id__set_default_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/bank-accounts/{account_id}/toggle-status": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Toggle Bank Account Status",
+        "description": "Admin endpoint to toggle active / inactive status of a bank account.",
+        "operationId": "toggle_bank_account_status_api_v1_billing_bank_accounts__account_id__toggle_status_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankAccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/bank-config": {
       "get": {
         "tags": [
@@ -1277,6 +1659,52 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RenewQrResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/webhook/sepay": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Sepay Billing Webhook",
+        "description": "SePay Webhook endpoint under /api/v1/billing/webhook/sepay.",
+        "operationId": "sepay_billing_webhook_api_v1_billing_webhook_sepay_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Sepay Billing Webhook Api V1 Billing Webhook Sepay Post"
                 }
               }
             }
@@ -1442,6 +1870,51 @@
             "APIKeyHeader": []
           }
         ]
+      }
+    },
+    "/api/v1/billing/client-history": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Client Billing History",
+        "description": "Client endpoint to get renewal and billing history for a given license key.",
+        "operationId": "get_client_billing_history_api_v1_billing_client_history_get",
+        "parameters": [
+          {
+            "name": "license_key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "License Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Client Billing History Api V1 Billing Client History Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/clients/sessions": {
@@ -2510,7 +2983,7 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 100,
+              "default": 200,
               "title": "Limit"
             }
           }
@@ -2694,6 +3167,80 @@
         }
       }
     },
+    "/api/v1/system/tool-config": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Get Admin Tool Config",
+        "operationId": "get_admin_tool_config_api_v1_system_tool_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Admin Tool Config Api V1 System Tool Config Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Update Admin Tool Config",
+        "operationId": "update_admin_tool_config_api_v1_system_tool_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolConfigPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Update Admin Tool Config Api V1 System Tool Config Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
     "/api/v1/system/info": {
       "get": {
         "tags": [
@@ -2873,10 +3420,272 @@
           }
         ]
       }
+    },
+    "/api/v1/system/terms": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Get System Terms",
+        "description": "Public endpoint to get current terms and legal disclaimer.",
+        "operationId": "get_system_terms_api_v1_system_terms_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get System Terms Api V1 System Terms Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Update System Terms",
+        "description": "Admin endpoint to update legal terms and disclaimer.",
+        "operationId": "update_system_terms_api_v1_system_terms_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Update System Terms Api V1 System Terms Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/webhook/sepay": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Root Sepay Webhook",
+        "description": "Public root endpoint for SePay payment gateway webhook.",
+        "operationId": "root_sepay_webhook_api_webhook_sepay_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Root Sepay Webhook Api Webhook Sepay Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "BankAccountResponse": {
+        "properties": {
+          "bank_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Bank Name",
+            "default": "VietinBank"
+          },
+          "bank_bin": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Bank Bin",
+            "default": "970415"
+          },
+          "bank_short": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Short"
+          },
+          "account_number": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Account Number",
+            "default": "109873538727"
+          },
+          "account_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Account Name",
+            "default": "NGUYEN LE HAI"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Purpose",
+            "default": "customer_income"
+          },
+          "qr_template": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Qr Template",
+            "default": "compact2"
+          },
+          "custom_qr_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Qr Url"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "BankAccountResponse"
+      },
       "BankConfigResponse": {
         "properties": {
           "bank_name": {
@@ -2912,6 +3721,30 @@
             "maxLength": 32,
             "title": "Qr Template",
             "default": "compact2"
+          },
+          "custom_qr_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Qr Url"
+          },
+          "sepay_api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sepay Api Key"
           },
           "plans_pricing": {
             "additionalProperties": {
@@ -3193,6 +4026,110 @@
           "status"
         ],
         "title": "ClientSessionResponse"
+      },
+      "CreateBankAccountRequest": {
+        "properties": {
+          "bank_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Bank Name",
+            "default": "VietinBank"
+          },
+          "bank_bin": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Bank Bin",
+            "default": "970415"
+          },
+          "bank_short": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Short"
+          },
+          "account_number": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Account Number",
+            "default": "109873538727"
+          },
+          "account_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Account Name",
+            "default": "NGUYEN LE HAI"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Purpose",
+            "default": "customer_income"
+          },
+          "qr_template": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Qr Template",
+            "default": "compact2"
+          },
+          "custom_qr_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Qr Url"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "CreateBankAccountRequest"
       },
       "CreateBillingTransactionRequest": {
         "properties": {
@@ -5273,17 +6210,10 @@
             "minLength": 1,
             "title": "Release Notes"
           },
-          "force_update": {
-            "type": "boolean",
-            "title": "Force Update",
-            "default": false
-          },
           "signature": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 4096,
-                "minLength": 32
+                "type": "string"
               },
               {
                 "type": "null"
@@ -5291,24 +6221,10 @@
             ],
             "title": "Signature"
           },
-          "rollout_percent": {
-            "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Rollout Percent",
-            "default": 100
-          },
-          "min_app_version": {
-            "anyOf": [
-              {
-                "type": "string",
-                "pattern": "^v\\d+\\.\\d+\\.\\d+$"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min App Version"
+          "force_update": {
+            "type": "boolean",
+            "title": "Force Update",
+            "default": false
           }
         },
         "type": "object",
@@ -5323,37 +6239,36 @@
       },
       "ReleaseResponse": {
         "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
           "version": {
             "type": "string",
-            "pattern": "^v\\d+\\.\\d+\\.\\d+$",
             "title": "Version"
           },
           "platform": {
             "type": "string",
-            "pattern": "^(windows|macos)$",
             "title": "Platform"
           },
           "channel": {
-            "$ref": "#/components/schemas/ReleaseChannel",
+            "type": "string",
+            "title": "Channel",
             "default": "stable"
           },
           "download_url": {
             "type": "string",
-            "maxLength": 2083,
-            "minLength": 1,
-            "format": "uri",
             "title": "Download Url"
           },
           "sha512": {
             "type": "string",
-            "pattern": "^[a-fA-F0-9]{128}$",
             "title": "Sha512"
           },
           "release_notes": {
             "type": "string",
-            "maxLength": 10000,
-            "minLength": 1,
-            "title": "Release Notes"
+            "title": "Release Notes",
+            "default": ""
           },
           "force_update": {
             "type": "boolean",
@@ -5363,9 +6278,7 @@
           "signature": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 4096,
-                "minLength": 32
+                "type": "string"
               },
               {
                 "type": "null"
@@ -5375,16 +6288,13 @@
           },
           "rollout_percent": {
             "type": "integer",
-            "maximum": 100.0,
-            "minimum": 1.0,
             "title": "Rollout Percent",
             "default": 100
           },
           "min_app_version": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^v\\d+\\.\\d+\\.\\d+$"
+                "type": "string"
               },
               {
                 "type": "null"
@@ -5392,25 +6302,30 @@
             ],
             "title": "Min App Version"
           },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
           "status": {
             "type": "string",
-            "title": "Status"
+            "title": "Status",
+            "default": "published"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
           }
         },
         "type": "object",
         "required": [
+          "id",
           "version",
           "platform",
           "download_url",
-          "sha512",
-          "release_notes",
-          "id",
-          "status"
+          "sha512"
         ],
         "title": "ReleaseResponse"
       },
@@ -5529,6 +6444,84 @@
         ],
         "title": "Severity"
       },
+      "SpeechSynthesisPayload": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice",
+            "default": "vi-VN-NamMinhNeural"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "default": "vi"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender",
+            "default": "male"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "SpeechSynthesisPayload"
+      },
       "SystemSettingsUpdate": {
         "properties": {
           "app_name": {
@@ -5622,6 +6615,29 @@
               }
             ],
             "title": "Custom Logo Url"
+          },
+          "tool_slogan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Slogan"
+          },
+          "menu_locks": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Menu Locks"
           }
         },
         "type": "object",
@@ -5702,6 +6718,220 @@
         ],
         "title": "TokenResponse"
       },
+      "ToolConfigPayload": {
+        "properties": {
+          "studio_brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Studio Brand Name"
+          },
+          "tool_slogan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Slogan"
+          },
+          "custom_logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Logo Url"
+          },
+          "support_contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Contact"
+          },
+          "menu_locks": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Menu Locks"
+          }
+        },
+        "type": "object",
+        "title": "ToolConfigPayload"
+      },
+      "UpdateBankAccountRequest": {
+        "properties": {
+          "bank_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Name"
+          },
+          "bank_bin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Bin"
+          },
+          "bank_short": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Short"
+          },
+          "account_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Number"
+          },
+          "account_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Name"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "qr_template": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qr Template"
+          },
+          "custom_qr_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Qr Url"
+          },
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "title": "UpdateBankAccountRequest"
+      },
       "UpdateBankConfigRequest": {
         "properties": {
           "bank_name": {
@@ -5737,6 +6967,30 @@
             "maxLength": 32,
             "title": "Qr Template",
             "default": "compact2"
+          },
+          "custom_qr_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Qr Url"
+          },
+          "sepay_api_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sepay Api Key"
           },
           "plans_pricing": {
             "additionalProperties": {
