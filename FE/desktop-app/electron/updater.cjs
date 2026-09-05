@@ -149,22 +149,29 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
   if (!fs.existsSync(filePath)) throw new Error("Không tìm thấy file cập nhật đã tải");
   if (platform === "windows") {
     if (kind === "windows-installer") {
+      const targetDir = path.dirname(execPath);
+      const targetExe = execPath;
+      const targetPid = process.pid;
       try {
-        const child = childProcess.spawn("cmd.exe", ["/c", "start", "", filePath], {
+        const child = childProcess.spawn(filePath, [
+          "--target-dir", targetDir,
+          "--target-exe", targetExe,
+          "--pid", String(targetPid)
+        ], {
           detached: true,
           stdio: "ignore",
-          windowsHide: true,
+          windowsHide: false,
         });
         child.unref();
       } catch {
         try {
-          childProcess.exec(`start "" "${filePath}"`);
+          childProcess.exec(`start "" "${filePath}" --target-dir "${targetDir}" --target-exe "${targetExe}" --pid ${targetPid}`);
         } catch {}
       }
       setTimeout(() => {
         if (typeof appModule.exit === "function") appModule.exit(0);
         else appModule.quit();
-      }, 500);
+      }, 800);
       return { status: "installing" };
     }
     if (kind === "windows-zip") {
@@ -175,20 +182,31 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
       const escapedZip = filePath.replace(/'/g, "''");
       const escapedDir = currentDir.replace(/'/g, "''");
       const batContent = `@echo off
-rem Terminate the running Electron process cleanly and release file locks
+rem Terminate all running Electron processes cleanly and release file locks
+%SystemRoot%\\System32\\taskkill.exe /f /im "${exeName}" >nul 2>&1
 %SystemRoot%\\System32\\taskkill.exe /f /pid ${Number(process.pid)} >nul 2>&1
+%SystemRoot%\\System32\\timeout.exe /t 2 /nobreak >nul
+
+rem Extract update payload directly to target directory with retry loop
+set ATTEMPT=0
+:EXTRACT_LOOP
+set /a ATTEMPT+=1
+%SystemRoot%\\System32\\tar.exe -xf "${filePath}" -C "${currentDir}" >nul 2>&1
+if not errorlevel 1 goto LAUNCH_APP
+if %ATTEMPT% geq 5 goto FALLBACK_PS
 %SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
+goto EXTRACT_LOOP
 
-rem Extract update payload directly to target directory
-%SystemRoot%\\System32\\tar.exe -xf "${filePath}" -C "${currentDir}" >nul 2>&1 || (
-  %SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDir}' -Force"
-)
+:FALLBACK_PS
+%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDir}' -Force" >nul 2>&1
 
-rem Restart the updated JACS Studio application
+:LAUNCH_APP
+rem Short pause to ensure disk write flush before relaunching
+%SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
 start "" "${path.join(currentDir, exeName)}"
 
 rem Clean up temporary script folder
-%SystemRoot%\\System32\\timeout.exe /t 2 /nobreak >nul
+%SystemRoot%\\System32\\timeout.exe /t 3 /nobreak >nul
 rmdir /s /q "${extractDirectory}" >nul 2>&1
 exit
 `;

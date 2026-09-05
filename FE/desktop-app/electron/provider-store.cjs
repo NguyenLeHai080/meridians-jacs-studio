@@ -16,14 +16,16 @@ function providerPublic(record) {
     enabled: record.enabled,
     hasApiKey: Boolean(record.apiKey),
     maskedKey: record.apiKey ? `********${record.apiKey.slice(-4)}` : "********",
+    isManaged: Boolean(record.isManaged),
+    isOfficial: Boolean(record.isOfficial),
+    managedTier: record.managedTier || "",
+    creditBalance: typeof record.creditBalance === "number" ? record.creditBalance : undefined,
+    availableModels: Array.isArray(record.availableModels) ? record.availableModels : undefined,
   };
 }
 
 function effectiveCapabilities(record) {
   const capabilities = Array.isArray(record?.capabilities) ? record.capabilities : [];
-  // A compatible API does not imply its model supports every endpoint. In
-  // particular, Groq Whisper accepts /audio/transcriptions but cannot serve
-  // chat completions or /audio/speech, so honor only explicit capabilities.
   return [...new Set(capabilities)];
 }
 
@@ -37,7 +39,8 @@ function validateProviderDraft(value) {
     ? [...new Set(value.capabilities.map((item) => String(item).trim()).filter(Boolean))]
     : [];
   if (!name || name.length > 120 || !model || model.length > 160) throw new Error("Tên và model provider không hợp lệ");
-  if (!["openai", "gemini", "anthropic", "openai-compatible", "custom"].includes(providerType)) throw new Error("Loại provider không được hỗ trợ");
+  const validTypes = ["openai", "gemini", "anthropic", "deepseek", "elevenlabs", "groq", "openai-compatible", "custom"];
+  if (!validTypes.includes(providerType)) throw new Error(`Loại provider '${providerType}' không được hỗ trợ`);
   let parsed;
   try { parsed = new URL(baseUrl); } catch { throw new Error("Base URL provider không hợp lệ"); }
   const localHttp = parsed.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
@@ -53,6 +56,11 @@ function validateProviderDraft(value) {
     capabilities,
     enabled: value.enabled !== false,
     apiKey: typeof value.apiKey === "string" ? value.apiKey.trim() : "",
+    isManaged: Boolean(value.isManaged),
+    isOfficial: Boolean(value.isOfficial),
+    managedTier: typeof value.managedTier === "string" ? value.managedTier.trim() : "",
+    creditBalance: typeof value.creditBalance === "number" ? value.creditBalance : undefined,
+    availableModels: Array.isArray(value.availableModels) ? value.availableModels : undefined,
   };
 }
 
@@ -95,15 +103,66 @@ function createProviderStore({ filePath, safeStorage, fsImpl = fs, cryptoImpl = 
       const records = readRecords();
       const index = value.id ? records.findIndex((item) => item.id === String(value.id)) : -1;
       const previous = index >= 0 ? records[index] : null;
-      if (!draft.apiKey && previous?.apiKey) draft.apiKey = previous.apiKey;
-      if (!draft.apiKey || draft.apiKey.length < 8 || draft.apiKey.length > 4096) throw new Error("API key phải có từ 8 đến 4096 ký tự");
+      if (previous?.isManaged && !value.fromSync) {
+        throw new Error("Không thể chỉnh sửa AI Provider do Admin cấp quyền quản lý");
+      }
+      if (!draft.apiKey && !draft.isManaged) {
+        if (previous?.apiKey) {
+          draft.apiKey = previous.apiKey;
+        } else if (value.copyFromId) {
+          const source = records.find((item) => item.id === String(value.copyFromId));
+          if (source?.apiKey) {
+            draft.apiKey = source.apiKey;
+          }
+        }
+      }
+      if (!draft.isManaged && (!draft.apiKey || draft.apiKey.length < 8 || draft.apiKey.length > 4096)) {
+        throw new Error("API key phải có từ 8 đến 4096 ký tự");
+      }
       const record = { id: previous?.id || cryptoImpl.randomUUID(), ...draft };
       if (index >= 0) records[index] = record; else records.push(record);
       writeRecords(records);
       return providerPublic(record);
     },
+    syncManaged(managedProviders) {
+      if (!Array.isArray(managedProviders)) return;
+      const records = readRecords();
+      let changed = false;
+      for (const mp of managedProviders) {
+        if (!mp || !mp.id) continue;
+        const index = records.findIndex((r) => r.id === mp.id || (r.isManaged && r.name === mp.name));
+        const draft = {
+          id: index >= 0 ? records[index].id : mp.id,
+          name: mp.name,
+          providerType: mp.providerType || "openai-compatible",
+          baseUrl: mp.baseUrl,
+          model: mp.model,
+          ttsModel: mp.ttsModel || "",
+          transcriptionModel: mp.transcriptionModel || "",
+          capabilities: Array.isArray(mp.capabilities) ? mp.capabilities : ["analysis", "vision"],
+          enabled: mp.enabled !== false,
+          apiKey: mp.apiKey || "MANAGED_ADMIN_KEY",
+          isManaged: true,
+          isOfficial: Boolean(mp.isOfficial),
+          managedTier: mp.managedTier || "Enterprise",
+          creditBalance: typeof mp.creditBalance === "number" ? mp.creditBalance : undefined,
+          availableModels: Array.isArray(mp.availableModels) ? mp.availableModels : undefined,
+        };
+        if (index >= 0) {
+          records[index] = { ...records[index], ...draft };
+        } else {
+          records.unshift(draft);
+        }
+        changed = true;
+      }
+      if (changed) writeRecords(records);
+    },
     delete(id) {
       const records = readRecords();
+      const target = records.find((item) => item.id === String(id));
+      if (target?.isManaged) {
+        throw new Error("Không thể xóa AI Provider do Admin cấp quyền quản lý");
+      }
       const next = records.filter((item) => item.id !== String(id));
       if (next.length !== records.length) writeRecords(next);
     },
