@@ -497,9 +497,11 @@ async def process_sepay_webhook(
         current_exp = matching_lic.get("expires_at")
         if current_exp:
             try:
-                base_dt = datetime.fromisoformat(str(current_exp).replace("Z", "+00:00"))
+                base_dt = datetime.fromisoformat(str(current_exp))
+                if base_dt.tzinfo is None:
+                    base_dt = base_dt.replace(tzinfo=UTC)
                 base_dt = max(base_dt, now)
-            except Exception:
+            except (ValueError, TypeError):
                 base_dt = now
         else:
             base_dt = now
