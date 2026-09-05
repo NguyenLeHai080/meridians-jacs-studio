@@ -90,7 +90,7 @@ export type ToolPreferences = {
   logoPath?: string;
   brandKitLogo?: string;
 };
-export type ProviderType = "openai" | "gemini" | "anthropic" | "openai-compatible" | "custom";
+export type ProviderType = "openai" | "gemini" | "anthropic" | "deepseek" | "groq" | "elevenlabs" | "openai-compatible" | "custom";
 export type ProviderProfile = { id: string; name: string; providerType: ProviderType; baseUrl: string; model: string; transcriptionModel?: string; ttsModel?: string; capabilities: string[]; enabled: boolean; hasApiKey: boolean; maskedKey: string };
 export type ProviderDraft = { id?: string; name: string; providerType: ProviderType; baseUrl: string; model: string; transcriptionModel?: string; ttsModel?: string; apiKey?: string; capabilities: string[]; enabled: boolean };
 export type VoiceProfile = { id: string; label: string; language: string; locale: string; gender: "male" | "female"; engine?: string };

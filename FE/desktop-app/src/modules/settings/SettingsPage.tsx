@@ -159,6 +159,22 @@ const PROVIDER_DEFAULTS: Record<
     baseUrl: "https://api.anthropic.com/v1",
     model: "claude-3-5-sonnet-latest",
   },
+  deepseek: {
+    name: "DeepSeek AI",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+  },
+  groq: {
+    name: "Groq Cloud",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "llama-3.3-70b-versatile",
+  },
+  elevenlabs: {
+    name: "ElevenLabs Voice AI",
+    baseUrl: "https://api.elevenlabs.io/v1",
+    model: "eleven_multilingual_v2",
+    ttsModel: "eleven_multilingual_v2",
+  },
   "openai-compatible": {
     name: "OpenAI Compatible",
     baseUrl: "https://api.example.com/v1",
