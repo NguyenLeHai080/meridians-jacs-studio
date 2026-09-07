@@ -75,12 +75,14 @@ class UpdateBankConfigRequest(BankConfigBase):
 
 class BillingTransactionBase(BaseModel):
     license_id: str | None = None
-    customer_name: str = Field(min_length=1, max_length=160)
-    amount: float
+    customer_name: str = Field(default="Khách hàng", max_length=160)
+    amount: float = 0.0
     currency: str = Field(default="VND", max_length=16)
     plan_type: str = Field(default="1_month", max_length=64)
+    plan_name: str | None = None
     payment_method: str = Field(default="bank_transfer", max_length=64)
-    transaction_type: str = Field(default="income", max_length=64)  # "income", "deposit", "refund", "renewal"
+    transaction_type: str = Field(default="income", max_length=64)  # "income", "deposit", "refund", "renewal", "new_key"
+    reference_code: str | None = None
     notes: str | None = Field(default=None, max_length=1000)
 
 
@@ -89,9 +91,9 @@ class CreateBillingTransactionRequest(BillingTransactionBase):
 
 
 class BillingTransactionResponse(BillingTransactionBase):
-    id: UUID
-    actor: str
-    created_at: datetime
+    id: UUID | str
+    actor: str | None = "system"
+    created_at: datetime | str | None = None
 
 
 class RenewQrRequest(BaseModel):
@@ -124,3 +126,40 @@ class BillingSummaryResponse(BaseModel):
     total_transactions: int
     revenue_by_plan: dict[str, float]
     revenue_by_method: dict[str, float]
+
+
+class CreditConfigBase(BaseModel):
+    price_per_1m_token: float = Field(default=1000.0, ge=0)
+    cost_per_1m_token: float = Field(default=800.0, ge=0)
+    token_in_price: float = Field(default=700.0, ge=0)
+    token_out_price: float = Field(default=900.0, ge=0)
+    min_deposit_amount: float = Field(default=2000.0, ge=0)
+    is_active: bool = True
+
+
+class CreditConfigResponse(CreditConfigBase):
+    updated_at: datetime | None = None
+
+
+class UpdateCreditConfigRequest(CreditConfigBase):
+    pass
+
+
+class SepayTransactionResponse(BaseModel):
+    id: str
+    sepay_code: str
+    license_id: str | None = None
+    api_key_name: str = "Khách hàng"
+    api_key_masked: str = "sk-******"
+    deposit_amount: float = 0.0
+    cost_amount: float = 0.0
+    credit_amount: float = 0.0
+    profit_amount: float = 0.0
+    profit_percent: float = 0.0
+    status: str = "COMPLETED"  # "COMPLETED", "PENDING", "REVOKED"
+    payment_method: str = "sepay_vietqr"
+    bank_name: str | None = "VietinBank"
+    notes: str | None = None
+    created_at: datetime | str | None = None
+    raw_content: str | None = None
+

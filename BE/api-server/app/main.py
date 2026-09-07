@@ -19,6 +19,7 @@ from app.modules.licensing.router import router as licensing_router
 from app.modules.projects.router import router as projects_router
 from app.modules.releases.router import router as releases_router
 from app.modules.sessions.router import router as sessions_router
+from app.modules.sessions.router import sessions_direct_router
 from app.modules.system.router import router as system_router
 from app.modules.telemetry.router import router as telemetry_router
 
@@ -91,6 +92,7 @@ app.include_router(client_router)
 app.include_router(licensing_router)
 app.include_router(billing_router)
 app.include_router(sessions_router)
+app.include_router(sessions_direct_router)
 app.include_router(releases_router)
 app.include_router(projects_router)
 app.include_router(ai_provider_router)

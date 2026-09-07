@@ -29,9 +29,14 @@ function toSeconds(value: string | undefined): number {
   return Number(value) || 0;
 }
 
-function formatSeconds(total: number): string {
+function formatSeconds(total: number, withDecimals = false): string {
   const mins = Math.floor(total / 60);
-  const secs = Math.floor(total % 60);
+  const remainder = Math.max(0, total % 60);
+  if (withDecimals) {
+    const s = remainder.toFixed(2).padStart(5, "0");
+    return `${mins.toString().padStart(2, "0")}:${s}`;
+  }
+  const secs = Math.floor(remainder);
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
@@ -116,7 +121,9 @@ export function EditorWorkspace({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "1:1" | "16:9" | "4:5">("9:16");
   const [fitMode, setFitMode] = useState<"fit" | "100" | "75" | "50">("fit");
-  const [trackMutes, setTrackMutes] = useState<Record<string, boolean>>({});
+  const [trackMutes, setTrackMutes] = useState<Record<string, boolean>>({
+    originalAudio: true, // Default: mute original audio to keep only voice narration
+  });
   const [trackLocks, setTrackLocks] = useState<Record<string, boolean>>({});
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
@@ -147,7 +154,7 @@ export function EditorWorkspace({
   // Audio Controls State
   const [bgmVolume, setBgmVolume] = useState(50);
   const [voiceVolume, setVoiceVolume] = useState(100);
-  const [originalAudioVolume, setOriginalAudioVolume] = useState(100);
+  const [originalAudioVolume, setOriginalAudioVolume] = useState(0);
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
   const [selectedBgm, setSelectedBgm] = useState<string>("mus-1");
 
@@ -173,7 +180,8 @@ export function EditorWorkspace({
   const [dragOverSceneIdx, setDragOverSceneIdx] = useState<number | null>(null);
   const [activeTrimming, setActiveTrimming] = useState<{
     sceneId: string;
-    handle: "left" | "right";
+    handle: "left" | "right" | "slide";
+    trackType?: "voice" | "visuals" | "captions";
     initialDur: number;
     tempScenes: EditorScene[];
   } | null>(null);
@@ -226,9 +234,22 @@ export function EditorWorkspace({
     }
   }, [sourceJob?.id, sourceJob?.narratorVoice, sourceJob?.languages, sourceJob?.narratorGender, defaultVoiceForLang]);
 
+  useEffect(() => {
+    if (sourceJob) {
+      const isOriginalMuted = sourceJob.keepOriginalAudio === false || Boolean(sourceJob.analysis?.storyPlan?.status === "approved") || Boolean(sourceJob.narratorEnabled);
+      if (isOriginalMuted) {
+        setTrackMutes((prev) => ({ ...prev, originalAudio: true }));
+        setOriginalAudioVolume(0);
+      } else if (sourceJob.keepOriginalAudio === true) {
+        setTrackMutes((prev) => ({ ...prev, originalAudio: false }));
+        setOriginalAudioVolume(100);
+      }
+    }
+  }, [sourceJob?.id, sourceJob?.keepOriginalAudio, sourceJob?.narratorEnabled, sourceJob?.analysis?.storyPlan?.status]);
+
   function stripSceneMetadata(text?: string): string {
     if (!text) return "";
-    return String(text)
+    let cleaned = String(text)
       .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[^\]]*\]/gi, "")
       .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[:\-\.]\s*/gi, " ")
       .replace(/\[\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\]/g, "")
@@ -240,6 +261,10 @@ export function EditorWorkspace({
       .replace(/[{}[\]"\\]/g, "")
       .replace(/\s+/g, " ")
       .trim();
+    if (!cleaned) {
+      cleaned = String(text).replace(/[{}[\]"\\]/g, "").trim();
+    }
+    return cleaned;
   }
 
   const playSceneAudio = async (text?: string, scId?: string) => {
@@ -252,25 +277,41 @@ export function EditorWorkspace({
     const voiceObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === voiceToUse.toLowerCase());
     const langToUse = voiceObj?.language || sourceJob?.languages?.[0] || "vi";
     const genderToUse = voiceObj?.gender || sourceJob?.narratorGender || "male";
+    const rateToUse = voiceSpeed || 1.0;
 
     try {
       const speechUrl = await getRuntime().synthesizeSpeech?.(
         rawClean,
         langToUse,
         genderToUse,
-        voiceToUse
+        voiceToUse,
+        rateToUse
       );
 
       if (speechUrl) {
         await playAudioStream(
           speechUrl,
           () => setSpeakingSceneId(null),
-          () => setSpeakingSceneId(null)
+          () => setSpeakingSceneId(null),
+          rateToUse
         );
         return;
       }
     } catch {
-      // fallback
+      // fallback to Web Speech API
+    }
+
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(rawClean);
+        utterance.lang = langToUse === "vi" ? "vi-VN" : langToUse === "en" ? "en-US" : langToUse;
+        utterance.rate = rateToUse;
+        utterance.onend = () => setSpeakingSceneId(null);
+        utterance.onerror = () => setSpeakingSceneId(null);
+        window.speechSynthesis.speak(utterance);
+        return;
+      } catch {}
     }
 
     setSpeakingSceneId(null);
@@ -287,6 +328,7 @@ export function EditorWorkspace({
   };
 
   const [editorScenes, setEditorScenes] = useState<EditorScene[]>([]);
+  const [mediaDuration, setMediaDuration] = useState<number>(0);
 
   // Push history state on scene edits
   const setScenesWithHistory = useCallback((newScenes: EditorScene[]) => {
@@ -316,46 +358,34 @@ export function EditorWorkspace({
   };
 
   useEffect(() => {
-    if (!sourceJob?.analysis?.scenes?.length) {
-      const dur = sourceJob?.durationSeconds && sourceJob.durationSeconds > 1 ? sourceJob.durationSeconds : 60;
-      const step = dur / 8;
-      const sampleTitles = [
-        "Hook mở đầu kịch tính",
-        "Giới thiệu bối cảnh câu chuyện",
-        "Diễn biến kịch tính xuất hiện",
-        "Xung đột và mâu thuẫn chính",
-        "Bí mật dần được hé lộ",
-        "Chi tiết bất ngờ xuất hiện",
-        "Cao trào và bước ngoặt",
-        "Tổng kết & Kêu gọi theo dõi",
-      ];
-      const sampleDialogues = [
-        "Khám phá ngay: Những diễn biến bất ngờ liên tục xuất hiện!",
-        "Linh hồn cứ trôi dạt đến những miền ký ức xa xăm khó tả.",
-        "Những kẻ phá hoại đang âm thầm lên kế hoạch đằng sau màn đêm.",
-        "Trước lòng yêu thương và sự hy sinh, mọi thử thách đều nhỏ bé.",
-        "Để giúp cô ấy vượt qua khó khăn, chúng ta cần tìm ra sự thật.",
-        "Một bí mật đã được chôn giấu suốt nhiều năm qua nay hé mở.",
-        "Quyết định sinh tử trong khoảnh khắc định mệnh của cuộc đời.",
-        "Đừng quên like và đăng ký kênh để đón xem những video tiếp theo!",
-      ];
+    if (!sourceJob) {
+      setEditorScenes([]);
+      setScenesHistory([[]]);
+      setHistoryIdx(0);
+      return;
+    }
 
-      const initial: EditorScene[] = Array.from({ length: 8 }).map((_, idx) => {
-        const startSec = idx * step;
-        const endSec = (idx + 1) * step;
-        return {
-          id: `scene-${idx + 1}`,
-          start: formatSeconds(startSec),
-          end: formatSeconds(endSec),
-          title: `Cảnh ${idx + 1}: ${sampleTitles[idx]}`,
-          detail: `Phân đoạn ${idx + 1}`,
-          subtitle: sampleDialogues[idx],
-          accent: idx % 2 === 0 ? "cyan" : "purple",
+    if (!sourceJob.analysis?.scenes?.length) {
+      if (sourceJob.localPath || sourceJob.durationSeconds) {
+        const totalDur = sourceJob.durationSeconds && sourceJob.durationSeconds > 1 ? sourceJob.durationSeconds : 60;
+        const singleScene: EditorScene = {
+          id: "scene-1",
+          start: "00:00",
+          end: formatSeconds(totalDur),
+          sourceStart: "00:00",
+          sourceEnd: formatSeconds(totalDur),
+          title: sourceJob.name || "Video Gốc",
+          detail: "Toàn bộ video nguồn (Chưa phân tích kịch bản)",
+          subtitle: "",
+          accent: "cyan",
         };
-      });
-
-      setEditorScenes(initial);
-      setScenesHistory([initial]);
+        setEditorScenes([singleScene]);
+        setScenesHistory([[singleScene]]);
+        setHistoryIdx(0);
+        return;
+      }
+      setEditorScenes([]);
+      setScenesHistory([[]]);
       setHistoryIdx(0);
       return;
     }
@@ -364,6 +394,11 @@ export function EditorWorkspace({
       id: s.id || `scene-${idx + 1}`,
       start: s.start || "00:00",
       end: s.end || formatSeconds(idx * 5 + 5),
+      sourceStart: s.sourceStart || s.start,
+      sourceEnd: s.sourceEnd || s.end,
+      sourceTimeStart: s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start),
+      sourceTimeEnd: s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end),
+      action_visual: s.action_visual || s.detail,
       title: s.title || `Cảnh ${idx + 1}`,
       detail: s.detail || "",
       subtitle:
@@ -379,6 +414,7 @@ export function EditorWorkspace({
         "",
       accent: idx % 2 === 0 ? "cyan" : "purple",
     }));
+
     setEditorScenes(initial);
     setScenesHistory([initial]);
     setHistoryIdx(0);
@@ -422,59 +458,256 @@ export function EditorWorkspace({
     video.volume = isOrigMuted ? 0 : Math.max(0, Math.min(1, originalAudioVolume / 100));
   }, [muted, trackMutes.originalAudio, originalAudioVolume]);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !mediaUrl) return;
-    if (Math.abs(video.currentTime - playheadSeconds) > 0.3) {
-      video.currentTime = playheadSeconds;
-    }
-    if (playing) {
-      void video.play().catch(() => undefined);
-    } else {
-      video.pause();
-    }
-  }, [mediaUrl, playing, playheadSeconds]);
-
   const effectiveScenes = useMemo(() => {
     return activeTrimming?.tempScenes || editorScenes;
   }, [activeTrimming, editorScenes]);
 
-  // Sequence Timeline Duration
+  // Sequence Timeline Duration: Fit precisely to the actual scene sequence bounds
   const sequenceDuration = useMemo(() => {
-    const maxEnd = effectiveScenes.reduce((max, s) => Math.max(max, toSeconds(s.end)), 0);
-    if (sourceJob?.durationSeconds && sourceJob.durationSeconds > 1) {
-      return Math.max(sourceJob.durationSeconds, maxEnd);
-    }
-    return Math.max(maxEnd, 10);
-  }, [sourceJob?.durationSeconds, effectiveScenes]);
+    const maxEnd = effectiveScenes.reduce((max, s) => {
+      const vEnd = toSeconds(s.end);
+      const aEnd = toSeconds(s.voiceEnd || s.end);
+      const cEnd = toSeconds(s.captionEnd || s.end);
+      return Math.max(max, vEnd, aEnd, cEnd);
+    }, 0);
+    if (maxEnd > 0) return Math.max(5, maxEnd);
+    const videoDur = mediaDuration || (videoRef.current?.duration && !isNaN(videoRef.current.duration) ? videoRef.current.duration : 0) || (sourceJob?.durationSeconds || 0);
+    return Math.max(videoDur, 5);
+  }, [effectiveScenes, mediaDuration, sourceJob?.durationSeconds]);
 
-  // Compute layout for each clip
+  // Compute layout for each clip on each track independently
   const clipLayouts = useMemo(() => {
     return effectiveScenes.map((item, idx) => {
-      const startSec = toSeconds(item.start);
-      const endSec = toSeconds(item.end);
-      const dur = Math.max(0.5, endSec - startSec);
-      const left = (startSec / sequenceDuration) * 100;
-      const width = Math.max(0.5, (dur / sequenceDuration) * 100);
+      // 1. Visuals track
+      const visualStartSec = toSeconds(item.start);
+      const visualEndSec = toSeconds(item.end);
+      const visualDur = Math.max(0.2, visualEndSec - visualStartSec);
+      const visualLeft = (visualStartSec / sequenceDuration) * 100;
+      const visualWidth = Math.max(0.2, (visualDur / sequenceDuration) * 100);
+
+      // 2. Voice track
+      const voiceStartSec = toSeconds(item.voiceStart || item.start);
+      const voiceEndSec = toSeconds(item.voiceEnd || item.end);
+      const voiceDur = Math.max(0.2, voiceEndSec - voiceStartSec);
+      const voiceLeft = (voiceStartSec / sequenceDuration) * 100;
+      const voiceWidth = Math.max(0.2, (voiceDur / sequenceDuration) * 100);
+
+      // 3. Captions track
+      const captionStartSec = toSeconds(item.captionStart || item.start);
+      const captionEndSec = toSeconds(item.captionEnd || item.end);
+      const captionDur = Math.max(0.2, captionEndSec - captionStartSec);
+      const captionLeft = (captionStartSec / sequenceDuration) * 100;
+      const captionWidth = Math.max(0.2, (captionDur / sequenceDuration) * 100);
+
       return {
         scene: item,
         index: idx,
-        startSec,
-        endSec,
-        left,
-        width,
-        dur,
-        // Stagger across 3 audio lanes: Lane 0, Lane 1, Lane 2
-        audioLane: idx % 3,
+        // Visuals
+        visualStartSec,
+        visualEndSec,
+        visualLeft,
+        visualWidth,
+        visualDur,
+        // Voice
+        voiceStartSec,
+        voiceEndSec,
+        voiceLeft,
+        voiceWidth,
+        voiceDur,
+        // Captions
+        captionStartSec,
+        captionEndSec,
+        captionLeft,
+        captionWidth,
+        captionDur,
       };
     });
   }, [effectiveScenes, sequenceDuration]);
 
-  // Interactive Clip Trimming (Magnetic Ripple Edit: Đẩy và kéo mượt mà các phân cảnh tiếp theo)
+  const lastSceneIdRef = useRef<string | null>(null);
+  const lastSpokenSceneRef = useRef<string | null>(null);
+
+  // Unified Seek to Timeline Sequence Timestamp (Khớp chuẩn xác mốc video gốc và dừng giật đơ)
+  const seekToTimeline = useCallback(
+    (targetSec: number) => {
+      const clampedSec = Math.max(0, Math.min(sequenceDuration, targetSec));
+      setPlayheadSeconds(clampedSec);
+
+      if (!effectiveScenes.length) {
+        if (videoRef.current) {
+          videoRef.current.currentTime = clampedSec;
+        }
+        return;
+      }
+
+      const matched = effectiveScenes.find((item) => {
+        const start = toSeconds(item.start);
+        const end = toSeconds(item.end);
+        return clampedSec >= start && clampedSec < end;
+      }) || effectiveScenes[effectiveScenes.length - 1];
+
+      if (matched) {
+        setSceneId(matched.id);
+        lastSceneIdRef.current = matched.id;
+        const offset = Math.max(0, clampedSec - toSeconds(matched.start));
+        const srcStartSec = toSeconds(matched.sourceStart || matched.start);
+        const targetSrcTime = srcStartSec + offset;
+        if (videoRef.current) {
+          videoRef.current.currentTime = targetSrcTime;
+        }
+      } else if (videoRef.current) {
+        videoRef.current.currentTime = clampedSec;
+      }
+    },
+    [effectiveScenes, sequenceDuration]
+  );
+
+  // High-Precision 60FPS Virtual Timeline Playhead Engine (Mượt mà 60 FPS, chạy êm ái, chuyển cảnh chuẩn xác)
+  useEffect(() => {
+    let animId: number;
+    let lastTime = performance.now();
+
+    const tick = () => {
+      if (!playing) return;
+
+      const now = performance.now();
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+
+      if (!isDraggingPlayhead.current) {
+        setPlayheadSeconds((prev) => {
+          const next = prev + delta * (speedVal || 1.0);
+          if (next >= sequenceDuration) {
+            if (isLooping) {
+              seekToTimeline(0);
+              return 0;
+            }
+            setPlaying(false);
+            stopSceneAudio();
+            if (videoRef.current && !videoRef.current.paused) {
+              videoRef.current.pause();
+            }
+            return sequenceDuration;
+          }
+
+          // Check if we stepped into a new scene
+          if (effectiveScenes.length > 0) {
+            const currentScene = effectiveScenes.find((s) => {
+              const sStart = toSeconds(s.start);
+              const sEnd = toSeconds(s.end);
+              return next >= sStart && next < sEnd;
+            }) || effectiveScenes[effectiveScenes.length - 1];
+
+            if (currentScene && currentScene.id !== lastSceneIdRef.current) {
+              lastSceneIdRef.current = currentScene.id;
+              setSceneId(currentScene.id);
+
+              // Seek video to exact start of the new scene once
+              const srcStartSec = toSeconds(currentScene.sourceStart || currentScene.start);
+              const offset = Math.max(0, next - toSeconds(currentScene.start));
+              const targetVideoTime = srcStartSec + offset;
+              if (videoRef.current) {
+                videoRef.current.currentTime = targetVideoTime;
+                if (videoRef.current.paused) {
+                  void videoRef.current.play().catch(() => undefined);
+                }
+              }
+
+              // Trigger voice narration for the new scene
+              const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
+              if (!isMutedLane && currentScene.subtitle) {
+                lastSpokenSceneRef.current = currentScene.id;
+                void playSceneAudio(currentScene.subtitle, currentScene.id);
+              }
+            } else if (videoRef.current && videoRef.current.paused) {
+              // Ensure video is playing smoothly without interruption
+              void videoRef.current.play().catch(() => undefined);
+            }
+          }
+
+          return next;
+        });
+      }
+
+      animId = requestAnimationFrame(tick);
+    };
+
+    if (playing) {
+      lastTime = performance.now();
+      // On start playing, sync video position and trigger current scene audio
+      if (effectiveScenes.length > 0) {
+        const currentScene = effectiveScenes.find((s) => {
+          const sStart = toSeconds(s.start);
+          const sEnd = toSeconds(s.end);
+          return playheadSeconds >= sStart && playheadSeconds < sEnd;
+        }) || effectiveScenes[0];
+
+        if (currentScene) {
+          lastSceneIdRef.current = currentScene.id;
+          const srcStartSec = toSeconds(currentScene.sourceStart || currentScene.start);
+          const offset = Math.max(0, playheadSeconds - toSeconds(currentScene.start));
+          const targetVideoTime = srcStartSec + offset;
+          if (videoRef.current) {
+            videoRef.current.currentTime = targetVideoTime;
+            void videoRef.current.play().catch(() => undefined);
+          }
+          const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
+          if (!isMutedLane && currentScene.subtitle) {
+            lastSpokenSceneRef.current = currentScene.id;
+            void playSceneAudio(currentScene.subtitle, currentScene.id);
+          }
+        }
+      } else if (videoRef.current) {
+        videoRef.current.currentTime = playheadSeconds;
+        void videoRef.current.play().catch(() => undefined);
+      }
+
+      animId = requestAnimationFrame(tick);
+    } else {
+      if (videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+      }
+      stopSceneAudio();
+      lastSpokenSceneRef.current = null;
+    }
+
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [playing, speedVal, sequenceDuration, isLooping, effectiveScenes, trackMutes, seekToTimeline]);
+
+  // Sync video playbackRate with speedVal
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speedVal || 1.0;
+    }
+  }, [speedVal]);
+
+  // Auto-scroll timeline viewport to follow playhead when zoomed in
+  useEffect(() => {
+    if (timelineViewportRef.current && playing) {
+      const viewport = timelineViewportRef.current;
+      const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content");
+      if (contentEl && viewport.scrollWidth > viewport.clientWidth) {
+        const totalW = contentEl.clientWidth;
+        const playheadPx = (playheadSeconds / sequenceDuration) * totalW;
+        const scrollLeft = viewport.scrollLeft;
+        const viewportW = viewport.clientWidth;
+        if (playheadPx > scrollLeft + viewportW * 0.85) {
+          viewport.scrollLeft = playheadPx - viewportW * 0.2;
+        } else if (playheadPx < scrollLeft) {
+          viewport.scrollLeft = Math.max(0, playheadPx - viewportW * 0.2);
+        }
+      }
+    }
+  }, [playheadSeconds, sequenceDuration, playing]);
+
+  // Interactive Clip Trimming (Independent Track Trimming: Co giãn đầu/đuôi từng track độc lập)
   const handleTrimStart = (
     e: React.MouseEvent,
     scene: EditorScene,
-    handle: "left" | "right"
+    handle: "left" | "right",
+    trackType: "voice" | "visuals" | "captions" = "visuals"
   ) => {
     e.stopPropagation();
     e.preventDefault();
@@ -482,9 +715,23 @@ export function EditorWorkspace({
     if (!viewport) return;
     const rect = viewport.getBoundingClientRect();
     const startX = e.clientX;
-    const initDur = Math.max(0.3, toSeconds(scene.end) - toSeconds(scene.start));
+    const initStart = toSeconds(
+      trackType === "voice"
+        ? scene.voiceStart || scene.start
+        : trackType === "captions"
+        ? scene.captionStart || scene.start
+        : scene.start
+    );
+    const initEnd = toSeconds(
+      trackType === "voice"
+        ? scene.voiceEnd || scene.end
+        : trackType === "captions"
+        ? scene.captionEnd || scene.end
+        : scene.end
+    );
+    const initDur = Math.max(0.2, initEnd - initStart);
     const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content");
-    const totalWidth = (contentEl ? contentEl.clientWidth : (rect.width * zoomLevel)) || rect.width;
+    const totalWidth = (contentEl ? contentEl.clientWidth : rect.width * zoomLevel) || rect.width;
     const secPerPx = sequenceDuration / totalWidth;
 
     document.body.style.cursor = "col-resize";
@@ -497,31 +744,41 @@ export function EditorWorkspace({
       rafId = requestAnimationFrame(() => {
         const deltaX = moveEvt.clientX - startX;
         const deltaSec = deltaX * secPerPx;
-        let targetDur = initDur;
+        let nextScenes = [...editorScenes];
         if (handle === "right") {
-          targetDur = Math.max(0.3, initDur + deltaSec);
+          const newDur = Math.max(0.2, initDur + deltaSec);
+          const newEnd = formatSeconds(initStart + newDur, true);
+          nextScenes = editorScenes.map((s) => {
+            if (s.id !== scene.id) return s;
+            if (trackType === "voice") {
+              return { ...s, voiceEnd: newEnd, voiceStart: s.voiceStart || s.start };
+            }
+            if (trackType === "captions") {
+              return { ...s, captionEnd: newEnd, captionStart: s.captionStart || s.start };
+            }
+            return { ...s, end: newEnd };
+          });
         } else {
-          targetDur = Math.max(0.3, initDur - deltaSec);
+          const newStartNum = Math.max(0, Math.min(initEnd - 0.2, initStart + deltaSec));
+          const newStart = formatSeconds(newStartNum, true);
+          nextScenes = editorScenes.map((s) => {
+            if (s.id !== scene.id) return s;
+            if (trackType === "voice") {
+              return { ...s, voiceStart: newStart, voiceEnd: s.voiceEnd || s.end };
+            }
+            if (trackType === "captions") {
+              return { ...s, captionStart: newStart, captionEnd: s.captionEnd || s.end };
+            }
+            return { ...s, start: newStart };
+          });
         }
-
-        // Magnetic Ripple calculation: tự động đẩy toàn bộ phân cảnh phía sau, không bao giờ bị đè chồng
-        let curTime = 0;
-        const rippled = editorScenes.map((s) => {
-          let d = Math.max(0.3, toSeconds(s.end) - toSeconds(s.start));
-          if (s.id === scene.id) {
-            d = targetDur;
-          }
-          const sStr = formatSeconds(curTime);
-          curTime += d;
-          const eStr = formatSeconds(curTime);
-          return { ...s, start: sStr, end: eStr };
-        });
 
         setActiveTrimming({
           sceneId: scene.id,
           handle,
+          trackType,
           initialDur: initDur,
-          tempScenes: rippled,
+          tempScenes: nextScenes,
         });
       });
     };
@@ -535,34 +792,168 @@ export function EditorWorkspace({
 
       const deltaX = upEvt.clientX - startX;
       const deltaSec = deltaX * secPerPx;
-      let targetDur = initDur;
+      let finalScenes = [...editorScenes];
       if (handle === "right") {
-        targetDur = Math.max(0.3, initDur + deltaSec);
+        const newDur = Math.max(0.2, initDur + deltaSec);
+        const newEnd = formatSeconds(initStart + newDur, true);
+        finalScenes = editorScenes.map((s) => {
+          if (s.id !== scene.id) return s;
+          if (trackType === "voice") {
+            return { ...s, voiceEnd: newEnd, voiceStart: s.voiceStart || s.start };
+          }
+          if (trackType === "captions") {
+            return { ...s, captionEnd: newEnd, captionStart: s.captionStart || s.start };
+          }
+          return { ...s, end: newEnd };
+        });
       } else {
-        targetDur = Math.max(0.3, initDur - deltaSec);
+        const newStartNum = Math.max(0, Math.min(initEnd - 0.2, initStart + deltaSec));
+        const newStart = formatSeconds(newStartNum, true);
+        finalScenes = editorScenes.map((s) => {
+          if (s.id !== scene.id) return s;
+          if (trackType === "voice") {
+            return { ...s, voiceStart: newStart, voiceEnd: s.voiceEnd || s.end };
+          }
+          if (trackType === "captions") {
+            return { ...s, captionStart: newStart, captionEnd: s.captionEnd || s.end };
+          }
+          return { ...s, start: newStart };
+        });
       }
 
-      let curTime = 0;
+      setScenesWithHistory(finalScenes);
+      setActiveTrimming(null);
+      const trackName = trackType === "voice" ? "âm thanh" : trackType === "captions" ? "phụ đề" : "cảnh";
+      setProjectMessage(`✓ Đã chỉnh thời lượng ${trackName} độc lập`);
+      setTimeout(() => setProjectMessage(""), 2000);
+    };
+
+    window.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("mouseup", onPointerUp);
+  };
+
+  // Interactive Clip Position Dragging / Sliding (Kéo di chuyển mượt mà từng track độc lập)
+  const handleClipSlideStart = (
+    e: React.MouseEvent,
+    scene: EditorScene,
+    trackType: "voice" | "visuals" | "captions" = "visuals"
+  ) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).classList.contains("ts-clip-handle")) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+    const viewport = timelineViewportRef.current;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const startX = e.clientX;
+    const initStart = toSeconds(
+      trackType === "voice"
+        ? scene.voiceStart || scene.start
+        : trackType === "captions"
+        ? scene.captionStart || scene.start
+        : scene.start
+    );
+    const initEnd = toSeconds(
+      trackType === "voice"
+        ? scene.voiceEnd || scene.end
+        : trackType === "captions"
+        ? scene.captionEnd || scene.end
+        : scene.end
+    );
+    const dur = Math.max(0.2, initEnd - initStart);
+    const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content");
+    const totalWidth = (contentEl ? contentEl.clientWidth : rect.width * zoomLevel) || rect.width;
+    const secPerPx = sequenceDuration / totalWidth;
+
+    document.body.style.cursor = "grab";
+    document.body.style.userSelect = "none";
+
+    let rafId: number | null = null;
+
+    const onPointerMove = (moveEvt: MouseEvent) => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const deltaX = moveEvt.clientX - startX;
+        const deltaSec = deltaX * secPerPx;
+        const newStart = Math.max(0, initStart + deltaSec);
+        const newEnd = newStart + dur;
+
+        const nextScenes = editorScenes.map((s) => {
+          if (s.id !== scene.id) return s;
+          if (trackType === "voice") {
+            return {
+              ...s,
+              voiceStart: formatSeconds(newStart, true),
+              voiceEnd: formatSeconds(newEnd, true),
+            };
+          }
+          if (trackType === "captions") {
+            return {
+              ...s,
+              captionStart: formatSeconds(newStart, true),
+              captionEnd: formatSeconds(newEnd, true),
+            };
+          }
+          return {
+            ...s,
+            start: formatSeconds(newStart, true),
+            end: formatSeconds(newEnd, true),
+          };
+        });
+
+        setActiveTrimming({
+          sceneId: scene.id,
+          handle: "slide",
+          trackType,
+          initialDur: dur,
+          tempScenes: nextScenes,
+        });
+      });
+    };
+
+    const onPointerUp = (upEvt: MouseEvent) => {
+      if (rafId) cancelAnimationFrame(rafId);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onPointerMove);
+      window.removeEventListener("mouseup", onPointerUp);
+
+      const deltaX = upEvt.clientX - startX;
+      const deltaSec = deltaX * secPerPx;
+      const newStart = Math.max(0, initStart + deltaSec);
+      const newEnd = newStart + dur;
+
       const finalScenes = editorScenes.map((s) => {
-        let d = Math.max(0.3, toSeconds(s.end) - toSeconds(s.start));
-        if (s.id === scene.id) {
-          d = targetDur;
+        if (s.id !== scene.id) return s;
+        if (trackType === "voice") {
+          return {
+            ...s,
+            voiceStart: formatSeconds(newStart, true),
+            voiceEnd: formatSeconds(newEnd, true),
+          };
         }
-        const sStr = formatSeconds(curTime);
-        curTime += d;
-        const eStr = formatSeconds(curTime);
-        return { ...s, start: sStr, end: eStr };
+        if (trackType === "captions") {
+          return {
+            ...s,
+            captionStart: formatSeconds(newStart, true),
+            captionEnd: formatSeconds(newEnd, true),
+          };
+        }
+        return {
+          ...s,
+          start: formatSeconds(newStart, true),
+          end: formatSeconds(newEnd, true),
+        };
       });
 
       setScenesWithHistory(finalScenes);
       setActiveTrimming(null);
-      const changedScene = finalScenes.find((s) => s.id === scene.id);
-      if (changedScene) {
-        setProjectMessage(
-          `✓ Đã chỉnh thời lượng cảnh: ${changedScene.start} - ${changedScene.end} (${targetDur.toFixed(1)}s)`
-        );
-        setTimeout(() => setProjectMessage(""), 2000);
-      }
+      setSceneId(scene.id);
+      seekToTimeline(newStart);
+      const trackName = trackType === "voice" ? "âm thanh" : trackType === "captions" ? "phụ đề" : "cảnh";
+      setProjectMessage(`✓ Đã căn vị trí ${trackName}: ${formatSeconds(newStart)} - ${formatSeconds(newEnd)}`);
+      setTimeout(() => setProjectMessage(""), 2000);
     };
 
     window.addEventListener("mousemove", onPointerMove);
@@ -611,7 +1002,7 @@ export function EditorWorkspace({
 
     setScenesWithHistory(recalculated);
     setSceneId(moved.id);
-    setPlayheadSeconds(toSeconds(recalculated[targetIndex].start));
+    seekToTimeline(toSeconds(recalculated[targetIndex].start));
     setProjectMessage(`✓ Đã chuyển "${moved.title}" sang vị trí ${targetIndex + 1}`);
     setTimeout(() => setProjectMessage(""), 2500);
   };
@@ -621,25 +1012,14 @@ export function EditorWorkspace({
     (clientX: number) => {
       const viewport = timelineViewportRef.current;
       if (!viewport) return;
-      const rect = viewport.getBoundingClientRect();
+      const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content") || viewport;
+      const rect = contentEl.getBoundingClientRect();
       const clickX = Math.max(0, Math.min(rect.width, clientX - rect.left));
-      const totalWidth = viewport.scrollWidth || rect.width;
-      const scrollLeft = viewport.scrollLeft || 0;
-      const pct = Math.max(0, Math.min(1, (clickX + scrollLeft) / totalWidth));
+      const pct = Math.max(0, Math.min(1, clickX / rect.width));
       const targetSec = Math.max(0, Math.min(sequenceDuration, pct * sequenceDuration));
-
-      setPlayheadSeconds(targetSec);
-
-      const matched = editorScenes.find((item) => {
-        const start = toSeconds(item.start);
-        const end = toSeconds(item.end);
-        return targetSec >= start && targetSec <= end;
-      });
-      if (matched) {
-        setSceneId(matched.id);
-      }
+      seekToTimeline(targetSec);
     },
-    [editorScenes, sequenceDuration]
+    [sequenceDuration, seekToTimeline]
   );
 
   const onTimelineMouseDown = (e: React.MouseEvent) => {
@@ -747,9 +1127,51 @@ export function EditorWorkspace({
     const nextScenes = [...editorScenes, newScene];
     setScenesWithHistory(nextScenes);
     setSceneId(newScene.id);
-    setPlayheadSeconds(startNum);
+    seekToTimeline(startNum);
     setProjectMessage(`✓ Đã thêm phân cảnh mới: "${newScene.title}"`);
     setTimeout(() => setProjectMessage(""), 2500);
+  };
+
+  // Auto-align 1:1 Voice, Visuals, and Subtitles matching word pacing
+  const handleAutoAlignVoiceAndVisuals = () => {
+    if (!editorScenes.length) {
+      setProjectMessage("⚠️ Không có phân cảnh nào trên timeline để căn chỉnh.");
+      setTimeout(() => setProjectMessage(""), 2500);
+      return;
+    }
+    let cursor = 0;
+    const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
+    const nextScenes = editorScenes.map((s, idx) => {
+      const rawText = stripSceneMetadata(s.subtitle || s.detail || "");
+      const words = rawText.split(/\s+/).filter(Boolean).length;
+      const sceneDur = Math.max(4, Math.round(words / (2.8 * speed)));
+      const startSec = cursor;
+      const endSec = cursor + sceneDur;
+      cursor = endSec;
+
+      const srcStartSec = toSeconds(s.sourceStart || s.start);
+      const srcEndSec = srcStartSec + sceneDur;
+
+      return {
+        ...s,
+        start: formatSeconds(startSec),
+        end: formatSeconds(endSec),
+        timeStart: startSec,
+        timeEnd: endSec,
+        voiceStart: formatSeconds(startSec),
+        voiceEnd: formatSeconds(endSec),
+        captionStart: formatSeconds(startSec),
+        captionEnd: formatSeconds(endSec),
+        sourceStart: formatSeconds(srcStartSec),
+        sourceEnd: formatSeconds(srcEndSec),
+        sourceTimeStart: srcStartSec,
+        sourceTimeEnd: srcEndSec,
+      };
+    });
+
+    setScenesWithHistory(nextScenes);
+    setProjectMessage(`🎯 Đã tự động căn khớp 100% thời lượng Voice, Hình ảnh và Phụ đề (${formatSeconds(cursor)})!`);
+    setTimeout(() => setProjectMessage(""), 3500);
   };
 
   // Native Upload Video/Image File Picker
@@ -764,7 +1186,7 @@ export function EditorWorkspace({
           source: path,
           sourceType: "file",
           localPath: path,
-          mode: "local-cpu",
+          mode: "local-gpu",
           aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
           narratorEnabled: true,
           narratorGender: "male",
@@ -792,19 +1214,103 @@ export function EditorWorkspace({
     setIsExportDropdownOpen(false);
     if (!sourceJob || !onAddJob) return;
 
+    let timelineCursor = 0;
+    const timelineSubtitleSegments: Array<{ start: number; end: number; text: string }> = [];
+
+    const fullScenes = editorScenes.map((s, idx) => {
+      const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
+      const srcEnd = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
+      const dur = Math.max(0.5, srcEnd - srcStart);
+      const tStart = timelineCursor;
+      const tEnd = timelineCursor + dur;
+      timelineCursor += dur;
+
+      if (s.subtitle?.trim()) {
+        timelineSubtitleSegments.push({
+          start: tStart,
+          end: tEnd,
+          text: s.subtitle.trim(),
+        });
+      }
+
+      return {
+        id: s.id || `scene-${idx + 1}`,
+        start: formatSeconds(tStart),
+        end: formatSeconds(tEnd),
+        sourceStart: formatSeconds(srcStart),
+        sourceEnd: formatSeconds(srcEnd),
+        sourceTimeStart: srcStart,
+        sourceTimeEnd: srcEnd,
+        action_visual: s.action_visual || s.detail,
+        title: s.title,
+        detail: s.detail || "",
+        voiceover: s.subtitle || "",
+        translation: s.subtitle || "",
+      };
+    });
+
+    const cutClips = editorScenes.map((s) => {
+      const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
+      const srcEnd = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
+      return {
+        sourceStart: srcStart,
+        sourceEnd: srcEnd,
+        duration: Math.max(0.5, srcEnd - srcStart),
+        text: s.subtitle || s.detail,
+        title: s.title,
+      };
+    }).filter((c) => c.sourceEnd > c.sourceStart);
+
+    const isVoiceMuted = Boolean(trackMutes.voice);
+    const isOriginalAudioMuted = Boolean(trackMutes.originalAudio) || originalAudioVolume === 0 || sourceJob.keepOriginalAudio === false;
+    const isCaptionsMuted = Boolean(trackMutes.captions);
+    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === (selectedVoice || "").toLowerCase());
+
+    const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
+    const totalDuration = timelineCursor || sequenceDuration || sourceJob.durationSeconds || 60;
+
+    // Save timeline state back to source job
+    if (onUpdateJob && sourceJob.id) {
+      onUpdateJob(sourceJob.id, {
+        cutClips,
+        timelineClips: cutClips as any,
+        analysis: {
+          summary: sourceJob.analysis?.summary || `Dự án timeline (${editorScenes.length} phân cảnh)`,
+          score: sourceJob.analysis?.score || 9.5,
+          tokensUsed: sourceJob.analysis?.tokensUsed || 0,
+          creditsUsed: sourceJob.analysis?.creditsUsed || 0,
+          ...(sourceJob.analysis || {}),
+          scenes: fullScenes as any,
+        },
+      });
+    }
+
     onAddJob({
       id: `export-full-${Date.now()}`,
-      name: `${sourceJob.name} (Xuất 1 Video Hoàn Chỉnh)`,
+      name: `${effectiveTitle} (Xuất 1 Video Hoàn Chỉnh)`,
       source: sourceJob.source,
       sourceType: sourceJob.sourceType,
       localPath: sourceJob.localPath,
-      mode: "local-cpu",
+      durationSeconds: totalDuration,
+      mode: "local-gpu",
       aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
-      narratorEnabled: true,
-      narratorGender: "male",
+      keepOriginalAudio: !isOriginalAudioMuted,
+      narratorEnabled: !isVoiceMuted && Boolean(selectedVoice && editorScenes.some((s) => s.subtitle?.trim())),
+      narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
       narratorVoice: selectedVoice,
-      subtitlesEnabled: subtitlesVisible,
+      subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
       subtitleText: editorScenes.map((s) => s.subtitle).filter(Boolean).join(" "),
+      subtitleSegments: timelineSubtitleSegments as any,
+      cutClips,
+      timelineClips: cutClips as any,
+      analysis: {
+        summary: sourceJob.analysis?.summary || `Dự án timeline ghép hoàn chỉnh (${editorScenes.length} phân cảnh)`,
+        scenes: fullScenes,
+        score: sourceJob.analysis?.score || 9.5,
+        tokensUsed: sourceJob.analysis?.tokensUsed || 0,
+        creditsUsed: sourceJob.analysis?.creditsUsed || 0,
+        ...(sourceJob.analysis || {}),
+      },
       status: "queued",
       stage: "queued",
       progress: 0,
@@ -819,22 +1325,67 @@ export function EditorWorkspace({
     setIsExportDropdownOpen(false);
     if (!sourceJob || !onAddJob) return;
 
+    const isVoiceMuted = Boolean(trackMutes.voice);
+    const isOriginalAudioMuted = Boolean(trackMutes.originalAudio) || originalAudioVolume === 0 || sourceJob.keepOriginalAudio === false;
+    const isCaptionsMuted = Boolean(trackMutes.captions);
+    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === (selectedVoice || "").toLowerCase());
+    const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
+
     editorScenes.forEach((scene, index) => {
+      const srcStartSec = scene.sourceTimeStart ?? toSeconds(scene.sourceStart || scene.start);
+      const srcEndSec = scene.sourceTimeEnd ?? toSeconds(scene.sourceEnd || scene.end);
+      const sceneDur = Math.max(0.5, srcEndSec - srcStartSec);
       onAddJob({
         id: `export-scene-${Date.now()}-${index + 1}`,
-        name: `${sourceJob.name} · Cảnh ${index + 1}: ${scene.title}`,
+        name: `${effectiveTitle} · Cảnh ${index + 1}: ${scene.title}`,
         source: sourceJob.source,
         sourceType: sourceJob.sourceType,
         localPath: sourceJob.localPath,
-        mode: "local-cpu",
+        durationSeconds: sceneDur,
+        mode: "local-gpu",
         aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
-        narratorEnabled: true,
-        narratorGender: "male",
+        keepOriginalAudio: !isOriginalAudioMuted,
+        narratorEnabled: !isVoiceMuted && Boolean(selectedVoice && scene.subtitle?.trim()),
+        narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
         narratorVoice: selectedVoice,
-        subtitlesEnabled: subtitlesVisible,
+        subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
         subtitleText: scene.subtitle,
-        clipStartSeconds: toSeconds(scene.start),
-        clipEndSeconds: toSeconds(scene.end),
+        clipStartSeconds: srcStartSec,
+        clipEndSeconds: srcEndSec,
+        cutClips: [
+          {
+            sourceStart: srcStartSec,
+            sourceEnd: srcEndSec,
+            duration: sceneDur,
+            text: scene.subtitle || scene.detail,
+            title: scene.title,
+          },
+        ],
+        subtitleSegments: scene.subtitle?.trim()
+          ? [{ start: 0, end: sceneDur, text: scene.subtitle.trim() }]
+          : [],
+        analysis: {
+          summary: sourceJob.analysis?.summary || `Phân cảnh ${index + 1}: ${scene.title}`,
+          scenes: [
+            {
+              id: scene.id,
+              start: "00:00",
+              end: formatSeconds(sceneDur),
+              sourceStart: formatSeconds(srcStartSec),
+              sourceEnd: formatSeconds(srcEndSec),
+              sourceTimeStart: srcStartSec,
+              sourceTimeEnd: srcEndSec,
+              title: scene.title,
+              detail: scene.detail || "",
+              voiceover: scene.subtitle || "",
+              translation: scene.subtitle || "",
+            },
+          ],
+          score: sourceJob.analysis?.score || 9.5,
+          tokensUsed: sourceJob.analysis?.tokensUsed || 0,
+          creditsUsed: sourceJob.analysis?.creditsUsed || 0,
+          ...(sourceJob.analysis || {}),
+        },
         status: "queued",
         stage: "queued",
         progress: 0,
@@ -964,24 +1515,6 @@ export function EditorWorkspace({
       {/* 1. TOP GLOBAL HEADER BAR WITH WORKFLOW NAVIGATION */}
       <header className="ts-top-header">
         <div className="ts-header-left">
-          {/* Workflow Stepper Shortcut Bar */}
-          <div className="ts-workflow-steps-pills">
-            <button type="button" className="ts-wf-pill" onClick={() => onNavigate("sources")}>
-              1. Nguồn
-            </button>
-            <button type="button" className="ts-wf-pill" onClick={() => onNavigate("analysis")}>
-              2. Phân tích
-            </button>
-            <button type="button" className="ts-wf-pill" onClick={() => onNavigate("story")}>
-              3. Kịch bản
-            </button>
-            <button type="button" className="ts-wf-pill is-active">
-              4. Dựng & Timeline
-            </button>
-            <button type="button" className="ts-wf-pill" onClick={() => onNavigate("render")}>
-              5. Xuất bản
-            </button>
-          </div>
 
           {/* Project / Video Selector Dropdown */}
           <div className="ts-project-switcher-container">
@@ -1046,6 +1579,15 @@ export function EditorWorkspace({
           </button>
           <button type="button" className="ts-header-btn" title="Làm lại (Ctrl+Y)" onClick={redoTimeline}>
             <Icon name="redo" size={13} /> Redo
+          </button>
+          <button
+            type="button"
+            className="ts-header-btn"
+            style={{ color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)", fontWeight: 600 }}
+            title="Tự động tính toán & căn chỉnh thời lượng từng phân cảnh khớp 100% với tốc độ đọc Voice và Subtitle"
+            onClick={handleAutoAlignVoiceAndVisuals}
+          >
+            🎯 Khớp Voice & Hình
           </button>
           <select
             className="ts-aspect-select"
@@ -1416,7 +1958,7 @@ export function EditorWorkspace({
                           className={`ts-myasset-row-card ${isSelected ? "is-selected" : ""}`}
                           onClick={() => {
                             setSceneId(sc.id);
-                            setPlayheadSeconds(toSeconds(sc.start));
+                            seekToTimeline(toSeconds(sc.start));
                           }}
                         >
                           <div className="ts-myasset-thumb" style={{ background: "#1e293b" }}>
@@ -1538,7 +2080,7 @@ export function EditorWorkspace({
                     className={`ts-caption-cue-item ${sc.id === activeSceneId ? "is-active" : ""}`}
                     onClick={() => {
                       setSceneId(sc.id);
-                      setPlayheadSeconds(toSeconds(sc.start));
+                      seekToTimeline(toSeconds(sc.start));
                     }}
                   >
                     <div className="ts-caption-cue-top">
@@ -1879,20 +2421,27 @@ export function EditorWorkspace({
                     clipPath: activeMaskObj.clip,
                     transition: "filter 0.15s ease, clip-path 0.15s ease, opacity 0.15s ease",
                   }}
-                  muted={muted || Boolean(trackMutes.audio)}
+                  muted={muted || Boolean(trackMutes.originalAudio) || originalAudioVolume === 0}
+                  onLoadedMetadata={(e) => {
+                    const d = e.currentTarget.duration;
+                    if (d && !isNaN(d) && d > 0) {
+                      setMediaDuration(d);
+                    }
+                  }}
                   onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                  onEnded={() => {
-                    if (isLooping) {
-                      setPlayheadSeconds(0);
-                      void videoRef.current?.play();
-                    } else {
+                  onPause={() => {
+                    if (!isDraggingPlayhead.current) {
                       setPlaying(false);
                     }
                   }}
-                  onTimeUpdate={(e) => {
-                    if (!isDraggingPlayhead.current) {
-                      setPlayheadSeconds(e.currentTarget.currentTime);
+                  onEnded={() => {
+                    if (isLooping) {
+                      seekToTimeline(0);
+                      if (videoRef.current) {
+                        void videoRef.current.play().catch(() => undefined);
+                      }
+                    } else {
+                      setPlaying(false);
                     }
                   }}
                 />
@@ -1952,8 +2501,9 @@ export function EditorWorkspace({
               className="ts-player-scrub-track"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                const pct = (e.clientX - rect.left) / rect.width;
-                setPlayheadSeconds(pct * sequenceDuration);
+                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const targetSec = pct * sequenceDuration;
+                seekToTimeline(targetSec);
               }}
             >
               <div
@@ -1977,7 +2527,7 @@ export function EditorWorkspace({
                   type="button"
                   className="ts-transport-btn"
                   title="Về đầu (Home)"
-                  onClick={() => setPlayheadSeconds(0)}
+                  onClick={() => seekToTimeline(0)}
                 >
                   <span style={{ fontSize: "11px", fontWeight: 800 }}>|◀</span>
                 </button>
@@ -1985,7 +2535,7 @@ export function EditorWorkspace({
                   type="button"
                   className="ts-transport-btn"
                   title="Lùi 1s (Left Arrow)"
-                  onClick={() => setPlayheadSeconds((s) => Math.max(0, s - 1))}
+                  onClick={() => seekToTimeline(Math.max(0, playheadSeconds - 1))}
                 >
                   <Icon name="chevron-left" size={13} />
                 </button>
@@ -2001,7 +2551,7 @@ export function EditorWorkspace({
                   type="button"
                   className="ts-transport-btn"
                   title="Tiến 1s (Right Arrow)"
-                  onClick={() => setPlayheadSeconds((s) => Math.min(sequenceDuration, s + 1))}
+                  onClick={() => seekToTimeline(Math.min(sequenceDuration, playheadSeconds + 1))}
                 >
                   <Icon name="chevron-right" size={13} />
                 </button>
@@ -2009,7 +2559,7 @@ export function EditorWorkspace({
                   type="button"
                   className="ts-transport-btn"
                   title="Về cuối (End)"
-                  onClick={() => setPlayheadSeconds(sequenceDuration)}
+                  onClick={() => seekToTimeline(sequenceDuration)}
                 >
                   <span style={{ fontSize: "11px", fontWeight: 800 }}>▶|</span>
                 </button>
@@ -2649,67 +3199,25 @@ export function EditorWorkspace({
               <span className="ts-lane-title">🎬 Visuals</span>
             </div>
 
-            {/* Track 3: Audio A1 (Staggered Lane 1) */}
+            {/* Track 3: Unified Voice Narration Track */}
             <div className="ts-lane-header-row header-audio">
               <button
                 type="button"
                 className="ts-lane-btn"
-                title={trackMutes.voice1 ? "Bật tiếng A1" : "Tắt tiếng A1"}
-                onClick={() => setTrackMutes((c) => ({ ...c, voice1: !c.voice1 }))}
+                title={trackMutes.voice ? "Bật tiếng Thuyết minh" : "Tắt tiếng Thuyết minh (Mute Voice)"}
+                onClick={() => setTrackMutes((c) => ({ ...c, voice: !c.voice, voice1: !c.voice, voice2: !c.voice, voice3: !c.voice }))}
               >
                 <Icon name="mic" size={11} />
               </button>
               <button
                 type="button"
                 className="ts-lane-btn"
-                title={trackLocks.voice1 ? "Mở khóa" : "Khóa track"}
-                onClick={() => setTrackLocks((c) => ({ ...c, voice1: !c.voice1 }))}
+                title={trackLocks.voice ? "Mở khóa" : "Khóa track"}
+                onClick={() => setTrackLocks((c) => ({ ...c, voice: !c.voice }))}
               >
-                <Icon name={trackLocks.voice1 ? "lock" : "unlock"} size={11} />
+                <Icon name={trackLocks.voice ? "lock" : "unlock"} size={11} />
               </button>
-              <span className="ts-lane-title">🎵 Voice A1</span>
-            </div>
-
-            {/* Track 4: Audio A2 (Staggered Lane 2) */}
-            <div className="ts-lane-header-row header-audio">
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackMutes.voice2 ? "Bật tiếng A2" : "Tắt tiếng A2"}
-                onClick={() => setTrackMutes((c) => ({ ...c, voice2: !c.voice2 }))}
-              >
-                <Icon name="mic" size={11} />
-              </button>
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackLocks.voice2 ? "Mở khóa" : "Khóa track"}
-                onClick={() => setTrackLocks((c) => ({ ...c, voice2: !c.voice2 }))}
-              >
-                <Icon name={trackLocks.voice2 ? "lock" : "unlock"} size={11} />
-              </button>
-              <span className="ts-lane-title">🎵 Voice A2</span>
-            </div>
-
-            {/* Track 5: Audio A3 (Staggered Lane 3) */}
-            <div className="ts-lane-header-row header-audio">
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackMutes.voice3 ? "Bật tiếng A3" : "Tắt tiếng A3"}
-                onClick={() => setTrackMutes((c) => ({ ...c, voice3: !c.voice3 }))}
-              >
-                <Icon name="mic" size={11} />
-              </button>
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackLocks.voice3 ? "Mở khóa" : "Khóa track"}
-                onClick={() => setTrackLocks((c) => ({ ...c, voice3: !c.voice3 }))}
-              >
-                <Icon name={trackLocks.voice3 ? "lock" : "unlock"} size={11} />
-              </button>
-              <span className="ts-lane-title">🎵 Voice A3</span>
+              <span className="ts-lane-title">🎵 Voice (Thuyết minh)</span>
             </div>
 
             {/* Track 6: BGM & Music */}
@@ -2768,16 +3276,27 @@ export function EditorWorkspace({
               </div>
 
               {/* Playhead Marker & Line */}
-              <div
-                className="ts-timeline-playhead"
-                style={{
-                  left: `${Math.min(100, Math.max(0, (playheadSeconds / sequenceDuration) * 100))}%`,
-                }}
-                onMouseDown={onTimelineMouseDown}
-                title="Kéo con trỏ Playhead"
-              >
-                <div className="ts-playhead-pointer">▽</div>
-              </div>
+              {effectiveScenes.length > 0 && (
+                <div
+                  className="ts-timeline-playhead"
+                  style={{
+                    left: `${Math.min(100, Math.max(0, (playheadSeconds / sequenceDuration) * 100))}%`,
+                  }}
+                  onMouseDown={onTimelineMouseDown}
+                  title="Kéo con trỏ Playhead"
+                >
+                  <div className="ts-playhead-pointer">▽</div>
+                </div>
+              )}
+
+              {/* Empty Timeline Guidance */}
+              {effectiveScenes.length === 0 && (
+                <div className="ts-empty-timeline-hint">
+                  <span style={{ fontSize: "28px" }}>🎬</span>
+                  <strong>Chưa có video nguồn hoặc phân cảnh</strong>
+                  <small>Chọn video ở menu góc trên bên trái hoặc chuyển sang bước <strong>1. Phân tích</strong> để tạo timeline tự động</small>
+                </div>
+              )}
 
               {/* TRACK 1: CAPTIONS TRACK (Coral Red Segment Pill Blocks) */}
               <div className="ts-track-lane lane-captions-coral">
@@ -2791,27 +3310,24 @@ export function EditorWorkspace({
                     <div
                       key={`cap-${item.scene.id}-${item.index}`}
                       className={`ts-clip-card clip-captions-coral ${isSelected ? "is-selected" : ""} ${isDragOver ? "is-drag-over" : ""} ${isDragging ? "is-dragging" : ""}`}
-                      style={{ left: `${item.left}%`, width: `${item.width}%` }}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStartScene(e, item.index)}
-                      onDragOver={(e) => handleDragOverScene(e, item.index)}
-                      onDragLeave={handleDragLeaveScene}
-                      onDrop={(e) => handleDropScene(e, item.index)}
+                      style={{ left: `${item.captionLeft}%`, width: `${item.captionWidth}%` }}
+                      draggable={false}
+                      onMouseDown={(e) => handleClipSlideStart(e, item.scene, "captions")}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSceneId(item.scene.id);
-                        setPlayheadSeconds(toSeconds(item.scene.start));
+                        seekToTimeline(item.captionStartSec);
                       }}
                       onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "captions")}
                     >
                       <div
                         className="ts-clip-handle ts-handle-left"
                         draggable={false}
-                        title="Kéo co giãn đầu phân cảnh (Ripple)"
+                        title="Kéo co giãn đầu phụ đề (Độc lập)"
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          handleTrimStart(e, item.scene, "left");
+                          handleTrimStart(e, item.scene, "left", "captions");
                         }}
                       />
                       <span className="ts-caption-coral-tag">T</span>
@@ -2821,11 +3337,11 @@ export function EditorWorkspace({
                       <div
                         className="ts-clip-handle ts-handle-right"
                         draggable={false}
-                        title="Kéo co giãn đuôi phân cảnh (Ripple)"
+                        title="Kéo co giãn đuôi phụ đề (Độc lập)"
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          handleTrimStart(e, item.scene, "right");
+                          handleTrimStart(e, item.scene, "right", "captions");
                         }}
                       />
                     </div>
@@ -2840,43 +3356,44 @@ export function EditorWorkspace({
                   const isDragOver = dragOverSceneIdx === item.index;
                   const isDragging = draggedSceneIdx === item.index;
                   const previewFrames = sourceJob?.analysis?.previewFrames || [];
-                  const frameImg = previewFrames[item.index % (previewFrames.length || 1)]?.imageDataUrl;
+                  const srcTargetSec = toSeconds(item.scene.sourceStart || item.scene.start);
+                  const matchedFrame = previewFrames.find(
+                    (f) => Math.abs((f.timestampSeconds || 0) - srcTargetSec) < 15
+                  ) || previewFrames[item.index % (previewFrames.length || 1)];
+                  const frameImg = matchedFrame?.imageDataUrl;
 
                   return (
                     <div
                       key={`visual-${item.scene.id}-${item.index}`}
                       className={`ts-clip-card clip-visuals-teal ${isSelected ? "is-selected" : ""} ${isDragOver ? "is-drag-over" : ""} ${isDragging ? "is-dragging" : ""}`}
-                      style={{ left: `${item.left}%`, width: `${item.width}%` }}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStartScene(e, item.index)}
-                      onDragOver={(e) => handleDragOverScene(e, item.index)}
-                      onDragLeave={handleDragLeaveScene}
-                      onDrop={(e) => handleDropScene(e, item.index)}
+                      style={{ left: `${item.visualLeft}%`, width: `${item.visualWidth}%` }}
+                      draggable={false}
+                      onMouseDown={(e) => handleClipSlideStart(e, item.scene, "visuals")}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSceneId(item.scene.id);
-                        setPlayheadSeconds(toSeconds(item.scene.start));
+                        seekToTimeline(item.visualStartSec);
                       }}
                       onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "visuals")}
                     >
                       <div
                         className="ts-clip-handle ts-handle-left"
                         draggable={false}
-                        title="Kéo co giãn đầu cảnh (Ripple)"
+                        title="Kéo co giãn đầu cảnh (Độc lập)"
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          handleTrimStart(e, item.scene, "left");
+                          handleTrimStart(e, item.scene, "left", "visuals");
                         }}
                       />
                       <div className="ts-visual-topline">
-                        <span className="ts-visual-title-tag">
-                          {item.scene.title} · {item.scene.start}
+                        <span className="ts-visual-title-tag" title={item.scene.title}>
+                          {item.scene.title} · {item.scene.start} {item.scene.sourceStart ? `(Gốc: ${item.scene.sourceStart}-${item.scene.sourceEnd})` : ""}
                         </span>
                       </div>
                       <div className="ts-clip-filmstrip-row">
                         {frameImg ? (
-                          Array.from({ length: Math.max(1, Math.floor(item.dur / 2.5)) }).map((_, fIdx) => (
+                          Array.from({ length: Math.max(1, Math.floor(item.visualDur / 2.5)) }).map((_, fIdx) => (
                             <img
                               key={fIdx}
                               src={frameImg}
@@ -2893,11 +3410,11 @@ export function EditorWorkspace({
                       <div
                         className="ts-clip-handle ts-handle-right"
                         draggable={false}
-                        title="Kéo co giãn đuôi cảnh (Ripple)"
+                        title="Kéo co giãn đuôi cảnh (Độc lập)"
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          handleTrimStart(e, item.scene, "right");
+                          handleTrimStart(e, item.scene, "right", "visuals");
                         }}
                       />
                     </div>
@@ -2905,26 +3422,23 @@ export function EditorWorkspace({
                 })}
               </div>
 
-              {/* TRACK 3: AUDIO A1 (Staggered Lane 0) */}
+              {/* TRACK 3: UNIFIED CONTINUOUS VOICE NARRATION TRACK */}
               <div className="ts-track-lane lane-audio-staggered">
-                {clipLayouts.filter((item) => item.audioLane === 0).map((item) => {
+                {clipLayouts.map((item) => {
                   const isSelected = item.scene.id === activeSceneId;
                   const isSpeaking = speakingSceneId === item.scene.id;
                   const isDragOver = dragOverSceneIdx === item.index;
                   return (
                     <div
-                      key={`aud1-${item.scene.id}-${item.index}`}
+                      key={`aud-${item.scene.id}-${item.index}`}
                       className={`ts-clip-card clip-audio-staggered ${isSelected ? "is-selected" : ""} ${isSpeaking ? "is-speaking" : ""} ${isDragOver ? "is-drag-over" : ""}`}
-                      style={{ left: `${item.left}%`, width: `${item.width}%` }}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStartScene(e, item.index)}
-                      onDragOver={(e) => handleDragOverScene(e, item.index)}
-                      onDragLeave={handleDragLeaveScene}
-                      onDrop={(e) => handleDropScene(e, item.index)}
+                      style={{ left: `${item.voiceLeft}%`, width: `${item.voiceWidth}%` }}
+                      draggable={false}
+                      onMouseDown={(e) => handleClipSlideStart(e, item.scene, "voice")}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSceneId(item.scene.id);
-                        setPlayheadSeconds(toSeconds(item.scene.start));
+                        seekToTimeline(item.voiceStartSec);
                         if (item.scene.subtitle) {
                           playSceneAudio(item.scene.subtitle, item.scene.id);
                         }
@@ -2934,25 +3448,25 @@ export function EditorWorkspace({
                       <div
                         className="ts-clip-handle ts-handle-left"
                         draggable={false}
-                        title="Kéo co giãn đầu âm thanh (Ripple)"
+                        title="Kéo co giãn đầu âm thanh (Độc lập)"
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          handleTrimStart(e, item.scene, "left");
+                          handleTrimStart(e, item.scene, "left", "voice");
                         }}
                       />
                       <div className="ts-audio-clip-header">
-                        <span className="ts-audio-file-name">sub_{item.index + 1}_voice.wav</span>
-                        <span className="ts-audio-duration-tag">{item.dur.toFixed(1)}s</span>
+                        <span className="ts-audio-file-name">Voice {item.index + 1}: {item.scene.title.slice(0, 22)}</span>
+                        <span className="ts-audio-duration-tag">{item.voiceDur.toFixed(1)}s</span>
                       </div>
                       <div className="ts-audio-waveform-row">
-                        {Array.from({ length: Math.max(12, Math.floor(item.dur * 8)) }).map((_, wIdx) => (
+                        {Array.from({ length: Math.max(12, Math.floor(item.voiceDur * 8)) }).map((_, wIdx) => (
                           <span
                             key={wIdx}
                             className="ts-waveform-bar"
                             style={{
-                              height: `${[40, 85, 100, 50, 95, 70, 90, 45, 80, 60, 95, 75][wIdx % 12]}%`,
-                              background: "#38bdf8",
+                              height: `${[45, 85, 100, 60, 95, 70, 90, 45, 80, 60, 95, 75][wIdx % 12]}%`,
+                              background: isSpeaking ? "#f59e0b" : "#38bdf8",
                             }}
                           />
                         ))}
@@ -2960,145 +3474,11 @@ export function EditorWorkspace({
                       <div
                         className="ts-clip-handle ts-handle-right"
                         draggable={false}
-                        title="Kéo co giãn đuôi âm thanh (Ripple)"
+                        title="Kéo co giãn đuôi âm thanh (Độc lập)"
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
-                          handleTrimStart(e, item.scene, "right");
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* TRACK 4: AUDIO A2 (Staggered Lane 1) */}
-              <div className="ts-track-lane lane-audio-staggered">
-                {clipLayouts.filter((item) => item.audioLane === 1).map((item) => {
-                  const isSelected = item.scene.id === activeSceneId;
-                  const isSpeaking = speakingSceneId === item.scene.id;
-                  const isDragOver = dragOverSceneIdx === item.index;
-                  return (
-                    <div
-                      key={`aud2-${item.scene.id}-${item.index}`}
-                      className={`ts-clip-card clip-audio-staggered ${isSelected ? "is-selected" : ""} ${isSpeaking ? "is-speaking" : ""} ${isDragOver ? "is-drag-over" : ""}`}
-                      style={{ left: `${item.left}%`, width: `${item.width}%` }}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStartScene(e, item.index)}
-                      onDragOver={(e) => handleDragOverScene(e, item.index)}
-                      onDragLeave={handleDragLeaveScene}
-                      onDrop={(e) => handleDropScene(e, item.index)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSceneId(item.scene.id);
-                        setPlayheadSeconds(toSeconds(item.scene.start));
-                        if (item.scene.subtitle) {
-                          playSceneAudio(item.scene.subtitle, item.scene.id);
-                        }
-                      }}
-                      onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "voice")}
-                    >
-                      <div
-                        className="ts-clip-handle ts-handle-left"
-                        draggable={false}
-                        title="Kéo co giãn đầu âm thanh (Ripple)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "left");
-                        }}
-                      />
-                      <div className="ts-audio-clip-header">
-                        <span className="ts-audio-file-name">sub_{item.index + 1}_voice.wav</span>
-                        <span className="ts-audio-duration-tag">{item.dur.toFixed(1)}s</span>
-                      </div>
-                      <div className="ts-audio-waveform-row">
-                        {Array.from({ length: Math.max(12, Math.floor(item.dur * 8)) }).map((_, wIdx) => (
-                          <span
-                            key={wIdx}
-                            className="ts-waveform-bar"
-                            style={{
-                              height: `${[55, 90, 75, 100, 45, 80, 65, 95, 40, 85, 70, 90][wIdx % 12]}%`,
-                              background: "#38bdf8",
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div
-                        className="ts-clip-handle ts-handle-right"
-                        draggable={false}
-                        title="Kéo co giãn đuôi âm thanh (Ripple)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "right");
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* TRACK 5: AUDIO A3 (Staggered Lane 2) */}
-              <div className="ts-track-lane lane-audio-staggered">
-                {clipLayouts.filter((item) => item.audioLane === 2).map((item) => {
-                  const isSelected = item.scene.id === activeSceneId;
-                  const isSpeaking = speakingSceneId === item.scene.id;
-                  const isDragOver = dragOverSceneIdx === item.index;
-                  return (
-                    <div
-                      key={`aud3-${item.scene.id}-${item.index}`}
-                      className={`ts-clip-card clip-audio-staggered ${isSelected ? "is-selected" : ""} ${isSpeaking ? "is-speaking" : ""} ${isDragOver ? "is-drag-over" : ""}`}
-                      style={{ left: `${item.left}%`, width: `${item.width}%` }}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStartScene(e, item.index)}
-                      onDragOver={(e) => handleDragOverScene(e, item.index)}
-                      onDragLeave={handleDragLeaveScene}
-                      onDrop={(e) => handleDropScene(e, item.index)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSceneId(item.scene.id);
-                        setPlayheadSeconds(toSeconds(item.scene.start));
-                        if (item.scene.subtitle) {
-                          playSceneAudio(item.scene.subtitle, item.scene.id);
-                        }
-                      }}
-                      onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "voice")}
-                    >
-                      <div
-                        className="ts-clip-handle ts-handle-left"
-                        draggable={false}
-                        title="Kéo co giãn đầu âm thanh (Ripple)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "left");
-                        }}
-                      />
-                      <div className="ts-audio-clip-header">
-                        <span className="ts-audio-file-name">sub_{item.index + 1}_voice.wav</span>
-                        <span className="ts-audio-duration-tag">{item.dur.toFixed(1)}s</span>
-                      </div>
-                      <div className="ts-audio-waveform-row">
-                        {Array.from({ length: Math.max(12, Math.floor(item.dur * 8)) }).map((_, wIdx) => (
-                          <span
-                            key={wIdx}
-                            className="ts-waveform-bar"
-                            style={{
-                              height: `${[45, 75, 95, 60, 85, 50, 100, 40, 90, 65, 80, 70][wIdx % 12]}%`,
-                              background: "#38bdf8",
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div
-                        className="ts-clip-handle ts-handle-right"
-                        draggable={false}
-                        title="Kéo co giãn đuôi âm thanh (Ripple)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "right");
+                          handleTrimStart(e, item.scene, "right", "voice");
                         }}
                       />
                     </div>

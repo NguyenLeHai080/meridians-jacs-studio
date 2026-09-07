@@ -14,7 +14,7 @@ const fallbackInfo: MachineInfo = {
   machineIdSource: "platform",
   platform: "windows",
   arch: "x64",
-  appVersion: "0.3.17",
+  appVersion: "0.8.28",
 };
 
 const browserProviders: ProviderProfile[] = [];
@@ -30,8 +30,56 @@ function browserPreferences(): ToolPreferences {
   }
 }
 
+function detectBrowserHardware() {
+  let gpuName = "Standard GPU Acceleration";
+  let encoder: "nvenc" | "qsv" | "amf" | "videotoolbox" | "cpu" = "cpu";
+  let hasNvidia = false;
+  let hasIntel = false;
+  let hasAmd = false;
+  let hasApple = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
+
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+    if (gl) {
+      const debugInfo = (gl as any).getExtension("WEBGL_debug_renderer_info");
+      if (debugInfo) {
+        const unmasked = (gl as any).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || "";
+        if (unmasked) {
+          gpuName = unmasked.replace(/^ANGLE \(([^,]+), /, "").replace(/, [^)]+\)$/, "").trim();
+          if (/nvidia/i.test(unmasked)) { encoder = "nvenc"; hasNvidia = true; }
+          else if (/intel/i.test(unmasked)) { encoder = "qsv"; hasIntel = true; }
+          else if (/amd|radeon/i.test(unmasked)) { encoder = "amf"; hasAmd = true; }
+          else if (/apple/i.test(unmasked) || hasApple) { encoder = "videotoolbox"; hasApple = true; }
+        }
+      }
+    }
+  } catch {}
+
+  const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 8 : 8;
+  const memGb = typeof navigator !== "undefined" && (navigator as any).deviceMemory ? (navigator as any).deviceMemory : 16;
+
+  return {
+    cpuModel: hasApple ? "Apple Silicon SoC" : `Multi-Core Processor (${cores} Cores)`,
+    cpuCores: cores,
+    totalMemoryGb: memGb,
+    freeMemoryGb: Number((memGb * 0.45).toFixed(1)),
+    gpuName,
+    gpuVramGb: hasApple ? Math.round(memGb * 0.75) : (hasNvidia ? 8.0 : 4.0),
+    gpuUsedVramGb: hasNvidia ? 2.4 : 1.2,
+    gpuTemperature: 32,
+    gpuUtilization: 18,
+    encoder,
+    hasNvidia,
+    hasIntel,
+    hasAmd,
+    hasApple,
+  };
+}
+
 const browserRuntime: DesktopRuntime = {
   getMachineInfo: async () => fallbackInfo,
+  getHardwareStats: async () => detectBrowserHardware(),
   readLicense: async () => localStorage.getItem("jacs.license") || null,
   saveLicense: async (value: string) => localStorage.setItem("jacs.license", value),
   clearLicense: async () => localStorage.removeItem("jacs.license"),
@@ -41,6 +89,7 @@ const browserRuntime: DesktopRuntime = {
   getMediaCapabilities: async () => ({ ffmpeg: false, ffprobe: false }),
   clearCache: async () => undefined,
   getProviderProfiles: async () => browserProviders.map((item) => ({ ...item })),
+  syncManagedProviders: async (_providers: any[]) => browserProviders.map((item) => ({ ...item })),
   listVoices: async (_language?: string): Promise<VoiceProfile[]> => [],
   saveProviderProfile: async (_value: ProviderDraft) => {
     throw new Error(

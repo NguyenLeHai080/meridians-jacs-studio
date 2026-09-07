@@ -1,15 +1,14 @@
 import type { NavKey } from "../core/types";
 import { Icon } from "./Icon";
 
-export type WorkflowStepKey = "sources" | "analysis" | "story" | "timeline" | "brand" | "render";
+export type WorkflowStepKey = "analysis" | "story" | "timeline" | "brand" | "render";
 
 const STEPS: Array<{ key: WorkflowStepKey; label: string; icon: string }> = [
-  { key: "sources", label: "1. Nguồn video", icon: "folder" },
-  { key: "analysis", label: "2. Phân tích AI", icon: "scan" },
-  { key: "story", label: "3. Kịch bản & Voice", icon: "mic" },
-  { key: "timeline", label: "4. Dựng & Timeline", icon: "timeline" },
-  { key: "brand", label: "5. Phụ đề & Brand", icon: "captions" },
-  { key: "render", label: "6. Render xuất bản", icon: "play" },
+  { key: "analysis", label: "1. Phân tích AI", icon: "scan" },
+  { key: "story", label: "2. Kịch bản & Voice", icon: "mic" },
+  { key: "timeline", label: "3. Dựng & Timeline", icon: "timeline" },
+  { key: "brand", label: "4. Phụ đề & Brand", icon: "captions" },
+  { key: "render", label: "5. Render xuất bản", icon: "play" },
 ];
 
 export function WorkflowStepper({

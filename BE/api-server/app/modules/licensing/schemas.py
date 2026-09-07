@@ -24,6 +24,16 @@ class LicenseBase(BaseModel):
     premium_ai: bool = False
     logo_url: str | None = Field(default=None, max_length=1000)
     notes: str | None = Field(default=None, max_length=1000)
+    credit_balance: float = Field(default=0.0, ge=0)
+    token_in_price: float | None = Field(default=None, ge=0)
+    token_out_price: float | None = Field(default=None, ge=0)
+    max_requests_per_day: int | None = Field(default=None, ge=1, le=1000000)
+    is_custom_quota: bool = False
+    allowed_models: list[str] | None = None
+    ai_gateway_enabled: bool = True
+    terms_accepted: bool = True
+    terms_accepted_at: datetime | None = None
+    terms_version: str | None = Field(default="JACS-LEGAL-2026-v2.4", max_length=64)
 
 
 class CreateLicenseRequest(LicenseBase):
@@ -40,6 +50,37 @@ class LicenseUpdateRequest(BaseModel):
     logo_url: str | None = Field(default=None, max_length=1000)
     notes: str | None = Field(default=None, max_length=1000)
     expires_at: datetime | None = None
+    credit_balance: float | None = Field(default=None, ge=0)
+    token_in_price: float | None = Field(default=None, ge=0)
+    token_out_price: float | None = Field(default=None, ge=0)
+    max_requests_per_day: int | None = Field(default=None, ge=1, le=1000000)
+    is_custom_quota: bool | None = None
+    allowed_models: list[str] | None = None
+    ai_gateway_enabled: bool | None = None
+    terms_accepted: bool | None = None
+    terms_accepted_at: datetime | None = None
+    terms_version: str | None = Field(default=None, max_length=64)
+
+
+class GrantCreditRequest(BaseModel):
+    amount: float = Field(description="Số credit muốn cộng hoặc đặt lại")
+    mode: str = Field(default="add", pattern="^(add|set)$")
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class UpdateAllowedModelsRequest(BaseModel):
+    allowed_models: list[str]
+    ai_gateway_enabled: bool = True
+
+
+class LicenseApiConfigRequest(BaseModel):
+    credit_balance: float | None = Field(default=None, ge=0)
+    token_in_price: float | None = Field(default=None, ge=0)
+    token_out_price: float | None = Field(default=None, ge=0)
+    max_requests_per_day: int | None = Field(default=None, ge=1, le=1000000)
+    is_custom_quota: bool | None = None
+    allowed_models: list[str] | None = None
+    ai_gateway_enabled: bool | None = None
 
 
 class LicenseResponse(LicenseBase):
@@ -55,6 +96,7 @@ class LicenseResponse(LicenseBase):
 
 class LicenseCreatedResponse(LicenseResponse):
     key: str
+
 
 
 class ValidateLicenseRequest(BaseModel):

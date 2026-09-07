@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type DragEvent, type ChangeEvent } from "react";
 import type { Job, NavKey } from "../../core/types";
 import { getRuntime, isNativeRuntime } from "../../core/runtime";
+import { popup } from "../../shared/popup";
 import {
   Film,
   PlusLg,
@@ -33,6 +34,23 @@ function formatDuration(seconds?: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function resolveMediaSrc(pathOrUrl?: string): string {
+  if (!pathOrUrl) return "";
+  if (
+    pathOrUrl.startsWith("http://") ||
+    pathOrUrl.startsWith("https://") ||
+    pathOrUrl.startsWith("blob:") ||
+    pathOrUrl.startsWith("data:") ||
+    pathOrUrl.startsWith("jacs-media:")
+  ) {
+    return pathOrUrl;
+  }
+  if (isNativeRuntime()) {
+    return `jacs-media://local?path=${encodeURIComponent(pathOrUrl)}`;
+  }
+  return pathOrUrl;
 }
 
 function formatTokenUsage(job: Job): { text: string; subText: string; isUsed: boolean } {
@@ -109,7 +127,6 @@ export function SourcesPage({
   const [sortBy, setSortBy] = useState<"latest" | "name" | "duration" | "tokens">("latest");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDragOver, setIsDragOver] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modals
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
@@ -117,8 +134,15 @@ export function SourcesPage({
   const [previewPlayerJob, setPreviewPlayerJob] = useState<Job | null>(null);
 
   const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    if (msg.startsWith("✓") || msg.startsWith("🎉")) {
+      popup.success(msg);
+    } else if (msg.startsWith("❌")) {
+      popup.error(msg, undefined, true);
+    } else if (msg.startsWith("⚠️")) {
+      popup.warning(msg, undefined, true);
+    } else {
+      popup.toast(msg, "info");
+    }
   };
 
   // Filtered & Sorted sources
@@ -179,7 +203,7 @@ export function SourcesPage({
       sourceType: source.sourceType,
       localPath: source.localPath,
       sourceOnly: true,
-      mode: "local-cpu",
+      mode: "local-gpu",
       status: "queued",
       stage: source.sourceType === "url" ? "downloading" : "queued",
       progress: 0,
@@ -284,37 +308,44 @@ export function SourcesPage({
   };
 
   // Batch delete
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (!selectedIds.size) return;
     const ids = Array.from(selectedIds);
-    if (confirm(`Bạn có chắc chắn muốn xóa ${ids.length} video khỏi danh sách nguồn không?`)) {
+    const confirmed = await popup.confirmDelete(
+      "Xác Nhận Xóa Video",
+      `Bạn có chắc chắn muốn xóa ${ids.length} video khỏi danh sách nguồn không?`
+    );
+    if (confirmed) {
       if (onDeleteSources) onDeleteSources(ids);
       setSelectedIds(new Set());
-      showToast(`✓ Đã xóa ${ids.length} video khỏi danh sách nguồn.`);
+      popup.success(`Đã xóa ${ids.length} video khỏi danh sách nguồn.`);
     }
   };
 
   return (
-    <div className="sources-workspace-root animate-fade-in" style={{ padding: "16px 20px", maxWidth: "1680px", margin: "0 auto" }}>
+    <div
+      className="sources-workspace-root animate-fade-in"
+      style={{
+        padding: "10px 16px 80px 16px",
+        width: "100%",
+        margin: 0,
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box",
+        height: "100%",
+        flex: "1 1 0%",
+        overflowY: "auto",
+      }}
+    >
       
-      {/* 1. Header & Title & Workflow Step */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "3px 8px", borderRadius: "5px", fontSize: "11px", fontWeight: 800, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
-            <FolderFill size={11} /> BƯỚC 1: NGUỒN VIDEO ĐẦU VÀO
-          </div>
-          <h1 style={{ fontSize: "21px", fontWeight: 800, color: "#f8fafc", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-            <Film size={22} color="#38bdf8" />
-            Nguồn Video Đầu Vào (Nhiều Nguồn & File Máy Tính)
-          </h1>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+      {/* 1. Header Action Toolbar */}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
           <button
             type="button"
             className="btn btn-secondary"
             onClick={pickMultipleFiles}
-            style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#f8fafc", padding: "7px 14px", borderRadius: "7px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#f8fafc", padding: "7px 14px", borderRadius: "7px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
           >
             <Upload size={13} /> Chọn Nhiều Video Từ Máy
           </button>
@@ -323,16 +354,16 @@ export function SourcesPage({
             type="button"
             className="btn btn-secondary"
             onClick={() => setIsUrlModalOpen(true)}
-            style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", padding: "7px 14px", borderRadius: "7px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#f8fafc", padding: "7px 14px", borderRadius: "7px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
           >
-            <Link45deg size={15} /> Thêm Hàng Loạt URL
+            <Link45deg size={15} color="#c084fc" /> Thêm Hàng Loạt URL
           </button>
           
           <button
             type="button"
             className="btn btn-primary"
             onClick={() => onNavigate("analysis")}
-            style={{ display: "flex", alignItems: "center", gap: "6px", background: "linear-gradient(135deg, #0284c7, #2563eb)", border: "none", color: "#ffffff", padding: "7px 16px", borderRadius: "7px", fontSize: "12.5px", fontWeight: 800, cursor: "pointer", boxShadow: "0 0 16px rgba(56, 189, 248, 0.35)" }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "linear-gradient(135deg, #d97706, #f59e0b)", border: "none", color: "#12151f", padding: "7px 16px", borderRadius: "7px", fontSize: "12px", fontWeight: 800, cursor: "pointer", boxShadow: "0 0 16px rgba(245, 158, 11, 0.4)" }}
           >
             <LightningChargeFill size={13} /> 2. Phân Tích Tách Phân Cảnh AI
           </button>
@@ -340,47 +371,47 @@ export function SourcesPage({
       </div>
 
       {/* 2. KPI Summary Cards Bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px", marginBottom: "16px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "8px", marginBottom: "12px", flexShrink: 0 }}>
         
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px" }}>
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
             <FolderFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>TỔNG VIDEO NẠP</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#f8fafc" }}>{sources.length} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>video</span></div>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>TỔNG VIDEO NẠP</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sources.length} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>video</span></div>
           </div>
         </div>
 
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.15)", color: "#34d399", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px" }}>
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(16, 185, 129, 0.12)", color: "#34d399", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
             <CheckCircleFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>ĐÃ PHÂN TÍCH</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#34d399" }}>{completedCount} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>video ({sources.length ? Math.round((completedCount / sources.length) * 100) : 0}%)</span></div>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>ĐÃ PHÂN TÍCH</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#34d399", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{completedCount} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>video ({sources.length ? Math.round((completedCount / sources.length) * 100) : 0}%)</span></div>
           </div>
         </div>
 
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px" }}>
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(245, 158, 11, 0.12)", color: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
             <ClockFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>TỔNG THỜI LƯỢNG</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#fbbf24" }}>{formatDuration(totalDurationSeconds)} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>phút</span></div>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>TỔNG THỜI LƯỢNG</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#fbbf24", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{formatDuration(totalDurationSeconds)} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>phút</span></div>
           </div>
         </div>
 
         {/* New KPI: Total Tokens / Credits Consumed */}
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: "1px solid rgba(168, 85, 247, 0.2)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px" }}>
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: "1px solid rgba(168, 85, 247, 0.2)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(168, 85, 247, 0.12)", color: "#c084fc", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
             <CpuFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>TỔNG TOKEN TIÊU HAO (API)</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#c084fc" }}>
-              ⚡ {totalTokensUsed.toLocaleString("vi-VN")} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>tokens (~${(totalTokensUsed * 0.000012).toFixed(3)})</span>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>TỔNG TOKEN TIÊU HAO (API)</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#c084fc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              ⚡ {totalTokensUsed.toLocaleString("vi-VN")} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>tokens</span>
             </div>
           </div>
         </div>
@@ -521,13 +552,6 @@ export function SourcesPage({
           </div>
         )}
       </div>
-
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div style={{ position: "fixed", bottom: "24px", right: "24px", background: "rgba(15, 23, 42, 0.95)", border: "1px solid rgba(56, 189, 248, 0.4)", borderRadius: "8px", padding: "10px 16px", color: "#38bdf8", fontWeight: 700, fontSize: "12.5px", boxShadow: "0 10px 30px rgba(0,0,0,0.5)", zIndex: 99999, backdropFilter: "blur(12px)", display: "flex", alignItems: "center", gap: "6px" }}>
-          <Coin size={14} /> {toastMessage}
-        </div>
-      )}
 
       {/* 5. Footage Repository Table (With Token/Credit Column) */}
       <div style={{ background: "rgba(15, 23, 42, 0.75)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "12px", overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
@@ -768,9 +792,14 @@ export function SourcesPage({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(`Bạn có chắc muốn xóa video ${job.name}?`)) {
+                    onClick={async () => {
+                      const confirmed = await popup.confirmDelete(
+                        "Xác Nhận Xóa Video",
+                        `Bạn có chắc muốn xóa video "${job.name}"?`
+                      );
+                      if (confirmed) {
                         if (onDeleteSources) onDeleteSources([job.id]);
+                        popup.success(`Đã xóa video ${job.name}`);
                       }
                     }}
                     style={{
@@ -862,9 +891,9 @@ export function SourcesPage({
             </div>
 
             <div style={{ background: "#000", height: "450px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {previewPlayerJob.localPath ? (
+              {previewPlayerJob.localPath || previewPlayerJob.source ? (
                 <video
-                  src={isNativeRuntime() ? `atom://${previewPlayerJob.localPath}` : previewPlayerJob.localPath}
+                  src={resolveMediaSrc(previewPlayerJob.localPath || previewPlayerJob.source)}
                   controls
                   autoPlay
                   style={{ width: "100%", maxHeight: "100%", objectFit: "contain" }}

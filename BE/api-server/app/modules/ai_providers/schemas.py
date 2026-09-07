@@ -47,3 +47,24 @@ class ProviderResponse(BaseModel):
     enabled: bool
     has_api_key: bool
     masked_key: str
+
+
+class ModelPricingItem(BaseModel):
+    id: str | None = None
+    model: str
+    provider_name: str = "Anthropic"
+    category: str | None = "analysis"
+    cost_input_price: float | None = 0.0
+    cost_output_price: float | None = 0.0
+    input_price: float = 0.0
+    output_price: float = 0.0
+    cache_discount_pct: float | None = 20.0
+    price_per_request: float | None = 0.0
+    is_selling: bool = True
+    status: str = "selling"  # "selling" | "need_pricing"
+    purpose: str | None = None
+
+
+class ModelPricingUpdateRequest(BaseModel):
+    items: list[ModelPricingItem]
+

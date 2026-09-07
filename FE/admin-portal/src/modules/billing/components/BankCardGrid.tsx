@@ -32,25 +32,12 @@ export const BankCardGrid: React.FC<BankCardGridProps> = ({
   bankAccounts,
   onEdit,
   onDelete,
-  onSetDefault,
-  onToggleStatus,
+  onSetDefault: _onSetDefault,
+  onToggleStatus: _onToggleStatus,
   onViewQr,
   onAddNew,
-  onNotify,
+  onNotify: _onNotify,
 }) => {
-  const [copiedId, setCopiedId] = React.useState<string | null>(null);
-
-  const handleCopy = async (account: BankAccount) => {
-    try {
-      await navigator.clipboard.writeText(account.account_number);
-      setCopiedId(account.id);
-      if (onNotify) onNotify(`Đã sao chép STK ${account.account_number}`);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      // Fallback
-    }
-  };
-
   if (!bankAccounts || bankAccounts.length === 0) {
     return (
       <div
@@ -74,212 +61,251 @@ export const BankCardGrid: React.FC<BankCardGridProps> = ({
   }
 
   return (
-    <div className="bank-cards-grid-mf">
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {bankAccounts.map((account) => {
-        const purposeInfo = getPurposeLabel(account.purpose);
         const encodedContent = encodeURIComponent("JACS AUTO");
         const encodedName = encodeURIComponent(account.account_name);
         const qrImgSrc =
           account.custom_qr_url ||
           (account.bank_bin && account.account_number
-            ? `https://img.vietqr.io/image/${account.bank_bin}-${account.account_number}-${account.qr_template || "compact2"}.png?amount=500000&addInfo=${encodedContent}&accountName=${encodedName}`
+            ? `https://img.vietqr.io/image/${account.bank_bin}-${account.account_number}-${account.qr_template || "compact2"}.png?amount=0&addInfo=${encodedContent}&accountName=${encodedName}`
             : "");
+
+        const bankDisplayName = account.bank_name.split("(")[0]?.trim() || "VietinBank";
+        const bankCode = account.bank_short || "ICB";
 
         return (
           <div
             key={account.id}
-            className="bank-card-mf"
             style={{
-              borderColor: account.is_default ? "var(--primary)" : "var(--border)",
-              boxShadow: account.is_default ? "0 4px 16px rgba(255, 107, 0, 0.12)" : "none",
-              position: "relative",
+              background: "#ffffff",
+              borderRadius: "14px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+              display: "flex",
+              flexDirection: "row",
+              overflow: "hidden",
+              flexWrap: "wrap",
             }}
           >
-            {/* Badges / Tags Row */}
-            <div className="bank-card-tags-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
-                <span className={`tag-pill-purpose ${purposeInfo.class}`}>
-                  {purposeInfo.text}
-                </span>
-                {account.is_default && (
-                  <span
-                    style={{
-                      background: "linear-gradient(135deg, #ff6b00, #ff8c38)",
-                      color: "#ffffff",
-                      fontSize: "0.7rem",
-                      fontWeight: 800,
-                      padding: "2px 8px",
-                      borderRadius: "12px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "3px",
-                    }}
-                  >
-                    <Star size={11} fill="#ffffff" /> Mặc Định Nhận Tiền
-                  </span>
-                )}
-              </div>
-
-              <span className={account.is_active ? "tag-status-active" : "tag-status-blocked"}>
-                {account.is_active ? "● Đang hoạt động" : "○ Tạm dừng"}
-              </span>
-            </div>
-
-            {/* Split Body: VietQR Box & Details */}
-            <div className="bank-card-body-split">
+            {/* Left Column: VietQR Code Box */}
+            <div
+              style={{
+                width: "280px",
+                minWidth: "260px",
+                background: "#f8fafc",
+                padding: "24px 20px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRight: "1px solid #f1f5f9",
+                cursor: "pointer",
+              }}
+              onClick={() => onViewQr(account)}
+              title="Nhấn để phóng to mã QR"
+            >
               <div
-                className="vietqr-preview-box"
-                style={{ cursor: "pointer" }}
-                onClick={() => onViewQr(account)}
-                title="Nhấn để xem mã VietQR lớn & test quét"
+                style={{
+                  background: "#ffffff",
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  border: "1px solid #e2e8f0",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  width: "100%",
+                  maxWidth: "200px",
+                }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    width: "100%",
-                    marginBottom: "0.3rem",
-                    padding: "0 2px",
-                  }}
-                >
-                  <span style={{ fontWeight: 800, fontSize: "0.65rem", color: "#003b7a" }}>napas247</span>
-                  <span style={{ fontWeight: 800, fontSize: "0.65rem", color: "#005baa" }}>
-                    {account.bank_short || account.bank_name.split("(")[0].trim()}
-                  </span>
+                {/* VietQR Header */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "8px" }}>
+                  <span style={{ color: "#dc2626", fontWeight: 900, fontSize: "15px", letterSpacing: "-0.5px" }}>VIET</span>
+                  <span style={{ color: "#003b7a", fontWeight: 900, fontSize: "15px", letterSpacing: "-0.5px" }}>QR</span>
                 </div>
 
+                {/* QR Image */}
                 {qrImgSrc ? (
                   <img
-                    className="vietqr-code-img"
                     src={qrImgSrc}
                     alt={`VietQR ${account.bank_name}`}
+                    style={{ width: "160px", height: "160px", objectFit: "contain", borderRadius: "4px" }}
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${account.bank_bin}-${account.account_number}`;
+                      (e.currentTarget as HTMLImageElement).src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${account.bank_bin}-${account.account_number}`;
                     }}
                   />
                 ) : (
-                  <div style={{ height: "130px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", color: "#94a3b8" }}>
+                  <div style={{ width: "160px", height: "160px", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
                     Không có QR
                   </div>
                 )}
 
-                <div className="vietqr-bottom-footer">
-                  <div className="account-text">{account.account_number}</div>
-                  <div style={{ textTransform: "uppercase" }}>{account.account_name}</div>
+                {/* QR Footer details */}
+                <div style={{ marginTop: "8px", textAlign: "center", width: "100%" }}>
+                  <div style={{ fontSize: "10px", fontWeight: 800, color: "#003b7a", display: "flex", justifyContent: "center", alignItems: "center", gap: "8px", borderTop: "1px solid #f1f5f9", paddingTop: "4px" }}>
+                    <span>napas 247</span>
+                    <span style={{ color: "#005baa" }}>{bankDisplayName}</span>
+                  </div>
+                  <div style={{ fontSize: "9px", fontWeight: 700, color: "#475569", marginTop: "3px", textTransform: "uppercase" }}>
+                    {account.account_name}
+                  </div>
+                  <div style={{ fontSize: "9px", color: "#64748b" }}>
+                    {account.account_number}
+                  </div>
+                  <div style={{ fontSize: "8.5px", color: "#94a3b8" }}>
+                    Số tiền: 0đ
+                  </div>
                 </div>
               </div>
+            </div>
 
-              {/* Details Column */}
-              <div className="bank-details-column">
-                <div className="bank-header-group">
-                  <Building2 size={20} className="bank-building-icon" />
+            {/* Right Column: Account Details & Actions */}
+            <div
+              style={{
+                flex: 1,
+                minWidth: "320px",
+                padding: "24px 28px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+            >
+              <div>
+                {/* Top Row: Purpose Tag & Status */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+                  <span
+                    style={{
+                      background: "#e0f2fe",
+                      color: "#0284c7",
+                      padding: "4px 14px",
+                      borderRadius: "9999px",
+                      fontSize: "12.5px",
+                      fontWeight: 750,
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    Nhận tiền khách hàng
+                  </span>
+
+                  <span style={{ fontSize: "13px", fontWeight: 750, color: "#0f172a" }}>
+                    {account.is_active ? "Đang hoạt động" : "Tạm dừng"}
+                  </span>
+                </div>
+
+                {/* Bank Identity */}
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "20px" }}>
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "8px",
+                      background: "#f1f5f9",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#475569",
+                    }}
+                  >
+                    <Building2 size={22} />
+                  </div>
                   <div>
-                    <span className="bank-name-text">
-                      {account.bank_name.split("(")[0]?.trim()}
+                    <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#1e293b", margin: 0, lineHeight: 1.2 }}>
+                      {bankDisplayName}
+                    </h3>
+                    <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>
+                      {bankCode}
                     </span>
-                    {account.bank_short && (
-                      <span className="bank-short-code"> / {account.bank_short}</span>
-                    )}
                   </div>
                 </div>
 
-                <div className="bank-field-list">
-                  <div className="bank-field-row">
-                    <span className="field-label">Số tài khoản:</span>
-                    <span
-                      className="field-value"
-                      style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700 }}
-                    >
+                {/* Info Fields Rows */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "24px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13.5px", color: "#64748b", fontWeight: 500 }}>
+                      Số tài khoản
+                    </span>
+                    <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", fontFamily: "inherit" }}>
                       {account.account_number}
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(account)}
-                        style={{ border: "none", background: "transparent", cursor: "pointer", padding: "1px", color: "var(--text-muted)" }}
-                        title="Sao chép số tài khoản"
-                      >
-                        {copiedId === account.id ? (
-                          <Check size={13} style={{ color: "var(--success)" }} />
-                        ) : (
-                          <Copy size={13} />
-                        )}
-                      </button>
                     </span>
                   </div>
 
-                  <div className="bank-field-row">
-                    <span className="field-label">Chủ tài khoản:</span>
-                    <span className="field-value" style={{ textTransform: "uppercase" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13.5px", color: "#64748b", fontWeight: 500 }}>
+                      Chủ tài khoản
+                    </span>
+                    <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a", textTransform: "uppercase" }}>
                       {account.account_name}
                     </span>
                   </div>
 
-                  {account.branch && (
-                    <div className="bank-field-row">
-                      <span className="field-label">Chi nhánh:</span>
-                      <span className="field-value">{account.branch}</span>
-                    </div>
-                  )}
-
-                  {account.notes && (
-                    <div className="bank-field-row">
-                      <span className="field-label">Ghi chú:</span>
-                      <span className="field-value" style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                        {account.notes}
-                      </span>
-                    </div>
-                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", alignItems: "center" }}>
+                    <span style={{ fontSize: "13.5px", color: "#64748b", fontWeight: 500 }}>
+                      Vai trò
+                    </span>
+                    <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>
+                      SePay theo dõi tiền vào
+                    </span>
+                  </div>
                 </div>
+              </div>
 
-                {/* Actions Grid */}
-                <div className="bank-actions-row" style={{ marginTop: "auto", flexWrap: "wrap", gap: "0.4rem" }}>
-                  <button
-                    type="button"
-                    className="btn-card-action action-edit"
-                    onClick={() => onViewQr(account)}
-                    title="Xem mã VietQR và test quét"
-                  >
-                    <QrCode size={13} /> Xem QR
-                  </button>
+              {/* Bottom Actions Row */}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => onEdit(account)}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "8px",
+                    padding: "7px 18px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#334155",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = "#f8fafc")}
+                  onMouseOut={(e) => (e.currentTarget.style.background = "#ffffff")}
+                >
+                  <Pencil size={14} /> Sửa
+                </button>
 
-                  {!account.is_default && (
-                    <button
-                      type="button"
-                      className="btn-card-action"
-                      style={{ color: "var(--primary)" }}
-                      onClick={() => onSetDefault(account)}
-                      title="Đặt làm tài khoản mặc định"
-                    >
-                      <Star size={13} /> Đặt mặc định
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    className="btn-card-action"
-                    onClick={() => onToggleStatus(account)}
-                    title={account.is_active ? "Tạm dừng nhận tiền" : "Kích hoạt nhận tiền"}
-                  >
-                    <Power size={13} style={{ color: account.is_active ? "var(--warning)" : "var(--success)" }} />
-                    {account.is_active ? "Tắt" : "Bật"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-card-action action-edit"
-                    onClick={() => onEdit(account)}
-                  >
-                    <Pencil size={13} /> Sửa
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-card-action action-delete"
-                    onClick={() => onDelete(account)}
-                  >
-                    <Trash2 size={13} /> Xóa
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => onDelete(account)}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #fecaca",
+                    borderRadius: "8px",
+                    padding: "7px 18px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    color: "#ef4444",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = "#fef2f2";
+                    e.currentTarget.style.borderColor = "#f87171";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = "#ffffff";
+                    e.currentTarget.style.borderColor = "#fecaca";
+                  }}
+                >
+                  <Trash2 size={14} /> Xóa
+                </button>
               </div>
             </div>
           </div>
@@ -288,3 +314,4 @@ export const BankCardGrid: React.FC<BankCardGridProps> = ({
     </div>
   );
 };
+

@@ -8,8 +8,10 @@ import { BankModal } from "./modal/BankModal";
 import { BankQrViewModal } from "./modal/BankQrViewModal";
 import { billingService } from "../services/billingService";
 import { Button } from "../../../components/common";
+import { confirmDialog } from "../../../core/swal";
 import { useI18n } from "../../../core/i18n";
 import "../lang";
+
 
 interface BankConfigPageProps {
   bankConfig?: BankConfig;
@@ -99,16 +101,27 @@ export const BankConfigPage: React.FC<BankConfigPageProps> = ({
   };
 
   const handleDelete = async (account: BankAccount) => {
-    if (confirm(`Bạn có chắc chắn muốn xóa tài khoản ${account.bank_name} - ${account.account_number}?`)) {
-      try {
-        await billingService.deleteBankAccount(account.id);
-        notify(`Đã xóa tài khoản ${account.account_number} thành công`, "success");
-        await loadData();
-      } catch (err: any) {
-        notify(err instanceof Error ? err.message : "Lỗi khi xóa tài khoản", "error");
-      }
+    const confirmed = await confirmDialog({
+      title: "Xác nhận xóa tài khoản ngân hàng?",
+      html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
+        <p>Bạn có chắc muốn xóa tài khoản <b>${account.bank_name}</b> (STK: <code>${account.account_number}</code>)?</p>
+      </div>`,
+      icon: "warning",
+      confirmButtonText: "Xóa tài khoản",
+      cancelButtonText: "Hủy bỏ",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await billingService.deleteBankAccount(account.id);
+      notify(`Đã xóa tài khoản ${account.account_number} thành công`, "success");
+      await loadData();
+    } catch (err: any) {
+      notify(err instanceof Error ? err.message : "Lỗi khi xóa tài khoản", "error");
     }
   };
+
 
   const handleSetDefault = async (account: BankAccount) => {
     try {
@@ -148,12 +161,26 @@ export const BankConfigPage: React.FC<BankConfigPageProps> = ({
       {/* Page Header */}
       <div className="view-header">
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-            <Building2 size={24} style={{ color: "var(--primary)" }} />
-            <h1 className="view-title">{t("bankConfigTitle", "Cấu Hình Ngân Hàng & VietQR")}</h1>
+          <div style={{ marginBottom: "6px" }}>
+            <span
+              style={{
+                background: "rgba(255, 107, 0, 0.1)",
+                color: "#ff6b00",
+                borderRadius: "9999px",
+                padding: "3px 12px",
+                fontSize: "12px",
+                fontWeight: 700,
+                display: "inline-block",
+              }}
+            >
+              Tài chính & tài sản
+            </span>
           </div>
-          <p className="view-subtitle">
-            Quản lý danh sách tài khoản ngân hàng thụ hưởng, mã VietQR tự động và kết nối SePay Webhook
+          <h1 className="view-title" style={{ fontSize: "1.75rem", fontWeight: 800, color: "#0f172a", margin: "4px 0" }}>
+            Ngân hàng & QR
+          </h1>
+          <p className="view-subtitle" style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
+            Quản lý tài khoản nhận tiền khách hàng và tài khoản thanh toán nhà cung cấp.
           </p>
         </div>
         <div className="view-actions" style={{ display: "flex", gap: "0.5rem" }}>
@@ -174,6 +201,7 @@ export const BankConfigPage: React.FC<BankConfigPageProps> = ({
           </Button>
         </div>
       </div>
+
 
       {/* KPI Stats Row */}
       <div className="billing-kpi-grid">

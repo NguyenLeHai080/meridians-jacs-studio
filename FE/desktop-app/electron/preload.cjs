@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("jacsRuntime", {
   getApiBaseUrl: () => process.env.JACS_API_URL || "https://jacs-studio.nexoratech.com.vn",
   getMachineInfo: () => ipcRenderer.invoke("runtime:machine-info"),
+  getHardwareStats: () => ipcRenderer.invoke("runtime:hardware-stats"),
   readLicense: () => ipcRenderer.invoke("runtime:read-license"),
   saveLicense: (value) => ipcRenderer.invoke("runtime:save-license", value),
   clearLicense: () => ipcRenderer.invoke("runtime:clear-license"),
@@ -33,7 +34,7 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   mergeVideos: (paths, operationId) => ipcRenderer.invoke("runtime:merge-videos", paths, operationId),
   readJobs: () => ipcRenderer.invoke("runtime:read-jobs"),
   saveJobs: (value) => ipcRenderer.invoke("runtime:save-jobs", value),
-  synthesizeSpeech: (text, language, gender, voice) => ipcRenderer.invoke("runtime:synthesize-speech", text, language, gender, voice),
+  synthesizeSpeech: (text, language, gender, voice, rate) => ipcRenderer.invoke("runtime:synthesize-speech", text, language, gender, voice, rate),
   resolveVideoUrl: (url) => ipcRenderer.invoke("runtime:resolve-video-url", url),
   onDownloadProgress: (listener) => {
     const handler = (_event, payload) => listener(payload);

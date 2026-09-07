@@ -55,7 +55,8 @@ export const OverviewKpiCards: React.FC<OverviewKpiCardsProps> = ({
       </div>
 
       {/* Card 3: License đang hoạt động */}
-      <div className="kpi-card-mf" onClick={() => onNavigate("licenses")} style={{ cursor: "pointer" }}>
+      <div className="kpi-card-mf" onClick={() => onNavigate("sessions")} style={{ cursor: "pointer" }}>
+
         <div className="kpi-circle-icon circle-blue"><Key size={22} /></div>
         <div className="kpi-content-box">
           <div className="kpi-label-mf">{t("kpiActiveKeysLabel")}</div>

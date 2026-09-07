@@ -1164,6 +1164,290 @@
         }
       }
     },
+    "/api/v1/licenses/{license_id}/regenerate-key": {
+      "post": {
+        "tags": [
+          "licensing"
+        ],
+        "summary": "Regenerate License Key",
+        "operationId": "regenerate_license_key_api_v1_licenses__license_id__regenerate_key_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "license_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "License Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseCreatedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/licenses/{license_id}/api-config": {
+      "put": {
+        "tags": [
+          "licensing"
+        ],
+        "summary": "Update License Api Config",
+        "operationId": "update_license_api_config_api_v1_licenses__license_id__api_config_put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "license_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "License Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LicenseApiConfigRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/licenses/{license_id}/accept-terms": {
+      "post": {
+        "tags": [
+          "licensing"
+        ],
+        "summary": "Accept License Terms",
+        "description": "Client endpoint to confirm legal compliance and accept terms of service.",
+        "operationId": "accept_license_terms_api_v1_licenses__license_id__accept_terms_post",
+        "parameters": [
+          {
+            "name": "license_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "License Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/licenses/{license_id}/grant-credit": {
+      "post": {
+        "tags": [
+          "licensing"
+        ],
+        "summary": "Grant Credit To License",
+        "description": "Add or set AI credit balance for a specific tool key.",
+        "operationId": "grant_credit_to_license_api_v1_licenses__license_id__grant_credit_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "license_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "License Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantCreditRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/licenses/{license_id}/allowed-models": {
+      "put": {
+        "tags": [
+          "licensing"
+        ],
+        "summary": "Update Allowed Models",
+        "description": "Set which AI models this tool key is authorized to use.",
+        "operationId": "update_allowed_models_api_v1_licenses__license_id__allowed_models_put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "license_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "License Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAllowedModelsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/licenses/validate": {
       "post": {
         "tags": [
@@ -1917,6 +2201,159 @@
         }
       }
     },
+    "/api/v1/billing/credit-config": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Credit Config",
+        "description": "Get the current credit pricing and formula configuration.",
+        "operationId": "get_credit_config_api_v1_billing_credit_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Credit Config",
+        "description": "Update the credit pricing and formula configuration.",
+        "operationId": "update_credit_config_api_v1_billing_credit_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCreditConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/sepay-transactions": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Sepay Transactions",
+        "description": "Retrieve all SePay credit top-up transactions with calculated cost, credit, profit, and key details.",
+        "operationId": "list_sepay_transactions_api_v1_billing_sepay_transactions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SepayTransactionResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Sepay Transactions Api V1 Billing Sepay Transactions Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/transactions/{transaction_id}/revoke-credit": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Revoke Credit Transaction",
+        "description": "Revoke granted credit for a given SePay transaction, mark transaction as REVOKED.",
+        "operationId": "revoke_credit_transaction_api_v1_billing_transactions__transaction_id__revoke_credit_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transaction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Revoke Credit Transaction Api V1 Billing Transactions  Transaction Id  Revoke Credit Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clients/sessions": {
       "get": {
         "tags": [
@@ -1954,6 +2391,112 @@
         ],
         "summary": "Terminate Session",
         "operationId": "terminate_session_api_v1_clients_sessions__license_id__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "license_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "License Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/": {
+      "get": {
+        "tags": [
+          "sessions-direct"
+        ],
+        "summary": "List Active Sessions",
+        "operationId": "list_active_sessions_api_v1_sessions__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClientSessionResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Active Sessions Api V1 Sessions  Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sessions": {
+      "get": {
+        "tags": [
+          "sessions-direct"
+        ],
+        "summary": "List Active Sessions",
+        "operationId": "list_active_sessions_api_v1_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClientSessionResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Active Sessions Api V1 Sessions Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sessions/{license_id}": {
+      "delete": {
+        "tags": [
+          "sessions-direct"
+        ],
+        "summary": "Terminate Session",
+        "operationId": "terminate_session_api_v1_sessions__license_id__delete",
         "security": [
           {
             "APIKeyHeader": []
@@ -2233,7 +2776,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "pattern": "^v\\d+\\.\\d+\\.\\d+$",
+              "pattern": "^v?\\d+(\\.\\d+)*.*$",
               "title": "Current Version"
             }
           },
@@ -2723,6 +3266,118 @@
         }
       }
     },
+    "/api/v1/ai-providers/models-pricing": {
+      "get": {
+        "tags": [
+          "ai-providers"
+        ],
+        "summary": "Get Models Pricing",
+        "operationId": "get_models_pricing_api_v1_ai_providers_models_pricing_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ai-providers"
+        ],
+        "summary": "Save Models Pricing",
+        "operationId": "save_models_pricing_api_v1_ai_providers_models_pricing_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai-providers/models-sync": {
+      "post": {
+        "tags": [
+          "ai-providers"
+        ],
+        "summary": "Sync Provider Models",
+        "operationId": "sync_provider_models_api_v1_ai_providers_models_sync_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ai-providers/models-available": {
+      "get": {
+        "tags": [
+          "ai-providers"
+        ],
+        "summary": "Get Available Models",
+        "description": "Public/Client endpoint: Return only models currently licensed/selling for Desktop Tool.",
+        "operationId": "get_available_models_api_v1_ai_providers_models_available_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "tags": [
@@ -3141,6 +3796,78 @@
             "schema": {
               "type": "integer",
               "default": 200,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/telemetry/api-operations": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "Get Api Operations Report",
+        "description": "Retrieve dynamic 7-day API operations telemetry report with account activity, error logs, request telemetry, and profit finance breakdown based on registered client devices, jobs, gateway logs, and licenses.",
+        "operationId": "get_api_operations_report_api_v1_telemetry_api_operations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/telemetry/global-requests": {
+      "get": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "List Global Requests",
+        "description": "Returns 100% REAL live database logs of all AI requests across all providers, models,\nmachines and API Gateway traffic with real latencies, token counts, costs and statuses.",
+        "operationId": "list_global_requests_api_v1_telemetry_global_requests_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 500,
               "title": "Limit"
             }
           }
@@ -3839,12 +4566,13 @@
           "customer_name": {
             "type": "string",
             "maxLength": 160,
-            "minLength": 1,
-            "title": "Customer Name"
+            "title": "Customer Name",
+            "default": "Khách hàng"
           },
           "amount": {
             "type": "number",
-            "title": "Amount"
+            "title": "Amount",
+            "default": 0.0
           },
           "currency": {
             "type": "string",
@@ -3858,6 +4586,17 @@
             "title": "Plan Type",
             "default": "1_month"
           },
+          "plan_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Name"
+          },
           "payment_method": {
             "type": "string",
             "maxLength": 64,
@@ -3869,6 +4608,17 @@
             "maxLength": 64,
             "title": "Transaction Type",
             "default": "income"
+          },
+          "reference_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Code"
           },
           "notes": {
             "anyOf": [
@@ -3883,27 +4633,48 @@
             "title": "Notes"
           },
           "id": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "title": "Id"
           },
           "actor": {
-            "type": "string",
-            "title": "Actor"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor",
+            "default": "system"
           },
           "created_at": {
-            "type": "string",
-            "format": "date-time",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Created At"
           }
         },
         "type": "object",
         "required": [
-          "customer_name",
-          "amount",
-          "id",
-          "actor",
-          "created_at"
+          "id"
         ],
         "title": "BillingTransactionResponse"
       },
@@ -4147,12 +4918,13 @@
           "customer_name": {
             "type": "string",
             "maxLength": 160,
-            "minLength": 1,
-            "title": "Customer Name"
+            "title": "Customer Name",
+            "default": "Khách hàng"
           },
           "amount": {
             "type": "number",
-            "title": "Amount"
+            "title": "Amount",
+            "default": 0.0
           },
           "currency": {
             "type": "string",
@@ -4166,6 +4938,17 @@
             "title": "Plan Type",
             "default": "1_month"
           },
+          "plan_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Name"
+          },
           "payment_method": {
             "type": "string",
             "maxLength": 64,
@@ -4177,6 +4960,17 @@
             "maxLength": 64,
             "title": "Transaction Type",
             "default": "income"
+          },
+          "reference_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Code"
           },
           "notes": {
             "anyOf": [
@@ -4192,10 +4986,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "customer_name",
-          "amount"
-        ],
         "title": "CreateBillingTransactionRequest"
       },
       "CreateLicenseRequest": {
@@ -4266,6 +5056,103 @@
             ],
             "title": "Notes"
           },
+          "credit_balance": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Credit Balance",
+            "default": 0.0
+          },
+          "token_in_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token In Price"
+          },
+          "token_out_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Out Price"
+          },
+          "max_requests_per_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Requests Per Day"
+          },
+          "is_custom_quota": {
+            "type": "boolean",
+            "title": "Is Custom Quota",
+            "default": false
+          },
+          "allowed_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Models"
+          },
+          "ai_gateway_enabled": {
+            "type": "boolean",
+            "title": "Ai Gateway Enabled",
+            "default": true
+          },
+          "terms_accepted": {
+            "type": "boolean",
+            "title": "Terms Accepted",
+            "default": true
+          },
+          "terms_accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Version",
+            "default": "JACS-LEGAL-2026-v2.4"
+          },
           "amount": {
             "type": "number",
             "minimum": 0.0,
@@ -4304,6 +5191,59 @@
           "hwid"
         ],
         "title": "CreateLicenseRequest"
+      },
+      "CreditConfigResponse": {
+        "properties": {
+          "price_per_1m_token": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Price Per 1M Token",
+            "default": 1000.0
+          },
+          "cost_per_1m_token": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Cost Per 1M Token",
+            "default": 800.0
+          },
+          "token_in_price": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Token In Price",
+            "default": 700.0
+          },
+          "token_out_price": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Token Out Price",
+            "default": 900.0
+          },
+          "min_deposit_amount": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Min Deposit Amount",
+            "default": 2000.0
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "title": "CreditConfigResponse"
       },
       "DesktopJobCreate": {
         "properties": {
@@ -5199,6 +6139,38 @@
         ],
         "title": "ExecutionMode"
       },
+      "GrantCreditRequest": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "title": "Amount",
+            "description": "Số credit muốn cộng hoặc đặt lại"
+          },
+          "mode": {
+            "type": "string",
+            "pattern": "^(add|set)$",
+            "title": "Mode",
+            "default": "add"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "title": "GrantCreditRequest"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -5329,6 +6301,97 @@
         ],
         "title": "JobResponse"
       },
+      "LicenseApiConfigRequest": {
+        "properties": {
+          "credit_balance": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Balance"
+          },
+          "token_in_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token In Price"
+          },
+          "token_out_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Out Price"
+          },
+          "max_requests_per_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Requests Per Day"
+          },
+          "is_custom_quota": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Custom Quota"
+          },
+          "allowed_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Models"
+          },
+          "ai_gateway_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Gateway Enabled"
+          }
+        },
+        "type": "object",
+        "title": "LicenseApiConfigRequest"
+      },
       "LicenseCreatedResponse": {
         "properties": {
           "customer_name": {
@@ -5396,6 +6459,103 @@
               }
             ],
             "title": "Notes"
+          },
+          "credit_balance": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Credit Balance",
+            "default": 0.0
+          },
+          "token_in_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token In Price"
+          },
+          "token_out_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Out Price"
+          },
+          "max_requests_per_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Requests Per Day"
+          },
+          "is_custom_quota": {
+            "type": "boolean",
+            "title": "Is Custom Quota",
+            "default": false
+          },
+          "allowed_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Models"
+          },
+          "ai_gateway_enabled": {
+            "type": "boolean",
+            "title": "Ai Gateway Enabled",
+            "default": true
+          },
+          "terms_accepted": {
+            "type": "boolean",
+            "title": "Terms Accepted",
+            "default": true
+          },
+          "terms_accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Version",
+            "default": "JACS-LEGAL-2026-v2.4"
           },
           "id": {
             "type": "string",
@@ -5632,6 +6792,103 @@
             ],
             "title": "Notes"
           },
+          "credit_balance": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Credit Balance",
+            "default": 0.0
+          },
+          "token_in_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token In Price"
+          },
+          "token_out_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Out Price"
+          },
+          "max_requests_per_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Requests Per Day"
+          },
+          "is_custom_quota": {
+            "type": "boolean",
+            "title": "Is Custom Quota",
+            "default": false
+          },
+          "allowed_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Models"
+          },
+          "ai_gateway_enabled": {
+            "type": "boolean",
+            "title": "Ai Gateway Enabled",
+            "default": true
+          },
+          "terms_accepted": {
+            "type": "boolean",
+            "title": "Terms Accepted",
+            "default": true
+          },
+          "terms_accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Version",
+            "default": "JACS-LEGAL-2026-v2.4"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -5816,6 +7073,126 @@
               }
             ],
             "title": "Expires At"
+          },
+          "credit_balance": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Balance"
+          },
+          "token_in_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token In Price"
+          },
+          "token_out_price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Out Price"
+          },
+          "max_requests_per_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Requests Per Day"
+          },
+          "is_custom_quota": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Custom Quota"
+          },
+          "allowed_models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Models"
+          },
+          "ai_gateway_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Gateway Enabled"
+          },
+          "terms_accepted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Accepted"
+          },
+          "terms_accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terms Version"
           }
         },
         "type": "object",
@@ -6435,6 +7812,129 @@
         ],
         "title": "RenewQrResponse"
       },
+      "SepayTransactionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "sepay_code": {
+            "type": "string",
+            "title": "Sepay Code"
+          },
+          "license_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Id"
+          },
+          "api_key_name": {
+            "type": "string",
+            "title": "Api Key Name",
+            "default": "Khách hàng"
+          },
+          "api_key_masked": {
+            "type": "string",
+            "title": "Api Key Masked",
+            "default": "sk-******"
+          },
+          "deposit_amount": {
+            "type": "number",
+            "title": "Deposit Amount",
+            "default": 0.0
+          },
+          "cost_amount": {
+            "type": "number",
+            "title": "Cost Amount",
+            "default": 0.0
+          },
+          "credit_amount": {
+            "type": "number",
+            "title": "Credit Amount",
+            "default": 0.0
+          },
+          "profit_amount": {
+            "type": "number",
+            "title": "Profit Amount",
+            "default": 0.0
+          },
+          "profit_percent": {
+            "type": "number",
+            "title": "Profit Percent",
+            "default": 0.0
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "COMPLETED"
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "default": "sepay_vietqr"
+          },
+          "bank_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Name",
+            "default": "VietinBank"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "raw_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "sepay_code"
+        ],
+        "title": "SepayTransactionResponse"
+      },
       "Severity": {
         "type": "string",
         "enum": [
@@ -6780,6 +8280,27 @@
         "type": "object",
         "title": "ToolConfigPayload"
       },
+      "UpdateAllowedModelsRequest": {
+        "properties": {
+          "allowed_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Models"
+          },
+          "ai_gateway_enabled": {
+            "type": "boolean",
+            "title": "Ai Gateway Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "allowed_models"
+        ],
+        "title": "UpdateAllowedModelsRequest"
+      },
       "UpdateBankAccountRequest": {
         "properties": {
           "bank_name": {
@@ -7003,6 +8524,47 @@
         "type": "object",
         "title": "UpdateBankConfigRequest"
       },
+      "UpdateCreditConfigRequest": {
+        "properties": {
+          "price_per_1m_token": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Price Per 1M Token",
+            "default": 1000.0
+          },
+          "cost_per_1m_token": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Cost Per 1M Token",
+            "default": 800.0
+          },
+          "token_in_price": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Token In Price",
+            "default": 700.0
+          },
+          "token_out_price": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Token Out Price",
+            "default": 900.0
+          },
+          "min_deposit_amount": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Min Deposit Amount",
+            "default": 2000.0
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "UpdateCreditConfigRequest"
+      },
       "UserResponse": {
         "properties": {
           "email": {
@@ -7067,13 +8629,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

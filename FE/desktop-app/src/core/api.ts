@@ -48,14 +48,29 @@ export async function getBankConfig(): Promise<BankConfigPublic> {
   return request<BankConfigPublic>("/api/v1/billing/bank-config");
 }
 
+export interface LicenseValidationResult {
+  valid: boolean;
+  license_id: string;
+  customer_name?: string | null;
+  logo_url?: string | null;
+  premium_ai: boolean;
+  expires_at: string | null;
+  max_jobs_per_day?: number;
+  credit_balance?: number;
+  allowed_models?: string[] | null;
+  ai_gateway_enabled?: boolean;
+  app_version?: string;
+  platform?: string;
+}
+
 export async function validateLicense(key: string, hwid: string) {
-  return request<{ valid: boolean; license_id: string; customer_name?: string | null; logo_url?: string | null; premium_ai: boolean; expires_at: string | null; max_jobs_per_day?: number }>("/api/v1/licenses/validate", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid) }) });
+  return request<LicenseValidationResult>("/api/v1/licenses/validate", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid) }) });
 }
 
 export const activateLicense = validateLicense;
 
 export async function heartbeatLicense(key: string, hwid: string, appVersion: string, platform: string) {
-  return request<{ valid: boolean; license_id: string; customer_name?: string | null; logo_url?: string | null; premium_ai: boolean; expires_at: string | null; max_jobs_per_day?: number }>("/api/v1/licenses/heartbeat", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid), app_version: appVersion, platform }) });
+  return request<LicenseValidationResult>("/api/v1/licenses/heartbeat", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid), app_version: appVersion, platform }) });
 }
 
 export async function createClientJob(key: string, deviceId: string, job: { id: string; name: string; source: string; mode: string; providerId?: string; ttsProviderId?: string; sourceType?: "file" | "url"; durationSeconds?: number; tokensUsed?: number; creditsUsed?: number; narratorEnabled?: boolean; narratorVoice?: string; narratorGender?: "male" | "female"; languages?: string[]; keepOriginalAudio?: boolean; emphasizeHook?: boolean; highlightOnly?: boolean; highlightMaxSeconds?: number; backgroundMusic?: boolean; backgroundMusicVolume?: number; subtitlesEnabled?: boolean; subtitleStyle?: "bottom" | "center" | "top"; subtitleText?: string; logoPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right"; logoOpacity?: number; parentJobId?: string; sceneId?: string; splitScenes?: boolean; analysisOnly?: boolean; clipStartSeconds?: number; clipEndSeconds?: number; outputFileName?: string; timelineClips?: TimelineClip[] }) {

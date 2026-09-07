@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Clipboard,
   Clock,
+  Coin,
   Download,
   ExclamationTriangle,
   FileEarmarkText,
@@ -96,6 +97,7 @@ export type IconName =
   | "chat"
   | "search"
   | "file-text"
+  | "coins"
   | "alert"
   | "x";
 
@@ -148,6 +150,7 @@ const ICONS = {
   chat: ChatQuote,
   search: Search,
   "file-text": FileEarmarkText,
+  coins: Coin,
   x: XLg,
 } as const;
 

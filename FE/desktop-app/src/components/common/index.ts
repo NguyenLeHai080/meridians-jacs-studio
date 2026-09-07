@@ -7,5 +7,6 @@ export * from "./Pagination";
 export * from "./Table";
 export * from "./Toast";
 export * from "./StatsCard";
+export * from "./ErrorBoundary";
 export { Icon } from "../../shared/Icon";
 export type { IconName } from "../../shared/Icon";

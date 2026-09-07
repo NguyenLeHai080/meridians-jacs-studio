@@ -2,6 +2,15 @@ export type EditorScene = {
   id: string;
   start: string;
   end: string;
+  sourceStart?: string;
+  sourceEnd?: string;
+  sourceTimeStart?: number;
+  sourceTimeEnd?: number;
+  action_visual?: string;
+  voiceStart?: string;
+  voiceEnd?: string;
+  captionStart?: string;
+  captionEnd?: string;
   title: string;
   detail: string;
   /** Contextual line used by the voice and subtitle tracks in the editor. */

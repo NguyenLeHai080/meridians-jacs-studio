@@ -1,6 +1,6 @@
 import type { VoiceProfile } from "./types";
 
-/** Built-in locale profiles. Speech is generated locally on the customer's OS. */
+/** Built-in locale profiles. Speech is generated locally on the customer's OS or via Neural Cloud. */
 export const VOICE_PACKS: VoiceProfile[] = [
   // 👑 ELEVENLABS AI - Cảm xúc chân thật, có tiếng thở, ngắt nghỉ như người thật 100%
   {
@@ -10,6 +10,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "male",
     engine: "provider",
+    region: "eleven",
+    style: "story",
   },
   {
     id: "eleven-charlie",
@@ -18,6 +20,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "male",
     engine: "provider",
+    region: "eleven",
+    style: "mystery",
   },
   {
     id: "eleven-george",
@@ -26,6 +30,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "male",
     engine: "provider",
+    region: "eleven",
+    style: "story",
   },
   {
     id: "eleven-rachel",
@@ -34,6 +40,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "female",
     engine: "provider",
+    region: "eleven",
+    style: "emotional",
   },
 
   // 🔥 VBEE AIVOICE - Giọng Review Phim Quốc Dân & Đa Vùng Miền Việt Nam
@@ -44,6 +52,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "male",
     engine: "provider",
+    region: "north",
+    style: "review",
   },
   {
     id: "vbee-minhhoang",
@@ -52,6 +62,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "male",
     engine: "provider",
+    region: "south",
+    style: "story",
   },
   {
     id: "vbee-maiphuong",
@@ -60,6 +72,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "female",
     engine: "provider",
+    region: "north",
+    style: "emotional",
   },
   {
     id: "vbee-ngochoang",
@@ -68,16 +82,30 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "female",
     engine: "provider",
+    region: "south",
+    style: "emotional",
   },
 
   // ⚡ MICROSOFT NEURAL PROSODY AI - Tốc độ tức thì
   {
     id: "vi-adam-review",
-    label: "⚡ Adam Review Phim (Neural AI · Trầm ấm, nhịp dứt khoát YouTube/TikTok)",
+    label: "⚡ Nam Review Phim Nhanh (Neural AI · Miền Bắc, nhịp dứt khoát TikTok)",
     language: "vi",
     locale: "vi-VN",
     gender: "male",
     engine: "local",
+    region: "north",
+    style: "review",
+  },
+  {
+    id: "vi-namminh",
+    label: "🎙️ Nam Minh (Neural AI · Nam Bắc - Thời sự, tin tức chính luận)",
+    language: "vi",
+    locale: "vi-VN",
+    gender: "male",
+    engine: "local",
+    region: "north",
+    style: "news",
   },
   {
     id: "vi-mystery-deep",
@@ -86,48 +114,60 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "vi-VN",
     gender: "male",
     engine: "local",
+    region: "mystery",
+    style: "mystery",
   },
   {
     id: "vi-hoaimy-review",
-    label: "✨ Nữ Review Phim / Viral (Neural AI · Sôi nổi, biểu cảm, cuốn hút)",
+    label: "✨ Nữ Review Phim / Viral (Neural AI · Nữ Bắc - Sôi nổi, biểu cảm cuốn hút)",
     language: "vi",
     locale: "vi-VN",
     gender: "female",
     engine: "local",
+    region: "north",
+    style: "review",
   },
   {
     id: "vi-hoaimy",
-    label: "📻 Nữ Phát Thanh Viên Thời Sự (Neural AI · Chuẩn mực, trang trọng)",
+    label: "📻 Hoài My (Neural AI · Nữ Bắc - Phát thanh viên chuẩn mực)",
     language: "vi",
     locale: "vi-VN",
     gender: "female",
     engine: "local",
+    region: "north",
+    style: "news",
   },
   {
     id: "vi-baolong",
-    label: "🌴 Nam Nam Bộ / Miền Tây (Neural AI · Gần gũi, đời thường mộc mạc)",
+    label: "🌴 Bảo Long (Neural AI · Nam Nam Bộ / Miền Tây - Mộc mạc, gần gũi)",
     language: "vi",
     locale: "vi-VN",
     gender: "male",
     engine: "local",
+    region: "south",
+    style: "story",
   },
   {
     id: "vi-thihuong",
-    label: "🌸 Nữ Nam Bộ Ngọt Ngào (Neural AI · Dịu dàng, đằm thắm)",
+    label: "🌸 Thị Hương (Neural AI · Nữ Nam Bộ Ngọt Ngào - Dịu dàng, đằm thắm)",
     language: "vi",
     locale: "vi-VN",
     gender: "female",
     engine: "local",
+    region: "south",
+    style: "emotional",
   },
 
-  // English - Cinematic & Documentaries
+  // 🎬 English - Hollywood, Cinematic & Documentaries
   {
     id: "en-adam",
-    label: "🎬 Adam Voice · English US (Hollywood Movie Narrator siêu trầm kịch tính - Guy)",
+    label: "🎬 Adam Voice · English US (Hollywood Movie Narrator siêu trầm kịch tính)",
     language: "en",
     locale: "en-US",
     gender: "male",
     engine: "local",
+    region: "intl",
+    style: "story",
   },
   {
     id: "en-brian",
@@ -136,6 +176,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "en-US",
     gender: "male",
     engine: "local",
+    region: "intl",
+    style: "news",
   },
   {
     id: "en-jenny",
@@ -144,6 +186,8 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "en-US",
     gender: "female",
     engine: "local",
+    region: "intl",
+    style: "emotional",
   },
   {
     id: "en-aria",
@@ -152,27 +196,29 @@ export const VOICE_PACKS: VoiceProfile[] = [
     locale: "en-US",
     gender: "female",
     engine: "local",
+    region: "intl",
+    style: "review",
   },
 
-  // Quốc tế đa ngôn ngữ
-  { id: "ja-male", label: "🗾 Keita · 日本語 Nam (Thuyết minh & Anime)", language: "ja", locale: "ja-JP", gender: "male", engine: "local" },
-  { id: "ja-female", label: "🌸 Nanami · 日本語 Nữ (Truyền cảm & Tự nhiên)", language: "ja", locale: "ja-JP", gender: "female", engine: "local" },
-  { id: "ko-male", label: "🇰🇷 InJoon · 한국어 Nam (K-Drama & Thuyết minh)", language: "ko", locale: "ko-KR", gender: "male", engine: "local" },
-  { id: "ko-female", label: "🌺 SunHi · 한국어 Nữ (Ngọt ngào & Truyền cảm)", language: "ko", locale: "ko-KR", gender: "female", engine: "local" },
-  { id: "zh-CN-male", label: "🇨🇳 Yunxi · 中文 Nam (Thuyết minh phim CCTV)", language: "zh-CN", locale: "zh-CN", gender: "male", engine: "local" },
-  { id: "zh-CN-female", label: "🏮 Xiaoxiao · 中文 Nữ (Cảm xúc sống động)", language: "zh-CN", locale: "zh-CN", gender: "female", engine: "local" },
-  { id: "fr-male", label: "🇫🇷 Henri · Français Nam", language: "fr", locale: "fr-FR", gender: "male", engine: "local" },
-  { id: "fr-female", label: "🥖 Denise · Français Nữ", language: "fr", locale: "fr-FR", gender: "female", engine: "local" },
-  { id: "es-male", label: "🇪🇸 Alvaro · Español Nam", language: "es", locale: "es-ES", gender: "male", engine: "local" },
-  { id: "es-female", label: "💃 Elvira · Español Nữ", language: "es", locale: "es-ES", gender: "female", engine: "local" },
+  // 🌐 Quốc tế đa ngôn ngữ
+  { id: "ja-male", label: "🗾 Keita · 日本語 Nam (Thuyết minh & Anime)", language: "ja", locale: "ja-JP", gender: "male", engine: "local", region: "intl", style: "story" },
+  { id: "ja-female", label: "🌸 Nanami · 日本語 Nữ (Truyền cảm & Tự nhiên)", language: "ja", locale: "ja-JP", gender: "female", engine: "local", region: "intl", style: "emotional" },
+  { id: "ko-male", label: "🇰🇷 InJoon · 한국어 Nam (K-Drama & Thuyết minh)", language: "ko", locale: "ko-KR", gender: "male", engine: "local", region: "intl", style: "story" },
+  { id: "ko-female", label: "🌺 SunHi · 한국어 Nữ (Ngọt ngào & Truyền cảm)", language: "ko", locale: "ko-KR", gender: "female", engine: "local", region: "intl", style: "emotional" },
+  { id: "zh-CN-male", label: "🇨🇳 Yunxi · 中文 Nam (Thuyết minh phim CCTV)", language: "zh-CN", locale: "zh-CN", gender: "male", engine: "local", region: "intl", style: "story" },
+  { id: "zh-CN-female", label: "🏮 Xiaoxiao · 中文 Nữ (Cảm xúc sống động)", language: "zh-CN", locale: "zh-CN", gender: "female", engine: "local", region: "intl", style: "emotional" },
+  { id: "fr-male", label: "🇫🇷 Henri · Français Nam", language: "fr", locale: "fr-FR", gender: "male", engine: "local", region: "intl", style: "story" },
+  { id: "fr-female", label: "🥖 Denise · Français Nữ", language: "fr", locale: "fr-FR", gender: "female", engine: "local", region: "intl", style: "emotional" },
+  { id: "es-male", label: "🇪🇸 Alvaro · Español Nam", language: "es", locale: "es-ES", gender: "male", engine: "local", region: "intl", style: "story" },
+  { id: "es-female", label: "💃 Elvira · Español Nữ", language: "es", locale: "es-ES", gender: "female", engine: "local", region: "intl", style: "emotional" },
 ];
 
 export function voicesForLanguage(language: string): VoiceProfile[] {
   const code = String(language || "vi").toLowerCase();
-  const exact = VOICE_PACKS.filter((voice) => voice.language.toLowerCase() === code);
+  const exact = VOICE_PACKS.filter((voice) => (voice?.language ? voice.language.toLowerCase() : "") === code);
   if (exact.length) return exact;
-  const base = code.split(/[-_]/)[0];
-  return VOICE_PACKS.filter((voice) => voice.language.toLowerCase().split(/[-_]/)[0] === base);
+  const base = (code ? code.split(/[-_]/)[0] : "vi");
+  return VOICE_PACKS.filter((voice) => (voice?.language ? voice.language.toLowerCase().split(/[-_]/)[0] : "") === base);
 }
 
 export function defaultVoice(language: string, gender: "male" | "female"): VoiceProfile {

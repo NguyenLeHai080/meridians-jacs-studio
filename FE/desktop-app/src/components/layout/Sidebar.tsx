@@ -36,6 +36,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const queuedCount = jobs.filter((j) => j.status === "queued").length;
   const failedCount = jobs.filter((j) => j.status === "failed").length;
 
+  const mainKeys: NavKey[] = ["overview"];
+
   const workflowKeys: NavKey[] = [
     "sources",
     "analysis",
@@ -43,15 +45,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     "timeline",
     "brand",
     "render",
+    "batch",
   ];
 
   const systemKeys: NavKey[] = [
-    "overview",
-    "batch",
+    "usage",
+    "settings",
+    "activation",
     "billing",
     "logs",
-    "activation",
-    "settings",
   ];
 
   const renderNavItem = (item: (typeof NAV_ITEMS)[0]) => {
@@ -98,6 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     );
   };
 
+  const mainItems = NAV_ITEMS.filter((i) => mainKeys.includes(i.key));
   const workflowItems = NAV_ITEMS.filter((i) => workflowKeys.includes(i.key));
   const systemItems = NAV_ITEMS.filter((i) => systemKeys.includes(i.key));
 
@@ -131,10 +134,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Nav Menu Groups */}
       <div className="sidebar-menu-scroll">
-        <div className="nav-group-heading">QUY TRÌNH VIDEO AI</div>
+        <div className="nav-group-heading">TRUNG TÂM ĐIỀU KHIỂN</div>
+        <nav className="nav-group">{mainItems.map(renderNavItem)}</nav>
+
+        <div className="nav-group-heading" style={{ marginTop: "0.85rem" }}>
+          QUY TRÌNH VIDEO AI
+        </div>
         <nav className="nav-group">{workflowItems.map(renderNavItem)}</nav>
 
-        <div className="nav-group-heading" style={{ marginTop: "1rem" }}>
+        <div className="nav-group-heading" style={{ marginTop: "0.85rem" }}>
           HỆ THỐNG & QUẢN TRỊ
         </div>
         <nav className="nav-group">{systemItems.map(renderNavItem)}</nav>

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { getToken } from "../../core/session";
 import { apiRequest } from "../../core/api";
-import { Toast } from "../../components/common/Toast";
+import { showToast as swalToast } from "../../core/swal";
 import { Sidebar, MenuKey } from "../../components/layout/Sidebar";
+
 import { Navbar } from "../../components/layout/Navbar";
 
 // Feature Pages
@@ -13,8 +14,8 @@ import { BillingPage, BankConfigPage } from "../billing";
 import { PlansPage } from "../plans";
 import { RenewalsPage } from "../renewals";
 import { SessionsPage } from "../sessions";
-import { ProvidersPage } from "../ai-providers";
-import { TelemetryPage } from "../telemetry";
+import { ProvidersPage, ModelPricingPage, AiRequestLogsPage, AiKeyGrantsPage } from "../ai-providers";
+import { TelemetryPage, ApiOperationsPage } from "../telemetry";
 import { LogsPage } from "../logs";
 import { ReleasesPage } from "../releases";
 import { ToolConfigPage } from "../tool-config";
@@ -31,6 +32,10 @@ const VALID_MENUS: MenuKey[] = [
   "plans",
   "renewals",
   "providers",
+  "model_pricing",
+  "ai_key_grants",
+  "ai_request_logs",
+  "api_operations",
   "telemetry",
   "logs",
   "releases",
@@ -100,20 +105,12 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
   }, [fetchGlobalStats]);
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
-    setToastMessage(message);
-    setToastType(type);
+    swalToast(message, type);
   };
 
   return (
     <div className="app-container">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <Toast
-          type={toastType}
-          message={toastMessage}
-          onClose={() => setToastMessage("")}
-        />
-      )}
+
 
       {/* Account & Security Modal */}
       {showAccountModal && (
@@ -211,6 +208,31 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
           {activeMenu === "providers" && (
             <ProvidersPage
+              searchTerm={searchTerm}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeMenu === "model_pricing" && (
+            <ModelPricingPage
+              searchTerm={searchTerm}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeMenu === "ai_key_grants" && (
+            <AiKeyGrantsPage />
+          )}
+
+          {activeMenu === "ai_request_logs" && (
+            <AiRequestLogsPage
+              searchTerm={searchTerm}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeMenu === "api_operations" && (
+            <ApiOperationsPage
               searchTerm={searchTerm}
               onNotify={showToast}
             />

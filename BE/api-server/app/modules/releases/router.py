@@ -54,19 +54,23 @@ async def delete_release(release_id: UUID, _: dict = Depends(require_auth)):
 
 def _version(value: str) -> tuple[int, int, int]:
     try:
-        major, minor, patch = value.removeprefix("v").split(".")
-        return int(major), int(minor), int(patch)
-    except (AttributeError, ValueError):
+        clean = str(value or "").strip().lstrip("v").split("-")[0]
+        parts = [int(p) for p in clean.split(".") if p.isdigit()]
+        while len(parts) < 3:
+            parts.append(0)
+        return tuple(parts[:3])
+    except (ValueError, TypeError, IndexError, AttributeError):
         return (0, 0, 0)
 
 
 @router.get("/check")
 async def check_update(
     platform: str = Query(pattern=r"^(windows|macos)$"),
-    current_version: str = Query(pattern=r"^v\d+\.\d+\.\d+$"),
+    current_version: str = Query(pattern=r"^v?\d+(\.\d+)*.*$"),
     channel: str = Query(default="stable", pattern=r"^(stable|beta)$"),
 ):
     releases = [item for item in store.list("releases") if item.get("status") == "published" and item.get("platform") == platform and item.get("channel") == channel]
     candidates = [item for item in releases if _version(item["version"]) > _version(current_version)]
     latest = max(candidates, key=lambda item: _version(item["version"]), default=None)
     return {"data": {"update_available": latest is not None, "release": latest}}
+

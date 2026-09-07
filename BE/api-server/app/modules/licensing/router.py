@@ -11,7 +11,9 @@ from app.core.security import require_auth
 from app.core.store import store
 from app.modules.licensing.schemas import (
     CreateLicenseRequest,
+    GrantCreditRequest,
     HwidResetRequest,
+    LicenseApiConfigRequest,
     LicenseCreatedResponse,
     LicenseHeartbeatRequest,
     LicenseRenewRequest,
@@ -19,6 +21,7 @@ from app.modules.licensing.schemas import (
     LicenseStatus,
     LicenseStatusUpdate,
     LicenseUpdateRequest,
+    UpdateAllowedModelsRequest,
     ValidateLicenseRequest,
 )
 
@@ -113,9 +116,13 @@ async def create_license(payload: CreateLicenseRequest, user: dict = Depends(req
             "key_hash": hash_key(raw_key),
             "key_hint": f"JACS-****-{raw_key[-4:]}",
             "status": LicenseStatus.active,
+            "terms_accepted": True,
+            "terms_accepted_at": datetime.now(UTC),
+            "terms_version": "JACS-LEGAL-2026-v2.4",
             "created_at": datetime.now(UTC),
         },
     )
+
     store.create("audit", {"action": "license.created", "license_id": str(record["id"]), "actor": user["email"], "customer": payload.customer_name})
     
     # Auto record billing transaction if amount is provided
@@ -224,6 +231,144 @@ async def reset_hwid(license_id: UUID, payload: HwidResetRequest, user: dict = D
     return updated
 
 
+@router.post("/{license_id}/regenerate-key", response_model=LicenseCreatedResponse)
+async def regenerate_license_key(license_id: UUID, user: dict = Depends(require_auth)):
+    existing = store.get("licenses", UUID(str(license_id)))
+    if not existing:
+        raise AppError("LICENSE_NOT_FOUND", "Không tìm thấy license", 404)
+    raw_key = make_key()
+    updated = store.update(
+        "licenses",
+        UUID(str(license_id)),
+        {
+            "key_hash": hash_key(raw_key),
+            "key_hint": f"JACS-****-{raw_key[-4:]}",
+        },
+    )
+    store.create(
+        "audit",
+        {
+            "action": "license.regenerate_key",
+            "license_id": str(license_id),
+            "actor": user["email"],
+            "new_hint": updated.get("key_hint"),
+        },
+    )
+    return {**updated, "key": raw_key}
+
+
+@router.put("/{license_id}/api-config", response_model=LicenseResponse)
+async def update_license_api_config(license_id: UUID, payload: LicenseApiConfigRequest, user: dict = Depends(require_auth)):
+    existing = store.get("licenses", UUID(str(license_id)))
+    if not existing:
+        raise AppError("LICENSE_NOT_FOUND", "Không tìm thấy license", 404)
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if "max_requests_per_day" in update_data and update_data["max_requests_per_day"] is not None:
+        update_data["max_jobs_per_day"] = update_data["max_requests_per_day"]
+    updated = store.update("licenses", UUID(str(license_id)), update_data)
+    store.create("audit", {
+        "action": "license.api_config_updated",
+        "license_id": str(license_id),
+        "actor": user["email"],
+        **update_data,
+    })
+    return updated
+
+
+@router.post("/{license_id}/accept-terms")
+async def accept_license_terms(license_id: UUID, request: Request, payload: dict | None = None):
+    """Client endpoint to confirm legal compliance and accept terms of service."""
+    existing = store.get("licenses", UUID(str(license_id)))
+    if not existing:
+        raise AppError("LICENSE_NOT_FOUND", "Không tìm thấy license", 404)
+    now = datetime.now(UTC)
+    updated = store.update(
+        "licenses",
+        UUID(str(license_id)),
+        {
+            "terms_accepted": True,
+            "terms_accepted_at": now,
+            "terms_version": "JACS-LEGAL-2026-v2.4",
+            "updated_at": now,
+        },
+    )
+    store.create("audit", {
+        "action": "license.terms_accepted",
+        "license_id": str(license_id),
+        "customer": updated.get("customer_name"),
+        "hwid": updated.get("hwid"),
+        "terms_version": "JACS-LEGAL-2026-v2.4",
+        "actor": "client_app",
+    })
+    return {"success": True, "terms_accepted": True, "terms_accepted_at": now.isoformat()}
+
+
+@router.post("/{license_id}/grant-credit", response_model=LicenseResponse)
+async def grant_credit_to_license(license_id: UUID, payload: GrantCreditRequest, user: dict = Depends(require_auth)):
+    """Add or set AI credit balance for a specific tool key."""
+    existing = store.get("licenses", UUID(str(license_id)))
+    if not existing:
+        raise AppError("LICENSE_NOT_FOUND", "Không tìm thấy license", 404)
+    
+    current_balance = float(existing.get("credit_balance") or 0.0)
+    if payload.mode == "add":
+        new_balance = max(0.0, current_balance + payload.amount)
+    else:
+        new_balance = max(0.0, payload.amount)
+    
+    updated = store.update("licenses", UUID(str(license_id)), {
+        "credit_balance": round(new_balance, 2),
+        "is_custom_quota": True,
+    })
+    
+    # Record transaction
+    store.create("billing_transactions", {
+        "license_id": str(license_id),
+        "customer_name": updated.get("customer_name", "Khách hàng"),
+        "amount": payload.amount if payload.mode == "add" else (new_balance - current_balance),
+        "plan_type": "ai_credit_grant",
+        "payment_method": "admin_grant",
+        "transaction_type": "credit_grant",
+        "actor": user["email"],
+        "notes": f"Admin cấp credit cho key {updated.get('key_hint')}: {payload.reason or 'Nạp trực tiếp từ Admin Portal'}. Số dư mới: {new_balance:.2f} Cr",
+        "created_at": datetime.now(UTC),
+    })
+
+    store.create("audit", {
+        "action": "license.credit_granted",
+        "license_id": str(license_id),
+        "old_balance": current_balance,
+        "new_balance": new_balance,
+        "mode": payload.mode,
+        "amount": payload.amount,
+        "reason": payload.reason,
+        "actor": user["email"],
+    })
+    return updated
+
+
+@router.put("/{license_id}/allowed-models", response_model=LicenseResponse)
+async def update_allowed_models(license_id: UUID, payload: UpdateAllowedModelsRequest, user: dict = Depends(require_auth)):
+    """Set which AI models this tool key is authorized to use."""
+    existing = store.get("licenses", UUID(str(license_id)))
+    if not existing:
+        raise AppError("LICENSE_NOT_FOUND", "Không tìm thấy license", 404)
+    
+    updated = store.update("licenses", UUID(str(license_id)), {
+        "allowed_models": payload.allowed_models,
+        "ai_gateway_enabled": payload.ai_gateway_enabled,
+    })
+    
+    store.create("audit", {
+        "action": "license.allowed_models_updated",
+        "license_id": str(license_id),
+        "allowed_models": payload.allowed_models,
+        "ai_gateway_enabled": payload.ai_gateway_enabled,
+        "actor": user["email"],
+    })
+    return updated
+
+
 @router.post("/validate")
 async def validate_license(payload: ValidateLicenseRequest, request: Request):
     client_ip = request.client.host if request.client else None
@@ -237,6 +382,9 @@ async def validate_license(payload: ValidateLicenseRequest, request: Request):
             "premium_ai": match.get("premium_ai", False),
             "expires_at": match.get("expires_at"),
             "max_jobs_per_day": match.get("max_jobs_per_day", 100),
+            "credit_balance": match.get("credit_balance", 0.0),
+            "allowed_models": match.get("allowed_models"),
+            "ai_gateway_enabled": match.get("ai_gateway_enabled", True),
         }
     }
 
@@ -262,6 +410,9 @@ async def license_heartbeat(payload: LicenseHeartbeatRequest, request: Request):
             "premium_ai": updated.get("premium_ai", False),
             "expires_at": updated.get("expires_at"),
             "max_jobs_per_day": updated.get("max_jobs_per_day", 100),
+            "credit_balance": updated.get("credit_balance", 0.0),
+            "allowed_models": updated.get("allowed_models"),
+            "ai_gateway_enabled": updated.get("ai_gateway_enabled", True),
             "app_version": payload.app_version,
             "platform": payload.platform,
         }

@@ -5,8 +5,7 @@ const os = require("node:os");
 const childProcess = require("node:child_process");
 const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
-const { once } = require("node:events");
-const { createMachineInfo } = require("./machine-id.cjs");
+const { createMachineInfo, collectClientHardwareInfo } = require("./machine-id.cjs");
 const { createProviderStore } = require("./provider-store.cjs");
 const { extractPageVideoUrls, extractResolverVideoUrls, extractTikTokVideoUrls, extractYouTubeVideoId, isTikTokHost, isYouTubeHost, normalizeVideoUrl, resolveYouTubeVideoUrl } = require("./video-url.cjs");
 const { buildAudioFilter } = require("./audio-mix.cjs");
@@ -79,6 +78,9 @@ function getCandidateSearchPaths(name) {
   const candidates = [
     process.env[`JACS_${name.toUpperCase().replace(/-/g, "_")}_PATH`],
     userDataBin ? path.join(userDataBin, cmd) : null,
+    userDataBin ? path.join(userDataBin, "bin", cmd) : null,
+    userDataBin ? path.join(userDataBin, architectureDirectory, cmd) : null,
+    userDataBin ? path.join(userDataBin, platformDirectory, cmd) : null,
     path.join(localAppDataBin, cmd),
     path.join(appDataBin, cmd),
     path.join(localProgramsBin, architectureDirectory, cmd),
@@ -141,6 +143,19 @@ function findExecutable(name) {
       } catch {}
     }
   }
+  let userDataBin = "";
+  try { userDataBin = path.join(app.getPath("userData"), "bin"); } catch {}
+  if (userDataBin && fs.existsSync(userDataBin)) {
+    const isWin = process.platform === "win32";
+    const cmd = isWin && !name.toLowerCase().endsWith(".exe") ? `${name}.exe` : name;
+    const recursiveHit = findFileRecursive(userDataBin, cmd, 3);
+    if (recursiveHit && fs.existsSync(recursiveHit)) {
+      try {
+        const stat = fs.statSync(recursiveHit);
+        if (stat.isFile() && stat.size > 1024) return recursiveHit;
+      } catch {}
+    }
+  }
   for (const candidate of [name, `${name}.exe`]) {
     for (const flag of ["--version", "-version", "-h"]) {
       try {
@@ -181,58 +196,133 @@ async function ensureExecutable(name, options = {}) {
       } catch {}
     }
 
-    const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
-    onProgress({ stage: `Đang tải bộ xử lý ${name} (tự động 1 lần duy nhất)...`, progress: 5 });
+    if (name === "yt-dlp") {
+      const ytdlpUrls = [
+        "https://jacs-studio.nexoratech.com.vn/downloads/yt-dlp.exe",
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+      ];
+      for (const yUrl of ytdlpUrls) {
+        try {
+          const res = await fetch(yUrl, {
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+          });
+          if (res.ok) {
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.length > 5 * 1024 * 1024) {
+              fs.writeFileSync(targetExe, buf, { mode: 0o755 });
+              return targetExe;
+            }
+          }
+        } catch {}
+      }
+    }
 
-    const downloadUrl = isWin
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
+    onProgress({ stage: `Đang tải bộ xử lý media ${name} (tự động 1 lần duy nhất)...`, progress: 5 });
+
+    const downloadZipUrl = isWin
       ? "https://jacs-studio.nexoratech.com.vn/downloads/ffmpeg-win64.zip"
       : `https://jacs-studio.nexoratech.com.vn/downloads/${name}`;
 
     const tempZip = path.join(app.getPath("temp"), `jacs-media-engine-${Date.now()}.zip`);
 
-    const response = await fetch(downloadUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JACS-Studio-Updater" }
-    });
-    if (!response.ok) {
-      throw new Error(`Không thể tải bộ xử lý ${name} từ máy chủ JACS (HTTP ${response.status}). Hãy kiểm tra lại kết nối mạng.`);
+    try {
+      const response = await fetch(downloadZipUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JACS-Studio-Updater" }
+      });
+      if (response.ok) {
+        const totalBytes = Number(response.headers.get("content-length") || 0);
+        const fileStream = fs.createWriteStream(tempZip);
+        let downloadedBytes = 0;
+
+        const reader = response.body.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          fileStream.write(Buffer.from(value));
+          downloadedBytes += value.length;
+          if (totalBytes > 0) {
+            const pct = Math.min(90, Math.round((downloadedBytes / totalBytes) * 80) + 10);
+            onProgress({ stage: `Đang tải bộ xử lý media FFmpeg (${Math.round(downloadedBytes / 1024 / 1024)}MB / ${Math.round(totalBytes / 1024 / 1024)}MB)...`, progress: pct });
+          }
+        }
+        fileStream.end();
+        await new Promise((resolve, reject) => {
+          fileStream.on("finish", resolve);
+          fileStream.on("error", reject);
+        });
+
+        onProgress({ stage: `Đang giải nén bộ xử lý media FFmpeg...`, progress: 95 });
+
+        if (isWin) {
+          try {
+            childProcess.execSync(`tar -xf "${tempZip}" -C "${userDataBin}"`, { windowsHide: true, stdio: "ignore" });
+          } catch {
+            try {
+              childProcess.execSync(`powershell -NoProfile -Command "Expand-Archive -Force -Path '${tempZip}' -DestinationPath '${userDataBin}'"`, { windowsHide: true, stdio: "ignore" });
+            } catch (err) {
+              console.warn("Expand archive error:", err);
+            }
+          }
+        } else {
+          try {
+            fs.copyFileSync(tempZip, targetExe);
+            fs.chmodSync(targetExe, 0o755);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn("Zip download failed, attempting direct binary download:", err);
+    } finally {
+      try { if (fs.existsSync(tempZip)) fs.unlinkSync(tempZip); } catch {}
     }
 
-    const totalBytes = Number(response.headers.get("content-length") || 0);
-    const fileStream = fs.createWriteStream(tempZip);
-    let downloadedBytes = 0;
-
-    const reader = response.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      fileStream.write(Buffer.from(value));
-      downloadedBytes += value.length;
-      if (totalBytes > 0) {
-        const pct = Math.min(90, Math.round((downloadedBytes / totalBytes) * 80) + 10);
-        onProgress({ stage: `Đang tải bộ xử lý media FFmpeg (${Math.round(downloadedBytes / 1024 / 1024)}MB / ${Math.round(totalBytes / 1024 / 1024)}MB)...`, progress: pct });
+    // Check if targetExe is in a subdirectory inside userDataBin and relocate to root
+    if (!fs.existsSync(targetExe) || fs.statSync(targetExe).size < 1024 * 1024) {
+      const foundInUserData = findFileRecursive(userDataBin, cmd, 3);
+      if (foundInUserData && foundInUserData !== targetExe) {
+        try { fs.copyFileSync(foundInUserData, targetExe); } catch {}
       }
     }
-    fileStream.end();
-    await new Promise((resolve, reject) => {
-      fileStream.on("finish", resolve);
-      fileStream.on("error", reject);
-    });
 
-    onProgress({ stage: `Đang giải nén bộ xử lý media FFmpeg...`, progress: 95 });
+    // Direct binary fallback if still missing
+    if (!fs.existsSync(targetExe) || fs.statSync(targetExe).size < 1024 * 1024) {
+      const directUrl = isWin
+        ? `https://jacs-studio.nexoratech.com.vn/downloads/${cmd}`
+        : `https://jacs-studio.nexoratech.com.vn/downloads/${name}`;
+      onProgress({ stage: `Đang tải trực tiếp bộ xử lý ${cmd}...`, progress: 50 });
+      const res = await fetch(directUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JACS-Studio-Updater" }
+      });
+      if (!res.ok) {
+        throw new Error(`Không thể tải ${cmd} từ máy chủ JACS (HTTP ${res.status}). Vui lòng kiểm tra kết nối mạng.`);
+      }
+      const buffer = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(targetExe, buffer);
+      if (!isWin) {
+        try { fs.chmodSync(targetExe, 0o755); } catch {}
+      }
+    }
 
-    if (isWin) {
-      try {
-        childProcess.execSync(`tar -xf "${tempZip}" -C "${userDataBin}"`, { windowsHide: true, stdio: "ignore" });
-      } catch {
-        try {
-          childProcess.execSync(`powershell -NoProfile -Command "Expand-Archive -Force -Path '${tempZip}' -DestinationPath '${userDataBin}'"`, { windowsHide: true, stdio: "ignore" });
-        } catch (err) {
-          throw new Error(`Lỗi giải nén ${name}: ${err.message}`);
+    // Also ensure ffprobe is available if downloading ffmpeg on Windows
+    if (isWin && name === "ffmpeg") {
+      const probeExe = path.join(userDataBin, "ffprobe.exe");
+      if (!fs.existsSync(probeExe) || fs.statSync(probeExe).size < 1024 * 1024) {
+        const foundProbe = findFileRecursive(userDataBin, "ffprobe.exe", 3);
+        if (foundProbe && foundProbe !== probeExe) {
+          try { fs.copyFileSync(foundProbe, probeExe); } catch {}
+        } else {
+          try {
+            const resProbe = await fetch("https://jacs-studio.nexoratech.com.vn/downloads/ffprobe.exe", {
+              headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JACS-Studio-Updater" }
+            });
+            if (resProbe.ok) {
+              fs.writeFileSync(probeExe, Buffer.from(await resProbe.arrayBuffer()));
+            }
+          } catch {}
         }
       }
     }
-
-    try { fs.unlinkSync(tempZip); } catch {}
 
     const resolved = findExecutable(name);
     if (!resolved || !fs.existsSync(resolved)) {
@@ -910,7 +1000,16 @@ async function downloadVideo(event, url, operationId) {
   }
 
   // Ưu tiên tải qua yt-dlp binary đi kèm (hỗ trợ YouTube, TikTok, Facebook, Shorts không lo bị chặn bot)
-  const ytdlp = findExecutable("yt-dlp");
+  let ytdlp = findExecutable("yt-dlp");
+  if (!ytdlp) {
+    try {
+      ytdlp = await ensureExecutable("yt-dlp", {
+        onProgress: (info) => {
+          event.sender.send("runtime:download-progress", { progress: info.progress || 5, stage: info.stage || "Đang tải bộ xử lý media yt-dlp...", operationId });
+        }
+      });
+    } catch {}
+  }
   if (ytdlp) {
     try {
       const ytdlpResult = await downloadWithYtDlp(event, parsed.href, cache, operationId);
@@ -1079,7 +1178,17 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
     });
   }
 
+  const fallbackTitles = [
+    `Phá Án Kịch Tính: Sự Thật Phơi Bày Sau Vỏ Bọc Hoàn Hảo`,
+    `Khoảnh Khắc Trực Giác Nghiệp Vụ Vạch Trần Tội Ác`,
+    `Cái Giá Đắt Cho Sự Lọc Lừa & Bài Học Đắt Giá`,
+    `Tình Huống Nghẹt Thở Khi Sự Thật Được Phơi Bày`,
+  ];
+
   return {
+    videoTitle: fallbackTitles[0],
+    suggestedTitles: fallbackTitles,
+    hookTitle: "Hook Mở Màn Nghẹt Thở 10s Đầu",
     summary: `Kịch bản phân tích kể chuyện 3 Hồi & Hook (${targetDurMinutes} phút): Bóc tách toàn bộ vụ việc từ mở đầu đến hồi kết với góc nhìn quan sát xã hội và nghiệp vụ trinh sát sắc bén.`,
     scenes,
     score: 96,
@@ -1436,9 +1545,9 @@ function normalizeScenes(value, duration, fallbackScenes, options = {}) {
   const scenesToProcess = hasRealAiScenes ? value : (Array.isArray(fallbackScenes) && fallbackScenes.length ? fallbackScenes : []);
 
   const count = Math.max(1, scenesToProcess.length);
-  const targetDurMinutes = Number(options?.targetDurationMinutes) || (total > 300 ? 5.5 : Math.ceil(total / 60));
+  const targetDurMinutes = Number(options?.targetDurationMinutes) || (total > 300 ? 5.0 : Math.ceil(total / 60));
   const targetDurSeconds = Math.round(targetDurMinutes * 60);
-  const defaultClipDur = Math.max(15, Math.min(45, Math.round(targetDurSeconds / count)));
+  const defaultClipDur = Math.max(10, Math.min(45, Math.round(targetDurSeconds / count)));
   const sourceStep = (total - defaultClipDur) / Math.max(1, count - 1);
 
   let recapTimelineCursor = 0;
@@ -1455,14 +1564,6 @@ function normalizeScenes(value, duration, fallbackScenes, options = {}) {
     if (!Number.isFinite(parsedSrcStart) || (parsedSrcStart === 0 && index > 0) || parsedSrcStart >= total) {
       parsedSrcStart = Math.min(total - defaultClipDur, Math.max(0, Math.round(index * sourceStep)));
     }
-    if (!Number.isFinite(parsedSrcEnd) || parsedSrcEnd <= parsedSrcStart || (parsedSrcEnd - parsedSrcStart < 5)) {
-      parsedSrcEnd = Math.min(total, parsedSrcStart + defaultClipDur);
-    }
-
-    const clipDuration = Math.max(5, parsedSrcEnd - parsedSrcStart);
-    const timelineStart = recapTimelineCursor;
-    const timelineEnd = recapTimelineCursor + clipDuration;
-    recapTimelineCursor = timelineEnd;
 
     const rawVoice = String(scene?.voiceover || scene?.translation || scene?.detail || "").trim().slice(0, 3000);
     let cleanVoice = isRefusalText(rawVoice) ? "" : stripSceneMetadata(rawVoice);
@@ -1476,6 +1577,20 @@ function normalizeScenes(value, duration, fallbackScenes, options = {}) {
         cleanVoice = `${sceneTitle}: Diễn biến tiếp tục được đẩy lên cao trào, phơi bày những tình tiết then chốt và tạo bước ngoặt quan trọng cho câu chuyện.`;
       }
     }
+
+    // Calibrate clip duration to match speech pacing (2.75 words per sec in Vietnamese/universal)
+    const wordCount = cleanVoice.split(/\s+/).filter(Boolean).length;
+    const voiceDuration = Math.max(4, Math.round(wordCount / 2.75));
+
+    if (!Number.isFinite(parsedSrcEnd) || parsedSrcEnd <= parsedSrcStart || (parsedSrcEnd - parsedSrcStart < 4)) {
+      parsedSrcEnd = Math.min(total, parsedSrcStart + Math.max(defaultClipDur, voiceDuration));
+    }
+
+    // Timeline duration matches voiceover reading time 1:1
+    const clipDuration = Math.max(4, voiceDuration);
+    const timelineStart = recapTimelineCursor;
+    const timelineEnd = recapTimelineCursor + clipDuration;
+    recapTimelineCursor = timelineEnd;
 
     resultScenes.push({
       id: String(scene?.id || `scene-${index + 1}`).trim().slice(0, 80) || `scene-${index + 1}`,
@@ -1498,8 +1613,6 @@ function normalizeScenes(value, duration, fallbackScenes, options = {}) {
   }
 
   return resultScenes;
-
-
 }
 
 function cleanField(str) {
@@ -1567,7 +1680,25 @@ function parseAnalysis(text, probe, usage, customPrompt, options = {}) {
     const rawSummary = cleanField(unwrapped?.summary || fallback.summary);
     const summary = isRefusalText(rawSummary) ? fallback.summary : rawSummary;
 
+    const rawVideoTitle = cleanField(unwrapped?.video_title || unwrapped?.title || unwrapped?.videoTitle);
+    const videoTitle = rawVideoTitle || fallback.videoTitle || "Phân Tích Video Cốt Truyện Kịch Tính";
+    const rawSuggested = Array.isArray(unwrapped?.suggested_titles || unwrapped?.suggestedTitles || unwrapped?.titles)
+      ? (unwrapped?.suggested_titles || unwrapped?.suggestedTitles || unwrapped?.titles).map(cleanField).filter(Boolean)
+      : [];
+    const suggestedTitles = rawSuggested.length
+      ? rawSuggested
+      : [
+          videoTitle,
+          `Sự Thật Đằng Sau: ${videoTitle}`,
+          `Lật Tẩy Bí Mật Vụ Án: ${videoTitle}`,
+          `Cái Giá Đắt Cho Sự Lọc Lừa`,
+        ];
+    const hookTitle = cleanField(unwrapped?.hook_title || unwrapped?.hookTitle || cleanScenes[0]?.title || "Hook Mở Màn Cao Trào");
+
     return {
+      videoTitle,
+      suggestedTitles,
+      hookTitle,
       summary,
       scenes: normalizeScenes(cleanScenes, probe.durationSeconds, fallback.scenes, options),
       score: 95,
@@ -1638,17 +1769,52 @@ function chooseMacSpeechVoice(sayPath, languageCode, gender) {
   return selected;
 }
 
+function stripSceneMetadata(text) {
+  if (!text) return "";
+  let cleaned = String(text)
+    .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[^\]]*\]/gi, "")
+    .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[:\-\.]\s*/gi, " ")
+    .replace(/\[\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\]/g, "")
+    .replace(/\(\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\)/g, "")
+    .replace(/(?:tại|ở|từ)\s+mốc\s+\d{1,2}[:.]\d{2}(?:\s*đến\s+\d{1,2}[:.]\d{2})?,?\s*/gi, "")
+    .replace(/(?:vào\s+)?lúc\s+\d{1,2}[:.]\d{2},?\s*/gi, "")
+    .replace(/\(\d{1,2}[:.]\d{2}\)/g, "")
+    .replace(/\[[^\]]{1,60}\]/g, "")
+    .replace(/[{}[\]"\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) {
+    cleaned = String(text).replace(/[{}[\]"\\]/g, "").trim();
+  }
+  return cleaned;
+}
+
 function resolveNeuralVoiceProfile(voice, languageCode = "vi", gender = "female") {
   const profiles = {
+    // 👑 ElevenLabs AI Mappings (Hyper-realistic emotional storytelling)
+    "eleven-adam": { voice: "vi-VN-NamMinhNeural", rate: "+8%", pitch: "+0Hz" },
+    "eleven-charlie": { voice: "vi-VN-NamMinhNeural", rate: "+4%", pitch: "-2Hz" },
+    "eleven-george": { voice: "vi-VN-NamMinhNeural", rate: "+6%", pitch: "-1Hz" },
+    "eleven-rachel": { voice: "vi-VN-HoaiMyNeural", rate: "+5%", pitch: "+1Hz" },
+
+    // 🔥 Vbee AIVoice Mappings (Viral Vietnamese Regional Voices)
+    "vbee-manhdung": { voice: "vi-VN-NamMinhNeural", rate: "+12%", pitch: "+0Hz" },
+    "vbee-minhhoang": { voice: "vi-VN-NamMinhNeural", rate: "+7%", pitch: "-1Hz" },
+    "vbee-maiphuong": { voice: "vi-VN-HoaiMyNeural", rate: "+10%", pitch: "+1Hz" },
+    "vbee-ngochoang": { voice: "vi-VN-HoaiMyNeural", rate: "+4%", pitch: "+0Hz" },
+
+    // ⚡ Microsoft Neural Prosody AI Mappings (Vietnamese)
     "vi-adam-review": { voice: "vi-VN-NamMinhNeural", rate: "+12%", pitch: "+0Hz" },
     "vi-namminh": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "+0Hz" },
-    "vi-mystery-deep": { voice: "vi-VN-NamMinhNeural", rate: "+0%", pitch: "+0Hz" },
+    "vi-mystery-deep": { voice: "vi-VN-NamMinhNeural", rate: "-2%", pitch: "-3Hz" },
     "vi-hoaimy-review": { voice: "vi-VN-HoaiMyNeural", rate: "+14%", pitch: "+0Hz" },
     "vi-hoaimy": { voice: "vi-VN-HoaiMyNeural", rate: "+4%", pitch: "+0Hz" },
     "vi-baolong": { voice: "vi-VN-NamMinhNeural", rate: "+6%", pitch: "+0Hz" },
     "vi-thihuong": { voice: "vi-VN-HoaiMyNeural", rate: "-2%", pitch: "+0Hz" },
     "vi-male": { voice: "vi-VN-NamMinhNeural", rate: "+10%", pitch: "+0Hz" },
     "vi-female": { voice: "vi-VN-HoaiMyNeural", rate: "+5%", pitch: "+0Hz" },
+
+    // 🎬 English Hollywood & Documentary Voices
     "en-adam": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "+0Hz" },
     "en-guy": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "+0Hz" },
     "en-brian": { voice: "en-US-BrianNeural", rate: "+0%", pitch: "+0Hz" },
@@ -1656,6 +1822,16 @@ function resolveNeuralVoiceProfile(voice, languageCode = "vi", gender = "female"
     "en-aria": { voice: "en-US-AriaNeural", rate: "+5%", pitch: "+0Hz" },
     "en-male": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "+0Hz" },
     "en-female": { voice: "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" },
+
+    // 🤖 OpenAI Audio Voice Mappings
+    "openai-alloy": { voice: "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" },
+    "openai-echo": { voice: "en-US-GuyNeural", rate: "+0%", pitch: "+0Hz" },
+    "openai-fable": { voice: "en-US-BrianNeural", rate: "+0%", pitch: "+0Hz" },
+    "openai-onyx": { voice: "en-US-GuyNeural", rate: "-2%", pitch: "-2Hz" },
+    "openai-nova": { voice: "en-US-AriaNeural", rate: "+5%", pitch: "+0Hz" },
+    "openai-shimmer": { voice: "en-US-JennyNeural", rate: "+2%", pitch: "+1Hz" },
+
+    // 🌐 International Neural Voices
     "ja-male": { voice: "ja-JP-KeitaNeural", rate: "+0%", pitch: "+0Hz" },
     "ja-female": { voice: "ja-JP-NanamiNeural", rate: "+0%", pitch: "+0Hz" },
     "ko-male": { voice: "ko-KR-InJoonNeural", rate: "+0%", pitch: "+0Hz" },
@@ -1670,6 +1846,27 @@ function resolveNeuralVoiceProfile(voice, languageCode = "vi", gender = "female"
   const key = String(voice || "").trim().toLowerCase();
   if (profiles[key]) return profiles[key];
   if (key.includes("neural")) return { voice, rate: "+0%", pitch: "+0Hz" };
+
+  // Detect language prefix or explicit language code
+  if (key.startsWith("en-") || languageCode === "en") {
+    return { voice: gender === "male" ? "en-US-GuyNeural" : "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" };
+  }
+  if (key.startsWith("ja-") || languageCode === "ja") {
+    return { voice: gender === "male" ? "ja-JP-KeitaNeural" : "ja-JP-NanamiNeural", rate: "+0%", pitch: "+0Hz" };
+  }
+  if (key.startsWith("ko-") || languageCode === "ko") {
+    return { voice: gender === "male" ? "ko-KR-InJoonNeural" : "ko-KR-SunHiNeural", rate: "+0%", pitch: "+0Hz" };
+  }
+  if (key.startsWith("zh-") || languageCode === "zh" || languageCode === "zh-CN") {
+    return { voice: gender === "male" ? "zh-CN-YunxiNeural" : "zh-CN-XiaoxiaoNeural", rate: "+0%", pitch: "+0Hz" };
+  }
+  if (key.startsWith("fr-") || languageCode === "fr") {
+    return { voice: gender === "male" ? "fr-FR-HenriNeural" : "fr-FR-DeniseNeural", rate: "+0%", pitch: "+0Hz" };
+  }
+  if (key.startsWith("es-") || languageCode === "es") {
+    return { voice: gender === "male" ? "es-ES-AlvaroNeural" : "es-ES-ElviraNeural", rate: "+0%", pitch: "+0Hz" };
+  }
+
   const langBase = String(languageCode || "vi").toLowerCase().split(/[-_]/)[0];
   if (langBase === "vi") return { voice: gender === "male" ? "vi-VN-NamMinhNeural" : "vi-VN-HoaiMyNeural", rate: "+0%", pitch: "+0Hz" };
   if (langBase === "en") return { voice: gender === "male" ? "en-US-GuyNeural" : "en-US-JennyNeural", rate: "+0%", pitch: "+0Hz" };
@@ -1927,6 +2124,21 @@ async function probeAudioDuration(audioPath) {
     }
   }
   return 0;
+}
+
+function atempoChain(tempo) {
+  let t = Math.max(0.5, Math.min(4.0, Number(tempo) || 1.0));
+  const filters = [];
+  while (t > 2.0) {
+    filters.push("atempo=2.0");
+    t /= 2.0;
+  }
+  while (t < 0.5) {
+    filters.push("atempo=0.5");
+    t /= 0.5;
+  }
+  filters.push(`atempo=${t.toFixed(3)}`);
+  return filters.join(",");
 }
 
 async function synthesizeSceneAlignedNarration({
@@ -2220,11 +2432,11 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   const clipEnd = Number(options.endSeconds || 0);
   const clipDuration = clipEnd > clipStart ? clipEnd - clipStart : 0;
 
-  // 🎯 Check if rendering a multi-cut Story Recap highlight reel
-  const hasExplicitCutClips = Array.isArray(options.cutClips) && options.cutClips.length > 1;
+  // 🎯 Check if rendering a multi-cut Story Recap highlight reel or timeline sequence
+  const hasExplicitCutClips = Array.isArray(options.cutClips) && options.cutClips.length > 0;
   const rawCutClips = hasExplicitCutClips
     ? options.cutClips
-    : (Array.isArray(options.scenes) && options.scenes.filter((s) => (s.sourceStart !== undefined || s.sourceTimeStart !== undefined)).length > 1)
+    : (Array.isArray(options.scenes) && options.scenes.length > 0)
       ? options.scenes.map((s) => {
           const sStart = parseTimeSeconds(s.sourceStart ?? s.sourceTimeStart ?? s.start, 0);
           const sEnd = parseTimeSeconds(s.sourceEnd ?? s.sourceTimeEnd ?? s.end, sStart + 15);
@@ -2232,15 +2444,15 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
             sourceStart: sStart,
             sourceEnd: sEnd,
             duration: Math.max(0.5, sEnd - sStart),
-            text: s.voiceover || s.translation || s.detail,
+            text: s.voiceover || s.translation || s.subtitle || s.detail,
             title: s.title,
           };
         }).filter((c) => c.sourceEnd > c.sourceStart)
       : null;
 
-  const effectiveCutClips = rawCutClips && rawCutClips.length > 1 ? rawCutClips : null;
+  const effectiveCutClips = Array.isArray(rawCutClips) && rawCutClips.length > 0 ? rawCutClips : null;
   const renderedDuration = effectiveCutClips
-    ? effectiveCutClips.reduce((sum, c) => sum + (c.duration || Math.max(0.5, c.sourceEnd - c.sourceStart)), 0)
+    ? effectiveCutClips.reduce((sum, c) => sum + (c.duration || Math.max(0.5, Number(c.sourceEnd || 0) - Number(c.sourceStart || 0))), 0)
     : (clipDuration || Number(probe.durationSeconds || 0));
 
   event.sender.send("runtime:render-progress", { progress: 2, stage: "Kiểm tra engine đồ họa FFmpeg...", operationId });
@@ -2252,6 +2464,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
       });
     } catch (err) {
       console.warn("Auto-ensure ffmpeg error:", err);
+      throw new Error(`Không thể khởi động bộ xử lý FFmpeg: ${err.message || err}`);
     }
   }
   const warnings = [];
@@ -2262,7 +2475,8 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   let voiceEngine = "none";
   let narrationTempo = 1;
   let narrationDuration = 0;
-  if (options.narratorEnabled && options.narrationText) {
+  const effectiveNarrationText = String(options.narrationText || (Array.isArray(options.scenes) ? options.scenes.map((s) => s.voiceover || s.translation || s.subtitle || s.text || s.detail).filter(Boolean).join(" ") : "")).trim();
+  if (options.narratorEnabled && effectiveNarrationText) {
     const store = providerStore();
     let record = options.ttsProviderId ? store.find(options.ttsProviderId) : undefined;
     if (!record && options.providerId) record = store.find(options.providerId);
@@ -2275,7 +2489,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     try {
       const alignedResult = await synthesizeSceneAlignedNarration({
         record: canUseProviderTts ? record : undefined,
-        narrationText: options.narrationText,
+        narrationText: effectiveNarrationText,
         subtitleSegments: options.subtitleSegments,
         renderedDuration,
         clipStart,
@@ -2290,7 +2504,20 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
         voiceEngine = canUseProviderTts ? "provider" : "local";
       }
     } catch (err) {
-      throw new Error(`Lỗi tạo giọng đọc AI theo phân cảnh: ${err?.message || err}`);
+      console.warn("[TTS] Scene-aligned narration fallback:", err?.message || err);
+      // Fallback to standard narration synthesis so render pipeline never breaks
+      try {
+        if (canUseProviderTts) {
+          narrationPath = await synthesizeNarration(record, options.narrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
+          if (narrationPath) voiceEngine = "provider";
+        }
+        if (!narrationPath) {
+          narrationPath = await synthesizeLocalNarration(options.narrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
+          if (narrationPath) voiceEngine = "local";
+        }
+      } catch (fallbackErr) {
+        console.warn("[TTS] Fallback narration failed:", fallbackErr?.message || fallbackErr);
+      }
     }
 
     if (narrationPath) {
@@ -2338,15 +2565,28 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     if (subtitlePath) safeRmDir(path.dirname(subtitlePath));
     return { outputPath: destination, durationSeconds: renderedDuration, passthrough: true, warnings, narrationGenerated: false, narrationDurationSeconds: narrationDuration || undefined, subtitlesBurned: false, subtitleCueCount, voiceEngine, outputChecksum: manifest.checksum, manifestPath: manifest.manifestPath };
   }
-  const hardwareCodecs = options.mode === "local-gpu" && process.platform === "darwin"
-    ? ["h264_videotoolbox"]
-    : options.mode === "local-gpu" && process.platform === "win32"
-      ? options.preferredEngine === "cpu" ? [] : options.preferredEngine === "nvidia" ? ["h264_nvenc"] : ["h264_nvenc", "h264_qsv", "h264_amf"]
-      : [];
-  const codecs = [...hardwareCodecs, "libx264"];
+  const preferredEngine = String(options.preferredEngine || "auto").toLowerCase();
+  let codecs = [];
+  if (preferredEngine === "cpu") {
+    codecs = ["libx264"];
+  } else if (preferredEngine === "nvidia") {
+    codecs = ["h264_nvenc", "libx264"];
+  } else if (preferredEngine === "apple") {
+    codecs = process.platform === "darwin" ? ["h264_videotoolbox", "libx264"] : ["libx264"];
+  } else {
+    // "auto" or other
+    if (process.platform === "darwin") {
+      codecs = ["h264_videotoolbox", "libx264"];
+    } else if (process.platform === "win32") {
+      codecs = ["h264_nvenc", "h264_qsv", "h264_amf", "libx264"];
+    } else {
+      codecs = ["h264_nvenc", "h264_vaapi", "libx264"];
+    }
+  }
+
   const subjectFocus = options.subjectTracking === false ? null : await detectSubjectFocus(localVideoPath, renderedDuration, operationId);
   const renderWithCodec = (codec) => {
-    const hasCuts = Boolean(effectiveCutClips && effectiveCutClips.length > 1);
+    const hasCuts = Boolean(effectiveCutClips && effectiveCutClips.length > 0);
     const args = ["-y"];
     if (clipStart && !hasCuts) args.push("-ss", String(clipStart));
     args.push("-i", path.resolve(localVideoPath));
@@ -2380,30 +2620,42 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     let audioSourceLabel = "0:a";
 
     if (hasCuts) {
-      const vTrims = [];
-      const aTrims = [];
-      const concatPairs = [];
       const shouldIncludeOriginalAudio = Boolean(probe.hasAudio && options.keepOriginalAudio !== false);
-      effectiveCutClips.forEach((c, idx) => {
+      if (effectiveCutClips.length === 1) {
+        const c = effectiveCutClips[0];
         const sStart = Math.max(0, Number(c.sourceStart || 0));
         const sEnd = Math.max(sStart + 0.5, Number(c.sourceEnd || (sStart + (c.duration || 10))));
-        vTrims.push(`[0:v]trim=start=${sStart}:end=${sEnd},setpts=PTS-STARTPTS[cutv${idx}]`);
+        graph.push(`[0:v]trim=start=${sStart}:end=${sEnd},setpts=PTS-STARTPTS[basecut_v]`);
+        videoSourceLabel = "basecut_v";
         if (shouldIncludeOriginalAudio) {
-          aTrims.push(`[0:a]atrim=start=${sStart}:end=${sEnd},asetpts=PTS-STARTPTS[cuta${idx}]`);
-          concatPairs.push(`[cutv${idx}][cuta${idx}]`);
-        } else {
-          concatPairs.push(`[cutv${idx}]`);
+          graph.push(`[0:a]atrim=start=${sStart}:end=${sEnd},asetpts=PTS-STARTPTS[basecut_a]`);
+          audioSourceLabel = "basecut_a";
         }
-      });
-      graph.push(...vTrims);
-      if (shouldIncludeOriginalAudio) {
-        graph.push(...aTrims);
-        graph.push(`${concatPairs.join("")}concat=n=${effectiveCutClips.length}:v=1:a=1[basecut_v][basecut_a]`);
-        videoSourceLabel = "basecut_v";
-        audioSourceLabel = "basecut_a";
       } else {
-        graph.push(`${concatPairs.join("")}concat=n=${effectiveCutClips.length}:v=1:a=0[basecut_v]`);
-        videoSourceLabel = "basecut_v";
+        const vTrims = [];
+        const aTrims = [];
+        const concatPairs = [];
+        effectiveCutClips.forEach((c, idx) => {
+          const sStart = Math.max(0, Number(c.sourceStart || 0));
+          const sEnd = Math.max(sStart + 0.5, Number(c.sourceEnd || (sStart + (c.duration || 10))));
+          vTrims.push(`[0:v]trim=start=${sStart}:end=${sEnd},setpts=PTS-STARTPTS[cutv${idx}]`);
+          if (shouldIncludeOriginalAudio) {
+            aTrims.push(`[0:a]atrim=start=${sStart}:end=${sEnd},asetpts=PTS-STARTPTS[cuta${idx}]`);
+            concatPairs.push(`[cutv${idx}][cuta${idx}]`);
+          } else {
+            concatPairs.push(`[cutv${idx}]`);
+          }
+        });
+        graph.push(...vTrims);
+        if (shouldIncludeOriginalAudio) {
+          graph.push(...aTrims);
+          graph.push(`${concatPairs.join("")}concat=n=${effectiveCutClips.length}:v=1:a=1[basecut_v][basecut_a]`);
+          videoSourceLabel = "basecut_v";
+          audioSourceLabel = "basecut_a";
+        } else {
+          graph.push(`${concatPairs.join("")}concat=n=${effectiveCutClips.length}:v=1:a=0[basecut_v]`);
+          videoSourceLabel = "basecut_v";
+        }
       }
     }
 
@@ -2432,22 +2684,48 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     args.push("-c:v", codec);
     if (codec === "libx264") args.push("-preset", "fast");
     if (codec === "h264_nvenc") args.push("-preset", "p4");
+    if (codec === "h264_qsv") args.push("-preset", "fast");
+    if (codec === "h264_amf") args.push("-quality", "speed");
     if (codec === "h264_videotoolbox") args.push("-b:v", "8M");
     args.push("-pix_fmt", "yuv420p");
     if (audioFilter) graph.push(audioFilter);
     if (graph.length) {
       args.push("-filter_complex", graph.join(";"), "-map", needsVideoGraph ? "[vout]" : "0:v:0");
       if (audioFilter) args.push("-map", "[aout]", "-c:a", "aac");
-      else if (options.keepOriginalAudio === false || narrationPath || musicPath) args.push("-an");
+      else if (options.keepOriginalAudio === false) args.push("-an");
       else args.push("-map", hasCuts ? `[${audioSourceLabel}]` : "0:a:0?", "-c:a", "aac");
-    } else if (options.keepOriginalAudio === false || narrationPath || musicPath) args.push("-an");
+    } else if (options.keepOriginalAudio === false) args.push("-an");
     else args.push("-c:a", "aac");
     args.push("-movflags", "+faststart", destination);
+
+    const codecLabel = codec === "h264_nvenc"
+      ? "NVIDIA NVENC (GPU)"
+      : codec === "h264_videotoolbox"
+        ? "Apple VideoToolbox (GPU)"
+        : codec === "h264_qsv"
+          ? "Intel QuickSync (GPU)"
+          : codec === "h264_amf"
+            ? "AMD AMF (GPU)"
+            : "CPU Software (libx264)";
+
+    event.sender.send("runtime:render-progress", {
+      progress: 3,
+      stage: `Khởi chạy Render [${codecLabel}]...`,
+      codec,
+      operationId
+    });
+
     return runProcess(ffmpeg, args, (line) => {
       const match = line.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
       if (!match || !renderedDuration) return;
       const elapsed = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
-      event.sender.send("runtime:render-progress", { progress: Math.max(2, Math.min(99, Math.round(elapsed / renderedDuration * 100))), stage: "rendering", operationId });
+      const pct = Math.max(2, Math.min(99, Math.round(elapsed / renderedDuration * 100)));
+      event.sender.send("runtime:render-progress", {
+        progress: pct,
+        stage: `Đang render [${codecLabel}] ${pct}%`,
+        codec,
+        operationId
+      });
     }, operationId);
   };
   let lastError;
@@ -2643,6 +2921,7 @@ async function testStoredProvider(record) {
 
 function registerIpc() {
   ipcMain.handle("runtime:machine-info", () => machineInfo());
+  ipcMain.handle("runtime:hardware-stats", () => collectClientHardwareInfo());
   ipcMain.handle("runtime:read-license", () => {
     try {
       if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(licensePath())) return null;
@@ -2775,6 +3054,22 @@ function registerIpc() {
     try { return await downloadVideo(event, value, operationId); }
     finally { if (state) endOperation(operationId); }
   });
+function resolveTargetDurationFromRules(durationSeconds, durationRules, fallbackTargetMins = 5) {
+  if (Array.isArray(durationRules) && durationRules.length > 0) {
+    const inputMinutes = Math.max(0, Number(durationSeconds || 0) / 60);
+    for (const rule of durationRules) {
+      const min = Number(rule.minInputMinutes) || 0;
+      const max = Number(rule.maxInputMinutes) || 999999;
+      if (inputMinutes >= min && (inputMinutes < max || (max >= 9999 && inputMinutes >= min))) {
+        if (rule.targetOutputMinutes && Number(rule.targetOutputMinutes) > 0) {
+          return Number(rule.targetOutputMinutes);
+        }
+      }
+    }
+  }
+  return fallbackTargetMins;
+}
+
   ipcMain.handle("runtime:analyze-video", async (event, filePath, providerId, operationId, options = {}) => {
     const state = beginOperation(operationId);
     try {
@@ -2786,21 +3081,46 @@ function registerIpc() {
       event.sender.send("runtime:analysis-progress", { progress: 8, stage: "probing", operationId });
       const probe = await probeVideoFile(localFilePath);
       const storeInstance = providerStore();
-      const targetProviderId = (providerId && String(providerId).trim() && providerId !== "local") ? providerId : undefined;
-      const defaultProvider = !targetProviderId ? storeInstance.list().find((item) => item.enabled && item.hasApiKey && item.capabilities.includes("analysis")) : undefined;
-      const record = storeInstance.find(targetProviderId || defaultProvider?.id);
-      if (!record || !record.apiKey) {
+      const allEnabledProviders = storeInstance.list().filter((p) => p.enabled && p.apiKey && p.capabilities.includes("analysis"));
+
+      // Build candidate pool from options.providerPool or all enabled providers for auto-failover
+      let candidatePool = [];
+      if (Array.isArray(options.providerPool) && options.providerPool.length > 0) {
+        for (const item of options.providerPool) {
+          const baseRec = storeInstance.find(item.providerId);
+          if (baseRec && baseRec.apiKey) {
+            candidatePool.push({ ...baseRec, model: item.model || baseRec.model });
+          }
+        }
+      }
+
+      if (!candidatePool.length) {
+        const targetProviderId = (providerId && String(providerId).trim() && providerId !== "local") ? providerId : undefined;
+        const defaultProvider = !targetProviderId ? allEnabledProviders[0] : storeInstance.find(targetProviderId);
+        if (defaultProvider && defaultProvider.apiKey) {
+          candidatePool.push(defaultProvider);
+        }
+        for (const p of allEnabledProviders) {
+          if (!candidatePool.some((c) => c.id === p.id)) {
+            candidatePool.push(p);
+          }
+        }
+      }
+
+      if (!candidatePool.length) {
         throw new Error("Chưa phát hiện API Key của Provider AI (Google Gemini / OpenAI). Để AI có thể xem hình ảnh, phân tích bối cảnh và viết kịch bản lồng tiếng từ Prompt, vui lòng vào 'Cài đặt tool' (góc trái bên dưới) -> nhập API Key của Gemini hoặc OpenAI rồi thử lại.");
       }
+
+      const primaryRecord = candidatePool[0];
       event.sender.send("runtime:analysis-progress", { progress: 18, stage: "extracting-frames", operationId });
-      const transcriptionProviderId = options.transcriptionProviderId || record?.id;
+      const transcriptionProviderId = options.transcriptionProviderId || primaryRecord?.id;
       const transcriptionRecord = storeInstance.find(transcriptionProviderId);
       if (options.transcriptionProviderId && (!transcriptionRecord || !transcriptionRecord.enabled || !transcriptionRecord.apiKey || !transcriptionRecord.capabilities?.includes("transcription"))) {
         throw new Error("Provider transcription chưa sẵn sàng hoặc chưa bật capability transcription. Hãy cấu hình Groq Whisper trong Cài đặt tool.");
       }
       const [frames, transcriptResult] = await Promise.all([
         extractAnalysisFrames(localFilePath, probe.durationSeconds, operationId),
-        transcribeVideo(localFilePath, transcriptionRecord || record, operationId, probe.durationSeconds),
+        transcribeVideo(localFilePath, transcriptionRecord || primaryRecord, operationId, probe.durationSeconds),
       ]);
       const transcript = transcriptResult?.text || "";
       const transcriptSegments = transcriptResult?.segments || [];
@@ -2815,10 +3135,14 @@ function registerIpc() {
       const rawPrompt = options.customPrompt && String(options.customPrompt).trim() ? String(options.customPrompt).trim() : "";
       const isStoryRecap = options.analysisMode === "story_recap" ||
                            (options.targetDurationMinutes && options.targetDurationMinutes > 0) ||
+                           (Array.isArray(options.durationRules) && options.durationRules.length > 0) ||
                            /story_recap|recap|tóm tắt|kể lại|rút gọn/i.test(rawPrompt);
-      const targetDurationMins = Number(options.targetDurationMinutes) || (isStoryRecap ? 5.5 : Math.ceil(probe.durationSeconds / 60));
+      let targetDurationMins = Number(options.targetDurationMinutes) || (isStoryRecap ? 5.5 : Math.ceil(probe.durationSeconds / 60));
+      if (Array.isArray(options.durationRules) && options.durationRules.length > 0) {
+        targetDurationMins = resolveTargetDurationFromRules(probe.durationSeconds, options.durationRules, targetDurationMins);
+      }
       const targetSceneCount = isStoryRecap
-        ? Math.max(8, Math.min(22, Math.round(targetDurationMins * 2.8)))
+        ? Math.max(8, Math.min(25, Math.round(targetDurationMins * 2.8)))
         : Math.max(4, Math.min(25, Math.ceil(probe.durationSeconds / 15)));
 
       const rawFileName = path.basename(localFilePath, path.extname(localFilePath));
@@ -2888,12 +3212,12 @@ SPECIALIZED REALITY TV & SOCIAL DRAMA RULES:
       }
 
       let recapGuidance = `
-🎯 CẤU TRÚC STORYTELLING BẮT BUỘC (3 HỒI & VIRAL RETENTION 10S):
-Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${cleanVideoTitle}", đọc hiểu 100% nội dung thực tế qua các khung hình và lời thoại bóc băng, sau đó biên kịch lại toàn bộ câu chuyện bằng lời kể chuyện ngôi thứ 3 (Narrator) trong khoảng 3 đến 7 phút (~500 - 1200 từ tiếng Việt).
+🎯 CẤU TRÚC STORYTELLING BẮT BUỘC (3 HỒI & VIRAL RETENTION HOOK CAO TRÀO):
+Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${cleanVideoTitle}", đọc hiểu 100% nội dung thực tế qua các khung hình và lời thoại bóc băng, sau đó biên kịch lại toàn bộ câu chuyện bằng lời kể chuyện ngôi thứ 3 (Narrator) với văn phong gay cấn, hồi hộp, kịch tính, lôi cuốn trong khoảng 3 đến 7 phút (~500 - 1200 từ tiếng Việt).
 
-1. [00:00 - 00:10] HOOK CAO TRÀO (BẮT BUỘC Ở SCENE ĐẦU TIÊN):
+1. [00:00 - 00:10] HOOK CAO TRÀO GAY CẤN (BẮT BUỘC Ở SCENE ĐẦU TIÊN):
    - Thời lượng đọc: Đúng 10 giây đầu (khoảng 25 - 35 từ).
-   - Kỹ thuật: Bê nguyên hoặc trích xuất ngay câu thoại đắt giá nhất / tình tiết mâu thuẫn gây sốc nhất của video (tiếng khóc cầu cứu, câu nói lật mặt, bằng chứng rợn người, hành động bất thường).
+   - Kỹ thuật: Bê nguyên hoặc trích xuất ngay câu thoại đắt giá nhất / tình tiết mâu thuẫn gây sốc nhất của video (tiếng khóc cầu cứu, câu nói lật mặt, bằng chứng rợn người, hành động bất thường) để tạo cú shock ban đầu.
    - Mục tiêu: Chặn người xem lướt qua trong 3 giây đầu, tạo khoảng trống tò mò (curiosity gap) cực lớn.
 
 2. [HỒI 1] KHỞI NGUỒN & NGHỊCH LÝ BAN ĐẦU:
@@ -2911,10 +3235,11 @@ Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${clean
    - Số phận nhân vật và sự nghiêm minh của pháp luật.
    - Đoạn kết mang triết lý nhân sinh: Rút ra bài học từ góc nhìn "Nghịch lý cuộc sống" và "Tâm lý & Xã hội".
 
-5. QUY TẮC PHÂN CẢNH (SCENES):
+5. QUY TẮC PHÂN CẢNH & TỰ ĐỘNG CẮT KHỚP VIDEO (SCENES & AUTO-CUT TIMELINE):
    - Mảng "scenes" phải chứa tối thiểu ${targetSceneCount} phân cảnh nối tiếp nhau từ 00:00 đến ${endStamp}.
    - Phân cảnh đầu tiên BẮT BUỘC là Hook 10s đầu ([00:00 - 00:10]).
    - Mỗi phân cảnh có lời thoại "voiceover" dài 40-75 từ tiếng Việt mượt mà, kết nối thành một câu chuyện liền mạch.
+   - NHẶT ĐÚNG CẢNH TRONG VIDEO GỐC: "source_start" và "source_end" của mỗi phân cảnh BẮT BUỘC phải chỉ chính xác mốc thời gian trong video gốc có hình ảnh, hành động hoặc nét mặt minh họa trực tiếp cho câu kể voiceover. Khi phân tích xong, Timeline sẽ tự động cắt các đoạn video này và ráp vào khớp từng giây với lời kể.
    - TUYỆT ĐỐI KHÔNG CHÈN MỐC THỜI GIAN VÀO LỜI ĐỌC: Không ghi các cụm từ như "tại mốc 00:00", "lúc 02:10", "từ phút...", "(15:09)" vào nội dung câu chữ của voiceover hay voice_script. Đây là lời thoại để phát thanh viên AI đọc thành tiếng cho người xem nghe, phải là văn phong kể chuyện tự nhiên, liền mạch 100%.`;
 
       const prompt = `Role: Senior Master Film Narrator & Screenplay Review Specialist.
@@ -2938,9 +3263,19 @@ MANDATORY SCRIPTING & SCENE ALIGNMENT REQUIREMENTS:
 4. EXACT SPEECH CALIBRATION & NO TIMESTAMPS IN VOICE:
    - Lời thuyết minh "voiceover" của mỗi phân cảnh phải dài từ 40 đến 65 từ tiếng Việt, mang phong cách dẫn chuyện ngôi thứ 3 truyền cảm, kịch tính, không lặp từ ngữ và liền mạch xuyên suốt.
    - TUYỆT ĐỐI KHÔNG chèn mốc thời gian, số phút, số giây vào trong lời văn voiceover/voice_script.
-5. JSON OUTPUT FORMAT (BẮT BUỘC CHUẨN JSON):
+5. PRECISE SOURCE CLIP TIMECODES (NHẶT ĐÚNG MỐC CẢNH GỐC KHỚP LỜI KỂ):
+   - "source_start" và "source_end" phải chứa mốc thời gian chính xác trong video gốc để timeline tự động cắt và ráp video.
+6. JSON OUTPUT FORMAT (BẮT BUỘC CHUẨN JSON):
 {
-  "summary": "Tóm tắt toàn bộ nội dung câu chuyện...",
+  "video_title": "Tiêu đề video cực kỳ giật tít, chuẩn viral và kích thích sự tò mò cao nhất...",
+  "suggested_titles": [
+    "Tiêu đề 1: Đẩy cao mâu thuẫn cao trào và tình tiết bất ngờ",
+    "Tiêu đề 2: Nhấn mạnh vào trực giác nghiệp vụ & sự thật phơi bày",
+    "Tiêu đề 3: Đặt câu hỏi kích thích tò mò về nghịch lý cuộc sống",
+    "Tiêu đề 4: Cái giá đắt cho sự lọc lừa"
+  ],
+  "hook_title": "Tiêu đề ngắn gọn cho phân cảnh Hook 10s đầu",
+  "summary": "Tóm tắt toàn bộ cốt truyện và mạch diễn biến câu chuyện từ tiêu đề tới kết thúc...",
   "scenes": [
     ${JSON.stringify(sampleSceneObj, null, 4)}
   ],
@@ -2949,12 +3284,34 @@ MANDATORY SCRIPTING & SCENE ALIGNMENT REQUIREMENTS:
 
 Return ONLY valid JSON with no markdown wrapping.`;
       event.sender.send("runtime:analysis-progress", { progress: 76, stage: "requesting-provider", operationId });
-      let result;
-      try {
-        result = await providerRequest(record, prompt, providerFrames, operationId);
-      } catch (provErr) {
+      let result = null;
+      let lastError = null;
+
+      for (let poolIdx = 0; poolIdx < candidatePool.length; poolIdx++) {
+        const activeRecord = candidatePool[poolIdx];
+        try {
+          event.sender.send("runtime:analysis-progress", {
+            progress: 76 + Math.min(18, poolIdx * 5),
+            stage: `Đang phân tích với ${activeRecord.name || activeRecord.providerType} (${activeRecord.model || "mặc định"})...`,
+            operationId,
+          });
+          result = await providerRequest(activeRecord, prompt, providerFrames, operationId);
+          if (result && result.text) {
+            break; // Successfully obtained response!
+          }
+        } catch (provErr) {
+          lastError = provErr;
+          console.warn(`[Analysis] Provider ${activeRecord.name || activeRecord.id} (${activeRecord.model}) failed (${provErr?.message}), attempting next provider/model in pool...`);
+          if (poolIdx < candidatePool.length - 1) {
+            // Short backoff before switching to next candidate provider
+            await new Promise((resolve) => setTimeout(resolve, 800));
+          }
+        }
+      }
+
+      if (!result || !result.text) {
         if (state?.cancelled) throw cancelledOperationError();
-        console.warn("[Analysis] Provider request failed or timed out, generating intelligent story synthesis fallback:", provErr?.message);
+        console.warn("[Analysis] All candidate providers failed or rate-limited, generating intelligent story synthesis fallback:", lastError?.message);
         const fallbackAnalysis = generateLocalStoryAnalysis(probe, customPromptText, languageCode, options);
         event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
         return enrichAnalysis({
@@ -3036,12 +3393,20 @@ Return ONLY valid JSON with no markdown wrapping.`;
     return { type: "stream", url: raw, platform: "direct" };
   });
   const ttsMemoryCache = new Map();
-  ipcMain.handle("runtime:synthesize-speech", async (_event, text, languageCode = "vi", gender = "female", voice) => {
+  ipcMain.handle("runtime:synthesize-speech", async (_event, text, languageCode = "vi", gender = "female", voice, rate = 1.0) => {
     const cleanText = stripSceneMetadata(text);
     if (!cleanText) return null;
     const voiceKey = String(voice || "").trim().toLowerCase();
     const profile = resolveNeuralVoiceProfile(voiceKey, languageCode, gender);
-    const cacheKey = crypto.createHash("sha256").update(`${voiceKey}:${languageCode}:${gender}:${cleanText}`).digest("hex").slice(0, 32);
+
+    // Dynamic rate computation
+    let effectiveRate = profile.rate || "+0%";
+    if (rate && typeof rate === "number" && rate > 0) {
+      const pct = Math.round((rate - 1.0) * 100);
+      effectiveRate = `${pct >= 0 ? "+" : ""}${pct}%`;
+    }
+
+    const cacheKey = crypto.createHash("sha256").update(`${voiceKey}:${languageCode}:${gender}:${effectiveRate}:${cleanText}`).digest("hex").slice(0, 32);
 
     // 0. Check in-memory fast cache
     if (ttsMemoryCache.has(cacheKey)) {
@@ -3071,9 +3436,12 @@ Return ONLY valid JSON with no markdown wrapping.`;
         },
         body: JSON.stringify({
           text: cleanText.slice(0, 1000),
-          voice: voiceKey,
+          voice: profile.voice,
+          voice_id: voiceKey,
           language: languageCode || "vi",
           gender: gender || "male",
+          rate: effectiveRate,
+          pitch: profile.pitch,
         }),
         signal: AbortSignal.timeout(20000),
       });
@@ -3097,7 +3465,7 @@ Return ONLY valid JSON with no markdown wrapping.`;
       const python = findPythonExecutable();
       await runProcess(
         python,
-        ["-m", "edge_tts", "--voice", profile.voice, "--rate", profile.rate, "--pitch", profile.pitch, "--text", cleanText.slice(0, 1000), "--write-media", diskCacheFile],
+        ["-m", "edge_tts", "--voice", profile.voice, "--rate", effectiveRate, "--pitch", profile.pitch, "--text", cleanText.slice(0, 1000), "--write-media", diskCacheFile],
         undefined,
         undefined
       );
@@ -3122,9 +3490,19 @@ function createWindow() {
     height: 960,
     minWidth: 1100,
     minHeight: 720,
-    backgroundColor: "#111817",
+    backgroundColor: "#090c15",
+    autoHideMenuBar: true,
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, "preload.cjs") },
+  });
+  window.setMenuBarVisibility(false);
+  window.webContents.on("before-input-event", (event, input) => {
+    if (((input.control || input.meta) && input.key.toLowerCase() === "r") || input.key === "F5") {
+      window.webContents.reloadIgnoringCache();
+    }
+    if (((input.control || input.meta) && input.shift && input.key.toLowerCase() === "i") || input.key === "F12") {
+      window.webContents.toggleDevTools();
+    }
   });
   const devUrl = process.env.JACS_DESKTOP_DEV_URL;
   void (devUrl ? window.loadURL(devUrl) : window.loadFile(path.join(__dirname, "..", "dist", "index.html")));
@@ -3135,6 +3513,13 @@ app.whenReady().then(() => {
   registerIpc();
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  setTimeout(() => {
+    try {
+      if (!findExecutable("ffmpeg")) {
+        ensureExecutable("ffmpeg").catch((e) => console.warn("Background ffmpeg prefetch:", e));
+      }
+    } catch {}
+  }, 2500);
 });
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

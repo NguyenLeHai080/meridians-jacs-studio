@@ -38,7 +38,10 @@ FE/desktop-app/bin/darwin-x64/ffmpeg
 FE/desktop-app/bin/darwin-x64/ffprobe
 FE/desktop-app/bin/win32-x64/ffmpeg.exe
 FE/desktop-app/bin/win32-x64/ffprobe.exe
+FE/desktop-app/bin/win32-x64/yt-dlp.exe
+FE/desktop-app/bin/**/*.exe
 FE/desktop-app/voice-runtime/
+scratch/
 .pnpm-store/
 .vite/
 *.tsbuildinfo

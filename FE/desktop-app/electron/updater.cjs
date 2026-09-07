@@ -69,7 +69,7 @@ function safeFileName(url, version, platform) {
 async function downloadRelease({ release, platform, currentVersion, tempDirectory, signal, onProgress, fetchImpl = fetch }) {
   validateRelease(release, platform, currentVersion);
   const directory = path.join(tempDirectory || os.tmpdir(), "jacs-studio-updates", release.version);
-  await fsp.mkdir(directory, { recursive: true, mode: 0o700 });
+  await fsp.mkdir(directory, { recursive: true, mode: 0o755 });
   const targetPath = path.join(directory, safeFileName(release.download_url, release.version, platform));
   const partialPath = `${targetPath}.part`;
   await fsp.rm(partialPath, { force: true });
@@ -79,7 +79,7 @@ async function downloadRelease({ release, platform, currentVersion, tempDirector
   if (!response.ok || !response.body) throw new Error(`Không tải được bản cập nhật (HTTP ${response.status})`);
   const contentLength = Number(response.headers?.get?.("content-length") || 0);
   if (contentLength > MAX_UPDATE_BYTES) throw new Error("Bản cập nhật vượt quá dung lượng cho phép");
-  const output = fs.createWriteStream(partialPath, { mode: 0o600 });
+  const output = fs.createWriteStream(partialPath, { mode: 0o755 });
   const reader = response.body.getReader();
   let downloaded = 0;
   try {
@@ -98,6 +98,7 @@ async function downloadRelease({ release, platform, currentVersion, tempDirector
     const digest = await sha512File(partialPath);
     if (digest.toLowerCase() !== String(release.sha512).toLowerCase()) throw new Error("SHA-512 không khớp; bản cập nhật bị từ chối");
     await fsp.rename(partialPath, targetPath);
+    await fsp.chmod(targetPath, 0o755).catch(() => undefined);
     return { filePath: targetPath, bytes: downloaded, sha512: digest, kind: releaseKind(targetPath, platform) };
   } catch (error) {
     output.destroy();
@@ -153,25 +154,28 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
       const targetExe = execPath;
       const targetPid = process.pid;
       try {
-        const child = childProcess.spawn(filePath, [
-          "--target-dir", targetDir,
-          "--target-exe", targetExe,
-          "--pid", String(targetPid)
-        ], {
-          detached: true,
-          stdio: "ignore",
-          windowsHide: false,
-        });
-        child.unref();
+        fs.chmodSync(filePath, 0o755);
+      } catch {}
+      try {
+        if (appModule.shell?.openPath) {
+          void appModule.shell.openPath(filePath);
+        } else {
+          childProcess.exec(`start "" "${filePath}"`);
+        }
       } catch {
         try {
-          childProcess.exec(`start "" "${filePath}" --target-dir "${targetDir}" --target-exe "${targetExe}" --pid ${targetPid}`);
+          const child = childProcess.spawn("cmd.exe", ["/c", "start", "", filePath], {
+            detached: true,
+            stdio: "ignore",
+            windowsHide: false,
+          });
+          child.unref();
         } catch {}
       }
       setTimeout(() => {
         if (typeof appModule.exit === "function") appModule.exit(0);
         else appModule.quit();
-      }, 800);
+      }, 1000);
       return { status: "installing" };
     }
     if (kind === "windows-zip") {
@@ -182,30 +186,39 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
       const escapedZip = filePath.replace(/'/g, "''");
       const escapedDir = currentDir.replace(/'/g, "''");
       const batContent = `@echo off
-rem Terminate all running Electron processes cleanly and release file locks
+rem 1. Terminate running Electron process
 %SystemRoot%\\System32\\taskkill.exe /f /im "${exeName}" >nul 2>&1
 %SystemRoot%\\System32\\taskkill.exe /f /pid ${Number(process.pid)} >nul 2>&1
 %SystemRoot%\\System32\\timeout.exe /t 2 /nobreak >nul
 
-rem Extract update payload directly to target directory with retry loop
-set ATTEMPT=0
-:EXTRACT_LOOP
-set /a ATTEMPT+=1
-%SystemRoot%\\System32\\tar.exe -xf "${filePath}" -C "${currentDir}" >nul 2>&1
-if not errorlevel 1 goto LAUNCH_APP
-if %ATTEMPT% geq 5 goto FALLBACK_PS
-%SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
-goto EXTRACT_LOOP
+rem 2. Extract update zip to temporary folder where write permissions are 100% guaranteed
+%SystemRoot%\\System32\\tar.exe -xf "${filePath}" -C "${extractDirectory}" >nul 2>&1
+if not exist "${extractDirectory}\\resources\\app.asar" (
+    %SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "Expand-Archive -LiteralPath '${escapedZip}' -DestinationPath '${extractDirectory}' -Force" >nul 2>&1
+)
 
-:FALLBACK_PS
-%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDir}' -Force" >nul 2>&1
+rem 3. Copy resources\\app.asar to target directory with retry loop
+set ATTEMPT=0
+:COPY_LOOP
+set /a ATTEMPT+=1
+if exist "${extractDirectory}\\resources\\app.asar" (
+    copy /y /b "${extractDirectory}\\resources\\app.asar" "${currentDir}\\resources\\app.asar" >nul 2>&1
+)
+if exist "${currentDir}\\resources\\app.asar" (
+    if not errorlevel 1 goto LAUNCH_APP
+)
+
+if %ATTEMPT% geq 8 goto LAUNCH_APP
+%SystemRoot%\\System32\\taskkill.exe /f /im "${exeName}" >nul 2>&1
+%SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
+goto COPY_LOOP
 
 :LAUNCH_APP
-rem Short pause to ensure disk write flush before relaunching
+rem 4. Short pause to ensure disk write flush before relaunching
 %SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
 start "" "${path.join(currentDir, exeName)}"
 
-rem Clean up temporary script folder
+rem 5. Clean up temporary script folder
 %SystemRoot%\\System32\\timeout.exe /t 3 /nobreak >nul
 rmdir /s /q "${extractDirectory}" >nul 2>&1
 exit

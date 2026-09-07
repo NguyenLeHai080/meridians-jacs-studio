@@ -1,7 +1,7 @@
 {
   "name": "@jacs/desktop-app",
   "private": true,
-  "version": "0.8.18",
+  "version": "0.8.28",
   "description": "JACS Studio desktop video analysis and rendering tool",
   "author": "NexoraTech",
   "type": "module",
@@ -24,7 +24,8 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-bootstrap-icons": "^1.11.6",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
@@ -84,10 +85,14 @@
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": true,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "JACS Studio"
+      "shortcutName": "JACS Studio",
+      "deleteAppDataOnUninstall": true,
+      "include": "build/installer.nsh"
     }
   }
 }

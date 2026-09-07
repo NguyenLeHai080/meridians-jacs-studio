@@ -3,6 +3,9 @@ export type LicenseStatus = "active" | "blocked" | "expired" | "revoked";
 export type License = {
   id: string;
   key_hint: string;
+  license_key?: string | null;
+  raw_key?: string | null;
+  key?: string | null;
   customer_name: string;
   customer_contact: string;
   hwid: string;
@@ -12,12 +15,41 @@ export type License = {
   premium_ai: boolean;
   logo_url?: string | null;
   notes?: string | null;
+  credit_balance?: number;
+  token_in_price?: number | null;
+  token_out_price?: number | null;
+  max_requests_per_day?: number | null;
+  is_custom_quota?: boolean;
+  terms_accepted?: boolean;
+  terms_accepted_at?: string | null;
+  terms_version?: string | null;
   created_at: string;
   last_seen_at?: string | null;
   last_app_version?: string | null;
   last_platform?: string | null;
   last_ip?: string | null;
 };
+
+export type SepayTransaction = {
+  id: string;
+  sepay_code: string;
+  license_id?: string | null;
+  api_key_name: string;
+  api_key_masked: string;
+  deposit_amount: number;
+  cost_amount: number;
+  credit_amount: number;
+  profit_amount: number;
+  profit_percent?: number;
+  status: "COMPLETED" | "PENDING" | "REVOKED" | string;
+  payment_method: string;
+  bank_name?: string;
+  notes?: string | null;
+  created_at?: string | null;
+  raw_content?: string | null;
+};
+
+
 
 export type BillingTransaction = {
   id: string;
@@ -121,7 +153,9 @@ export type Provider = {
   provider_type: "openai" | "gemini" | "custom" | string;
   base_url: string;
   model: string;
+  vision_model?: string | null;
   tts_model?: string | null;
+  purpose?: string | null;
   masked_key?: string;
   api_key?: string;
   capabilities: string[];
@@ -213,6 +247,16 @@ export type LegalTerms = {
   license_rights: string;
   dispute_resolution: string;
   updated_at?: string;
+};
+
+export type CreditConfig = {
+  price_per_1m_token: number;
+  cost_per_1m_token: number;
+  token_in_price: number;
+  token_out_price: number;
+  min_deposit_amount: number;
+  is_active?: boolean;
+  updated_at?: string | null;
 };
 
 export type AdminMenuKey =

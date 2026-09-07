@@ -17,10 +17,13 @@ from app.modules.billing.schemas import (
     BillingTransactionResponse,
     CreateBankAccountRequest,
     CreateBillingTransactionRequest,
+    CreditConfigResponse,
     RenewQrRequest,
     RenewQrResponse,
+    SepayTransactionResponse,
     UpdateBankAccountRequest,
     UpdateBankConfigRequest,
+    UpdateCreditConfigRequest,
 )
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
@@ -32,11 +35,11 @@ DEFAULT_BANK_CONFIG = {
     "account_name": "NGUYEN LE HAI",
     "qr_template": "compact2",
     "plans_pricing": {
-        "1_month": 500000.0,
+        "1_month": 550000.0,
         "3_months": 1350000.0,
-        "6_months": 2500000.0,
+        "6_months": 2650000.0,
         "1_year": 4500000.0,
-        "lifetime": 10000000.0,
+        "lifetime": 9650000.0,
     },
 }
 
@@ -476,20 +479,23 @@ async def process_sepay_webhook(
 
     days_to_add = 30
     plan_name = "1 Tháng (Standard)"
-    if transfer_amount >= pricing.get("1_year", 4500000.0) * 0.95:
+    if transfer_amount >= pricing.get("lifetime", 9650000.0) * 0.95:
+        days_to_add = 3650
+        plan_name = "Vĩnh Viễn (Lifetime VIP)"
+    elif transfer_amount >= pricing.get("1_year", 4500000.0) * 0.95:
         days_to_add = 365
         plan_name = "1 Năm (VIP Studio)"
-    elif transfer_amount >= pricing.get("6_months", 2500000.0) * 0.95:
+    elif transfer_amount >= pricing.get("6_months", 2650000.0) * 0.95:
         days_to_add = 180
-        plan_name = "6 Tháng"
+        plan_name = "6 Tháng (Khuyên dùng)"
     elif transfer_amount >= pricing.get("3_months", 1350000.0) * 0.95:
         days_to_add = 90
-        plan_name = "3 Tháng"
-    elif transfer_amount >= pricing.get("1_month", 500000.0) * 0.95:
+        plan_name = "3 Tháng (Tiêu chuẩn)"
+    elif transfer_amount >= pricing.get("1_month", 550000.0) * 0.95:
         days_to_add = 30
-        plan_name = "1 Tháng"
+        plan_name = "1 Tháng (Tiết kiệm)"
     else:
-        days_to_add = max(1, int((transfer_amount / pricing.get("1_month", 500000.0)) * 30))
+        days_to_add = max(1, int((transfer_amount / pricing.get("1_month", 550000.0)) * 30))
         plan_name = f"Tùy chỉnh ({days_to_add} ngày)"
 
     now = datetime.now(UTC)
@@ -572,7 +578,17 @@ async def sepay_billing_webhook(payload: dict, request: Request) -> dict:
 @router.get("/transactions", response_model=list[BillingTransactionResponse])
 async def list_transactions(_: dict = Depends(require_auth)) -> list[dict]:
     records = store.list("billing_transactions")
-    return sorted(records, key=lambda x: str(x.get("created_at", "")), reverse=True)
+    normalized = []
+    for r in records:
+        item = dict(r)
+        if not item.get("actor"):
+            item["actor"] = "system"
+        if not item.get("customer_name"):
+            item["customer_name"] = "Khách hàng"
+        if item.get("amount") is None:
+            item["amount"] = 0.0
+        normalized.append(item)
+    return sorted(normalized, key=lambda x: str(x.get("created_at", "")), reverse=True)
 
 
 @router.post("/transactions", response_model=BillingTransactionResponse, status_code=201)
@@ -750,4 +766,200 @@ async def get_client_billing_history(license_key: str) -> dict:
             "transactions": sorted_txs,
         }
     }
+
+
+DEFAULT_CREDIT_CONFIG = {
+    "price_per_1m_token": 1000.0,
+    "cost_per_1m_token": 800.0,
+    "token_in_price": 700.0,
+    "token_out_price": 900.0,
+    "min_deposit_amount": 2000.0,
+    "is_active": True,
+}
+
+
+@router.get("/credit-config", response_model=CreditConfigResponse)
+async def get_credit_config(_: dict = Depends(require_auth)) -> CreditConfigResponse:
+    """Get the current credit pricing and formula configuration."""
+    existing = store.get("billing_settings", "credit_config")
+    if not existing:
+        cfg = dict(DEFAULT_CREDIT_CONFIG)
+        cfg["id"] = "credit_config"
+        cfg["created_at"] = datetime.now(UTC)
+        cfg["updated_at"] = datetime.now(UTC)
+        store.create("billing_settings", cfg)
+        existing = cfg
+    return CreditConfigResponse(**existing)
+
+
+@router.put("/credit-config", response_model=CreditConfigResponse)
+async def update_credit_config(
+    payload: UpdateCreditConfigRequest, user: dict = Depends(require_auth)
+) -> CreditConfigResponse:
+    """Update the credit pricing and formula configuration."""
+    data = {
+        **payload.model_dump(),
+        "updated_at": datetime.now(UTC),
+    }
+    existing = store.get("billing_settings", "credit_config")
+    if existing:
+        saved = store.update("billing_settings", "credit_config", data)
+    else:
+        saved = store.create("billing_settings", {"id": "credit_config", **data})
+
+    store.create(
+        "audit",
+        {
+            "action": "billing.credit_config_updated",
+            "actor": user["email"],
+            "price_per_1m_token": payload.price_per_1m_token,
+            "cost_per_1m_token": payload.cost_per_1m_token,
+        },
+    )
+    return CreditConfigResponse(**saved)
+
+
+@router.get("/sepay-transactions", response_model=list[SepayTransactionResponse])
+async def list_sepay_transactions(_: dict = Depends(require_auth)) -> list[SepayTransactionResponse]:
+    """Retrieve all SePay credit top-up transactions with calculated cost, credit, profit, and key details."""
+    transactions = store.list("billing_transactions")
+    licenses = store.list("licenses")
+    credit_cfg = store.get("billing_settings", "credit_config") or DEFAULT_CREDIT_CONFIG
+
+    p_sell = float(credit_cfg.get("price_per_1m_token", 1000.0)) or 1000.0
+    p_cost = float(credit_cfg.get("cost_per_1m_token", 800.0)) or 800.0
+
+    # Build lookup map for licenses
+    lic_map: dict[str, dict] = {}
+    for lic in licenses:
+        lic_id = str(lic.get("id", ""))
+        if lic_id:
+            lic_map[lic_id] = lic
+        key_hint = str(lic.get("key_hint", "")).upper()
+        if key_hint:
+            lic_map[key_hint] = lic
+
+    results: list[SepayTransactionResponse] = []
+
+    # Map existing billing transactions
+    for tx in transactions:
+        amount = float(tx.get("amount", 0.0))
+        if amount <= 0:
+            continue
+
+        lic_id = str(tx.get("license_id", ""))
+        matched_lic = lic_map.get(lic_id)
+        if not matched_lic:
+            # Try fuzzy match on notes or customer name
+            for lic in licenses:
+                cust = str(lic.get("customer_name", "")).strip().lower()
+                tx_cust = str(tx.get("customer_name", "")).strip().lower()
+                if cust and cust == tx_cust:
+                    matched_lic = lic
+                    break
+
+        ref_code = str(tx.get("reference_code") or tx.get("sepay_code") or "").strip()
+        if not ref_code:
+            tx_id_clean = str(tx.get("id", "")).replace("-", "").upper()[:8]
+            ref_code = f"SEVQR{tx_id_clean}" if tx_id_clean else f"SEVQR{abs(hash(str(tx.get('created_at')))) % 1000000000:09X}"
+
+        key_name = (
+            tx.get("api_key_name")
+            or (matched_lic.get("customer_name") if matched_lic else None)
+            or tx.get("customer_name")
+            or "test"
+        )
+        
+        # Mask key hint
+        key_masked = tx.get("api_key_masked")
+        if not key_masked and matched_lic:
+            raw = str(matched_lic.get("key_hint") or matched_lic.get("key") or "UK4APVL")
+            token_part = re.sub(r"^(?:JACS[-_ ]*)+", "", raw).replace("-", "").replace("*", "").strip()[:7]
+            key_masked = f"sk-{token_part}" if token_part else "sk-UK4APVL"
+        elif not key_masked:
+            key_masked = "sk-UK4APVL"
+
+        cost_val = tx.get("cost_amount")
+        if cost_val is None:
+            cost_val = amount * (p_cost / p_sell) if p_sell > 0 else (amount * 0.61538)
+
+        credit_val = tx.get("credit_amount")
+        if credit_val is None:
+            credit_val = cost_val
+
+        profit_val = tx.get("profit_amount")
+        if profit_val is None:
+            profit_val = amount - cost_val
+
+        profit_pct = (profit_val / amount * 100.0) if amount > 0 else 0.0
+
+        status = str(tx.get("status") or "COMPLETED").upper()
+        if tx.get("transaction_type") == "refund":
+            status = "REVOKED"
+
+        results.append(
+            SepayTransactionResponse(
+                id=str(tx.get("id")),
+                sepay_code=ref_code,
+                license_id=str(matched_lic.get("id")) if matched_lic else lic_id or None,
+                api_key_name=key_name,
+                api_key_masked=key_masked,
+                deposit_amount=amount,
+                cost_amount=round(cost_val, 2),
+                credit_amount=round(credit_val, 2),
+                profit_amount=round(profit_val, 2),
+                profit_percent=round(profit_pct, 1),
+                status=status,
+                payment_method=str(tx.get("payment_method") or "sepay_vietqr"),
+                bank_name=tx.get("bank_name") or "VietinBank",
+                notes=tx.get("notes"),
+                created_at=tx.get("created_at"),
+                raw_content=tx.get("notes"),
+            )
+        )
+
+    return sorted(results, key=lambda x: str(x.created_at or ""), reverse=True)
+
+
+@router.post("/transactions/{transaction_id}/revoke-credit")
+async def revoke_credit_transaction(transaction_id: str, user: dict = Depends(require_auth)) -> dict:
+    """Revoke granted credit for a given SePay transaction, mark transaction as REVOKED."""
+    txs = store.list("billing_transactions")
+    tx = next(
+        (t for t in txs if str(t.get("id")) == transaction_id or str(t.get("reference_code")) == transaction_id),
+        None,
+    )
+    if not tx:
+        raise AppError("TRANSACTION_NOT_FOUND", "Không tìm thấy giao dịch", 404)
+
+    updated = store.update(
+        "billing_transactions",
+        tx["id"],
+        {"status": "REVOKED", "updated_at": datetime.now(UTC)},
+    )
+
+    # If linked to license, deduct credit
+    lic_id = tx.get("license_id")
+    if lic_id:
+        lic = store.get("licenses", lic_id)
+        if lic and "credit_balance" in lic:
+            credit_to_deduct = float(tx.get("credit_amount", tx.get("amount", 0.0)))
+            current_bal = float(lic.get("credit_balance", 0.0))
+            new_bal = max(0.0, current_bal - credit_to_deduct)
+            store.update("licenses", lic_id, {"credit_balance": new_bal, "updated_at": datetime.now(UTC)})
+
+    store.create(
+        "audit",
+        {
+            "action": "billing.credit_revoked",
+            "transaction_id": str(tx["id"]),
+            "reference_code": tx.get("reference_code"),
+            "customer": tx.get("customer_name"),
+            "amount": tx.get("amount"),
+            "actor": user["email"],
+        },
+    )
+    return {"data": {"success": True, "message": "Đã thu hồi Credit thành công", "transaction": updated}}
+
+
 
