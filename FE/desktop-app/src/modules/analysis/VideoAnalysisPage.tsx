@@ -3301,10 +3301,10 @@ Hãy nhặt đúng khoảnh khắc giật gân, nghẹt thở và kịch tính n
                       />
                       <div>
                         <strong style={{ fontSize: "12px", color: removeOriginalBgm ? "#c084fc" : "#f8fafc", display: "block" }}>
-                          🎼 Tách/Lọc bỏ nhạc nền gốc
+                          🎼 AI Vocal & SFX Remover (Tách sạch Nhạc nền gốc)
                         </strong>
                         <span style={{ fontSize: "10.5px", color: "#94a3b8", display: "block", marginTop: "2px" }}>
-                          Lọc bỏ nhạc nền có bản quyền, giữ nguyên lời thoại & tiếng còi/súng/hò hét.
+                          Bóc tách triệt để bài nhạc nền cũ bằng thuật toán triệt pha AI, giữ trọn vẹn 100% tiếng nói nhân vật, tiếng còi hú cảnh sát, tiếng súng & hiện trường.
                         </span>
                       </div>
                     </label>

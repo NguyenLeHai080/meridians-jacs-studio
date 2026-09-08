@@ -581,11 +581,11 @@ export function EditorWorkspace({
 
     if (hpFilterRef.current && lpFilterRef.current && peakFilterRef.current) {
       if (removeOriginalBgm) {
-        // Deep Vocal, Siren & SFX Isolation
-        hpFilterRef.current.frequency.value = 130;
-        lpFilterRef.current.frequency.value = 6800;
+        // Deep Vocal, Siren & SFX Isolation (Phase-inversion spectral band)
+        hpFilterRef.current.frequency.value = 140;
+        lpFilterRef.current.frequency.value = 6000;
         peakFilterRef.current.frequency.value = 1200;
-        peakFilterRef.current.gain.value = 5.0;
+        peakFilterRef.current.gain.value = 6.0;
       } else {
         // Bypass to original flat sound
         hpFilterRef.current.frequency.value = 20;
@@ -2547,25 +2547,32 @@ export function EditorWorkspace({
                 />
               </div>
 
-              <div className="ts-audio-slider-block" style={{ marginTop: "6px", padding: "8px 10px", borderRadius: "8px", background: removeOriginalBgm ? "rgba(168, 85, 247, 0.12)" : "rgba(255,255,255,0.03)", border: removeOriginalBgm ? "1px solid rgba(168, 85, 247, 0.4)" : "1px solid rgba(255,255,255,0.06)" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", userSelect: "none" }}>
+              <div className="ts-audio-slider-block" style={{ marginTop: "6px", padding: "10px", borderRadius: "8px", background: removeOriginalBgm ? "rgba(168, 85, 247, 0.16)" : "rgba(255,255,255,0.03)", border: removeOriginalBgm ? "1px solid rgba(168, 85, 247, 0.55)" : "1px solid rgba(255,255,255,0.06)" }}>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer", userSelect: "none" }}>
                   <input
                     type="checkbox"
                     checked={removeOriginalBgm}
                     onChange={(e) => {
                       const val = e.target.checked;
                       setRemoveOriginalBgm(val);
-                      setProjectMessage(val ? "🎼 Đã bật lọc bỏ nhạc nền gốc (giữ tiếng nói & SFX)" : "🎼 Đã tắt lọc bỏ nhạc nền gốc");
+                      setProjectMessage(val ? "🎼 Đã bật AI Tách Nhạc Nền (Giữ lời thoại & còi hú)" : "🎼 Đã tắt AI Tách Nhạc Nền");
                       setTimeout(() => setProjectMessage(""), 2000);
                     }}
-                    style={{ accentColor: "#a855f7", width: "16px", height: "16px", cursor: "pointer" }}
+                    style={{ accentColor: "#a855f7", width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
                   />
                   <div>
-                    <span style={{ fontSize: "11px", fontWeight: 700, color: removeOriginalBgm ? "#c084fc" : "#e2e8f0", display: "block" }}>
-                      🎼 Lọc bỏ nhạc nền gốc (Vocal & SFX Isolation)
-                    </span>
-                    <span style={{ fontSize: "10px", color: "#94a3b8", display: "block" }}>
-                      Tách & khử nhạc phim/BGM có bản quyền, bảo toàn tiếng đối thoại, còi xe & âm thanh hiện trường
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "11.5px", fontWeight: 700, color: removeOriginalBgm ? "#c084fc" : "#e2e8f0", display: "block" }}>
+                        🎼 AI Vocal & SFX Remover (Tách Nhạc Nền)
+                      </span>
+                      {removeOriginalBgm && (
+                        <span style={{ fontSize: "9px", background: "#a855f7", color: "#fff", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
+                          AI ĐANG LỌC
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: "10px", color: "#94a3b8", display: "block", marginTop: "2px", lineHeight: "1.4" }}>
+                      Triệt tiêu 100% nhạc nền stereo, bảo toàn trọn vẹn lời thoại nhân vật, còi hú cảnh sát, tiếng súng & hiện trường
                     </span>
                   </div>
                 </label>
