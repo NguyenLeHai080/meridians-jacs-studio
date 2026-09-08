@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from hmac import compare_digest
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Request
 
@@ -8,9 +9,161 @@ from app.core.errors import AppError
 from app.core.security import require_auth
 from app.core.store import store
 from app.modules.licensing.router import _active_license
-from app.modules.telemetry.schemas import Severity, TelemetryEvent
+from app.modules.telemetry.schemas import AiRequestTelemetryInput, Severity, TelemetryEvent
 
 router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
+
+
+@router.post("/ai-request", status_code=202)
+async def ingest_ai_request(
+    payload: AiRequestTelemetryInput,
+    license_key_header: str | None = Header(default=None, alias="X-License-Key"),
+    device_id_header: str | None = Header(default=None, alias="X-Device-Id"),
+):
+    """
+    High-throughput real-time AI telemetry endpoint for Desktop Tools & API Gateway.
+    Records model latencies, token counts, costs, errors and updates client stats.
+    """
+    now = datetime.now(UTC)
+    now_iso = now.isoformat()
+    raw_key = (payload.license_key or license_key_header or "").strip()
+    hwid = (payload.hwid or device_id_header or "").strip()
+
+    # Match license in DB with multi-factor check
+    all_licenses = list(store.list("licenses")) if hasattr(store, "list") else []
+    matched_lic = None
+    clean_k = raw_key.upper()
+    clean_h = hwid.lower()
+
+    for lic_item in all_licenses:
+        l_id = str(lic_item.get("id") or "").strip()
+        l_raw = str(lic_item.get("raw_key") or lic_item.get("key") or "").strip().upper()
+        l_hw = str(lic_item.get("hwid") or "").strip().lower()
+        if clean_k and (clean_k == l_raw or clean_k == l_id or (len(clean_k) >= 4 and l_raw.endswith(clean_k[-4:]))):
+            matched_lic = lic_item
+            break
+        if clean_h and l_hw and (clean_h == l_hw or clean_h in l_hw or l_hw in clean_h):
+            matched_lic = lic_item
+            break
+
+    cust_name = matched_lic.get("customer_name") if matched_lic else "Khách hàng Desktop"
+    lic_id = str(matched_lic.get("id")) if matched_lic else None
+    
+    # Mask license key
+    key_for_log = raw_key or (matched_lic.get("raw_key") or matched_lic.get("key") if matched_lic else "JACS-DESKTOP-APP")
+    if len(key_for_log) > 8:
+        key_masked = f"{key_for_log[:4]}-****-{key_for_log[-4:]}"
+    else:
+        key_masked = key_for_log
+
+    # Compute tokens and cost if needed
+    t_in = payload.tokens_in
+    t_out = payload.tokens_out
+    total_tok = payload.total_tokens if payload.total_tokens > 0 else (t_in + t_out)
+    
+    cred = payload.credits_deducted
+    cost_vnd = payload.cost_vnd
+    if cost_vnd <= 0:
+        if cred > 0:
+            cost_vnd = round(cred * 1000.0, 0)
+        elif total_tok > 0:
+            cost_vnd = round(t_in * 0.5 + t_out * 0.9, 0) if (t_in or t_out) else round(total_tok * 0.6, 0)
+
+    is_fail = payload.status_code >= 400 or bool(payload.error_message) or payload.status.lower() in ["fail", "error", "failed"]
+
+    ts = payload.timestamp or now_iso
+    log_id = f"log-{int(now.timestamp() * 1000)}"
+
+    record_data = {
+        "id": log_id,
+        "model": payload.model.replace("models/", "").strip(),
+        "provider_type": payload.provider_type,
+        "latency_ms": payload.latency_ms,
+        "status_code": payload.status_code,
+        "status": "Fail" if is_fail else "Oke",
+        "tokens_in": t_in,
+        "tokens_out": t_out,
+        "total_tokens": total_tok,
+        "input_tokens": t_in,
+        "output_tokens": t_out,
+        "credits_deducted": cred,
+        "cost_vnd": cost_vnd,
+        "feature_name": payload.feature_name,
+        "error_message": payload.error_message if is_fail else None,
+        "license_id": lic_id,
+        "license_key": key_masked,
+        "hwid": hwid,
+        "customer_name": cust_name,
+        "timestamp": ts,
+        "created_at": now,
+    }
+
+    saved = store.create("ai_gateway_logs", record_data)
+
+    # Deduct credit balance on license and update ai_client_usage in DB if license is linked
+    new_credit_bal = None
+    if matched_lic:
+        cred_to_deduct = cred if cred > 0 else (round(total_tok / 1000.0, 2) if total_tok > 0 else 0.0)
+        fresh_lic = store.get("licenses", matched_lic["id"]) or matched_lic
+        cur_bal = float(fresh_lic.get("credit_balance") or 0.0)
+        if cred_to_deduct > 0 and not is_fail:
+            new_credit_bal = max(0.0, round(cur_bal - cred_to_deduct, 2))
+            try:
+                store.update("licenses", matched_lic["id"], {
+                    "credit_balance": new_credit_bal,
+                    "updated_at": now,
+                })
+            except Exception:
+                pass
+        else:
+            new_credit_bal = cur_bal
+
+        usage_id = f"usage-{lic_id[:8]}" if lic_id else "usage-client"
+        existing_usage = None
+        try:
+            existing_usage = store.get("ai_client_usage", usage_id) if hasattr(store, "get") else None
+        except Exception:
+            pass
+        if existing_usage:
+            new_reqs = int(existing_usage.get("total_requests", 0)) + 1
+            new_in = int(existing_usage.get("total_input_tokens", 0)) + t_in
+            new_out = int(existing_usage.get("total_output_tokens", 0)) + t_out
+            new_cost = float(existing_usage.get("estimated_cost_vnd", 0.0)) + cost_vnd
+            new_cred = float(existing_usage.get("total_credits_used", 0.0)) + cred
+            try:
+                store.update("ai_client_usage", usage_id, {
+                    "total_requests": new_reqs,
+                    "total_input_tokens": new_in,
+                    "total_output_tokens": new_out,
+                    "estimated_cost_vnd": new_cost,
+                    "total_credits_used": new_cred,
+                    "credit_balance": new_credit_bal,
+                    "last_used_model": payload.model,
+                    "last_activity_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+                })
+            except Exception:
+                pass
+        else:
+            try:
+                store.create("ai_client_usage", {
+                    "id": usage_id,
+                    "license_id": lic_id,
+                    "license_key": key_masked,
+                    "customer_name": cust_name,
+                    "credit_balance": new_credit_bal,
+                    "total_requests": 1,
+                    "total_input_tokens": t_in,
+                    "total_output_tokens": t_out,
+                    "estimated_cost_vnd": cost_vnd,
+                    "total_credits_used": cred,
+                    "last_used_model": payload.model,
+                    "last_activity_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": "active",
+                })
+            except Exception:
+                pass
+
+    return {"data": {"success": True, "log_id": str(saved.get("id", log_id)), "credit_balance": new_credit_bal}}
 
 
 @router.post("/logs", status_code=202)
@@ -181,7 +334,7 @@ async def get_api_operations_report(_: dict = Depends(require_auth)):
         lic_telemetry = [t for t in all_telemetry if _match_record(t)]
 
         # Calculate Requests Counts
-        gw_err = sum(1 for l in gw_logs if int(l.get("status_code", 200) or 200) >= 400)
+        gw_err = sum(1 for log_item in gw_logs if int(log_item.get("status_code", 200) or 200) >= 400)
         jobs_err = sum(1 for j in lic_jobs if str(j.get("status", "")).lower() in ("failed", "cancelled"))
         usage_reqs = int(lic_usage.get("total_requests", 0)) if lic_usage else 0
 
@@ -193,7 +346,7 @@ async def get_api_operations_report(_: dict = Depends(require_auth)):
 
         # Calculate Tokens Used
         tok_from_jobs = sum(int(j.get("tokens_used", 0) or 0) for j in lic_jobs)
-        tok_from_gw = sum(int(l.get("tokens_in", 0) or 0) + int(l.get("tokens_out", 0) or 0) for l in gw_logs)
+        tok_from_gw = sum(int(log_item.get("tokens_in", 0) or 0) + int(log_item.get("tokens_out", 0) or 0) for log_item in gw_logs)
         tok_from_usage = int(lic_usage.get("total_input_tokens", 0) or 0) + int(lic_usage.get("total_output_tokens", 0) or 0) if lic_usage else 0
         
         tok_used = max(tok_from_jobs + tok_from_gw, tok_from_usage)
@@ -214,8 +367,8 @@ async def get_api_operations_report(_: dict = Depends(require_auth)):
         # Build detailed requests list (Recent requests made by this machine)
         req_list = []
         for r_idx, gl in enumerate(gw_logs[:25]):
-            tin = int(gl.get("tokens_in") or gl.get("prompt_tokens") or 0)
-            tout = int(gl.get("tokens_out") or gl.get("completion_tokens") or 0)
+            tin = int(gl.get("tokens_in") or gl.get("input_tokens") or gl.get("prompt_tokens") or 0)
+            tout = int(gl.get("tokens_out") or gl.get("output_tokens") or gl.get("completion_tokens") or 0)
             if tin == 0 and tout == 0:
                 tin = max(1000, 3200 + (r_idx * 450) % 18000)
                 tout = max(400, 850 + (r_idx * 190) % 4500)
@@ -232,7 +385,7 @@ async def get_api_operations_report(_: dict = Depends(require_auth)):
                 "latency_ms": latency,
                 "status": status_str,
                 "timestamp": str(req_time)[:16].replace("T", " "),
-                "credit_used": round(float(gl.get("credits_used") or (tin * 0.0005 + tout * 0.0009)), 2),
+                "credit_used": round(float(gl.get("credits_deducted") or gl.get("credits_used") or (tin * 0.0005 + tout * 0.0009)), 2),
             })
 
         if len(req_list) < 5:
@@ -255,7 +408,7 @@ async def get_api_operations_report(_: dict = Depends(require_auth)):
 
         # Build errors list
         err_list = []
-        for e_idx, gl in enumerate([l for l in gw_logs if int(l.get("status_code", 200) or 200) >= 400][:10]):
+        for e_idx, gl in enumerate([log_item for log_item in gw_logs if int(log_item.get("status_code", 200) or 200) >= 400][:10]):
             err_list.append({
                 "id": f"err-gw-{str(gl.get('id', e_idx))[:8]}",
                 "status_code": int(gl.get("status_code") or 502),
@@ -354,6 +507,7 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
     """
     Returns 100% REAL live database logs of all AI requests across all providers, models,
     machines and API Gateway traffic with real latencies, token counts, costs and statuses.
+    Includes comprehensive per-device AI performance analytics from User Management (Quản lý máy người dùng).
     """
     now = datetime.now(UTC)
 
@@ -361,17 +515,84 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
     gateway_logs = list(store.list("ai_gateway_logs")) if hasattr(store, "list") else []
     all_jobs = list(store.list("jobs")) if hasattr(store, "list") else []
     all_licenses = list(store.list("licenses")) if hasattr(store, "list") else []
-    
-    lic_map = {}
-    for l in all_licenses:
-        lid = str(l.get("id"))
-        lic_map[lid] = l
-        if l.get("key"):
-            lic_map[str(l.get("key"))] = l
-        if l.get("raw_key"):
-            lic_map[str(l.get("raw_key"))] = l
+    all_usage = list(store.list("ai_client_usage")) if hasattr(store, "list") else []
 
-    def _parse_iso_utc(ts_val, item_id=""):
+    def _clean_str(val: Any) -> str:
+        return str(val or "").strip()
+
+    def _norm_name(val: Any) -> str:
+        return " ".join(_clean_str(val).split()).lower()
+
+    # Pre-index licenses by multiple identifiers
+    lic_by_id: dict[str, dict] = {}
+    lic_by_hwid: dict[str, dict] = {}
+    lic_by_key: dict[str, dict] = {}
+    lic_by_suffix: dict[str, dict] = {}
+    lic_by_norm_name: dict[str, dict] = {}
+
+    for lic_item in all_licenses:
+        lid = _clean_str(lic_item.get("id"))
+        if lid:
+            lic_by_id[lid] = lic_item
+        
+        hw = _clean_str(lic_item.get("hwid")).lower()
+        if hw:
+            lic_by_hwid[hw] = lic_item
+
+        k_raw = _clean_str(lic_item.get("raw_key") or lic_item.get("key")).upper()
+        if k_raw:
+            lic_by_key[k_raw] = lic_item
+            if len(k_raw) >= 4:
+                lic_by_suffix[k_raw[-4:]] = lic_item
+
+        c_name = _norm_name(lic_item.get("customer_name"))
+        if c_name and c_name not in ["khách hàng desktop", "desktop client", "máy khách"]:
+            lic_by_norm_name[c_name] = lic_item
+
+    def _resolve_lic(
+        lid_val: str = "",
+        key_val: str = "",
+        hwid_val: str = "",
+        name_val: str = "",
+    ) -> dict | None:
+        # 1. Match by exact license ID
+        lid_clean = _clean_str(lid_val)
+        if lid_clean and lid_clean in lic_by_id:
+            return lic_by_id[lid_clean]
+
+        # 2. Match by HWID
+        hw_clean = _clean_str(hwid_val).lower()
+        if hw_clean and hw_clean in lic_by_hwid:
+            return lic_by_hwid[hw_clean]
+
+        # 3. Match by key
+        k_clean = _clean_str(key_val).upper()
+        if k_clean and k_clean in lic_by_key:
+            return lic_by_key[k_clean]
+        if k_clean and len(k_clean) >= 4 and k_clean[-4:] in lic_by_suffix:
+            return lic_by_suffix[k_clean[-4:]]
+
+        # 4. Match by normalized customer / machine name
+        n_clean = _norm_name(name_val)
+        if n_clean and n_clean in lic_by_norm_name:
+            return lic_by_norm_name[n_clean]
+        if n_clean and n_clean not in ["khách hàng desktop", "desktop client", "máy khách"]:
+            for lic_norm, lic_obj in lic_by_norm_name.items():
+                if n_clean == lic_norm or n_clean in lic_norm or lic_norm in n_clean:
+                    return lic_obj
+
+        # 5. Fuzzy match against all licenses
+        for lic_item in all_licenses:
+            l_hw = _clean_str(lic_item.get("hwid")).lower()
+            l_k = _clean_str(lic_item.get("raw_key") or lic_item.get("key")).upper()
+            if hw_clean and l_hw and (hw_clean == l_hw or hw_clean in l_hw or l_hw in hw_clean):
+                return lic_item
+            if k_clean and l_k and (k_clean == l_k or k_clean in l_k or l_k in k_clean):
+                return lic_item
+
+        return None
+
+    def _parse_iso_utc(ts_val: Any, item_id: str = "") -> str:
         if not ts_val:
             if item_id and item_id.startswith("log-"):
                 try:
@@ -387,7 +608,6 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
             return ts_val.astimezone(UTC).isoformat()
         
         ts_str = str(ts_val).strip()
-        # If string is format YYYY-MM-DD HH:MM:SS
         if len(ts_str) == 19 and " " in ts_str and "T" not in ts_str:
             try:
                 dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
@@ -407,59 +627,86 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
 
     # Map real AI Gateway logs from DB
     for log in gateway_logs:
-        lic_id = str(log.get("license_id") or "")
-        lic_key_raw = str(log.get("license_key") or "")
-        lic = lic_map.get(lic_id) or lic_map.get(lic_key_raw) or {}
-        
-        key_raw = lic_key_raw or lic.get("key") or lic.get("raw_key") or log.get("key") or "JACS-MANAGED-KEY"
-        if len(key_raw) > 8:
-            key_masked = f"{key_raw[:4]}-****-{key_raw[-4:]}"
+        lic_id_raw = _clean_str(log.get("license_id"))
+        lic_key_raw = _clean_str(log.get("license_key") or log.get("key"))
+        hwid_raw = _clean_str(log.get("hwid") or log.get("hwid_hash"))
+        cust_name_raw = _clean_str(log.get("customer_name") or log.get("client_name"))
+
+        lic = _resolve_lic(lic_id_raw, lic_key_raw, hwid_raw, cust_name_raw) or {}
+
+        # Standardized machine name & key from real license
+        machine_name = _clean_str(lic.get("customer_name")) or cust_name_raw or "Khách hàng Desktop"
+        matched_lic_id = _clean_str(lic.get("id")) or lic_id_raw
+        matched_hwid = _clean_str(lic.get("hwid")) or hwid_raw
+
+        k_src = _clean_str(lic.get("raw_key") or lic.get("key") or lic_key_raw or "JACS-MANAGED-KEY")
+        if len(k_src) > 8:
+            key_masked = f"{k_src[:4]}-****-{k_src[-4:]}"
         else:
-            key_masked = key_raw
-        
-        st_code = int(log.get("status_code", 200))
+            key_masked = k_src
+
+        st_code = int(log.get("status_code", 200) or 200)
         err_msg = log.get("error_message") or log.get("error")
         is_fail = st_code >= 400 or bool(err_msg) or str(log.get("status", "")).lower() in ["fail", "error", "failed"]
-        
+
         tin = int(log.get("input_tokens") or log.get("tokens_in") or 0)
         tout = int(log.get("output_tokens") or log.get("tokens_out") or 0)
+        total_tok = int(log.get("total_tokens") or (tin + tout) or log.get("tokens") or 0)
+        if total_tok > 0 and tin == 0 and tout == 0:
+            tin = int(round(total_tok * 0.72))
+            tout = total_tok - tin
+
         lat = int(log.get("latency_ms") or 0)
-        
         cred = float(log.get("credits_deducted") or log.get("credits") or log.get("credit_used") or 0.0)
-        cost_vnd = float(log.get("cost_vnd") or (cred * 1000.0 if cred > 0 else (tin * 0.0005 + tout * 0.0009)))
+        if cred <= 0.0 and total_tok > 0 and not is_fail:
+            cred = round(total_tok / 1000.0, 2)
+
+        cost_vnd = float(log.get("cost_vnd") or 0.0)
+        if cost_vnd <= 0.0:
+            if cred > 0:
+                cost_vnd = round(cred * 1000.0, 0)
+            elif total_tok > 0:
+                cost_vnd = round(tin * 0.5 + tout * 0.9, 0)
 
         p_type = str(log.get("provider_type") or "").lower()
         if "gemini" in p_type:
             provider_name = "Google Gemini"
         elif "anthropic" in p_type or "claude" in p_type:
-            provider_name = "Anthropic"
+            provider_name = "Anthropic Claude"
         elif "eleven" in p_type:
             provider_name = "ElevenLabs"
         elif "deepseek" in p_type:
             provider_name = "DeepSeek"
         elif "openai" in p_type:
             provider_name = "OpenAI"
+        elif "groq" in p_type:
+            provider_name = "Groq"
         else:
             provider_name = "AI Gateway"
 
         log_id_str = str(log.get("id") or f"req-{len(results)+1}")
         norm_ts = _parse_iso_utc(log.get("timestamp") or log.get("created_at"), log_id_str)
+        feat_name = str(log.get("feature_name") or log.get("feature") or "Phân tích Video Multimodal")
 
         results.append({
             "id": log_id_str,
             "timestamp": norm_ts,
-            "model": str(log.get("model") or "gpt-5.6-sol"),
+            "model": str(log.get("model") or "gemini-2.5-flash").replace("models/", "").strip(),
             "provider": provider_name,
             "key": key_masked,
+            "hwid": matched_hwid,
+            "license_id": matched_lic_id,
             "status": "Fail" if is_fail else "Oke",
             "status_code": st_code,
             "tokens_in": tin,
             "tokens_out": tout,
-            "total_tokens": tin + tout,
+            "total_tokens": total_tok,
             "cost_vnd": round(cost_vnd, 0),
             "credit_used": round(cred, 2),
             "latency_ms": lat,
-            "client_name": str(log.get("customer_name") or lic.get("customer_name") or "Khách hàng Desktop"),
+            "feature_name": feat_name,
+            "client_name": machine_name,
+            "customer_name": machine_name,
             "error_message": err_msg if is_fail else None,
         })
 
@@ -468,34 +715,251 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
         if job.get("kind") in ["analysis", "render", "ai_task"] or job.get("tokensUsed") or job.get("error"):
             st = str(job.get("stage") or job.get("status") or "")
             is_fail = st in ["failed", "error"] or bool(job.get("error"))
-            tok_used = int(job.get("tokensUsed") or 0)
-            
+            tok_used = int(job.get("tokensUsed") or job.get("tokens_used") or 0)
+
             job_id_str = str(job.get("id") or f"job-{len(results)+1}")
             job_created = _parse_iso_utc(job.get("created_at") or job.get("createdAt"), job_id_str)
-            job_model = job.get("model") or "gemini-2.5-flash"
+            job_model = str(job.get("model") or "gemini-2.5-flash").replace("models/", "").strip()
             p_type = str(job.get("providerType") or job.get("engine") or "gemini")
             provider_name = "Google Gemini" if "gemini" in p_type.lower() else "OpenAI"
+
+            tin = int(round(tok_used * 0.72)) if tok_used > 0 else 0
+            tout = int(tok_used - tin) if tok_used > 0 else 0
+
+            job_lic_id = _clean_str(job.get("license_id"))
+            job_hwid = _clean_str(job.get("hwid"))
+            job_cust_name = _clean_str(job.get("customer_name"))
+
+            lic = _resolve_lic(job_lic_id, "", job_hwid, job_cust_name) or {}
+            machine_name = _clean_str(lic.get("customer_name")) or "Khách hàng Desktop"
+            matched_lic_id = _clean_str(lic.get("id")) or job_lic_id
+            matched_hwid = _clean_str(lic.get("hwid")) or job_hwid
+
+            k_src = _clean_str(lic.get("raw_key") or lic.get("key") or "JACS-DESKTOP-APP")
+            key_masked = f"{k_src[:4]}-****-{k_src[-4:]}" if len(k_src) > 8 else k_src
+
+            cred = round(tok_used / 1000.0, 2)
+            cost_vnd = round(cred * 1000.0, 0) if cred > 0 else round(tok_used * 0.00384, 0)
+            lat_val = int(float(job.get("durationSeconds") or 2.5) * 1000)
 
             results.append({
                 "id": job_id_str,
                 "timestamp": job_created,
-                "model": str(job_model),
+                "model": job_model,
                 "provider": provider_name,
-                "key": "JACS-DESKTOP-APP",
+                "key": key_masked,
+                "hwid": matched_hwid,
+                "license_id": matched_lic_id,
                 "status": "Fail" if is_fail else "Oke",
                 "status_code": 500 if is_fail else 200,
-                "tokens_in": tok_used,
-                "tokens_out": int(tok_used * 0.15),
+                "tokens_in": tin,
+                "tokens_out": tout,
                 "total_tokens": tok_used,
-                "cost_vnd": round(tok_used * 0.00384, 0),
-                "credit_used": round(tok_used / 1000.0, 2),
-                "latency_ms": int(float(job.get("durationSeconds") or 2.5) * 1000),
-                "client_name": str(job.get("name") or "Desktop Analysis Video"),
+                "cost_vnd": round(cost_vnd, 0),
+                "credit_used": cred,
+                "latency_ms": lat_val,
+                "feature_name": "Phân tích Video AI (Job)",
+                "client_name": machine_name,
+                "customer_name": machine_name,
                 "error_message": job.get("error") if is_fail else None,
             })
 
     # Sort strictly descending by timestamp
     results.sort(key=lambda x: str(x["timestamp"]), reverse=True)
+
+    # 2. Build Per-Device Aggregations (from Quản Lý Máy Người Dùng)
+    devices_map: dict[str, dict] = {}
+    
+    # Initialize all registered licenses as primary device cards
+    for lic in all_licenses:
+        m_id = _clean_str(lic.get("id"))
+        m_name = _clean_str(lic.get("customer_name")) or f"Máy #{m_id[:6]}"
+        m_hwid = _clean_str(lic.get("hwid"))
+        m_key = _clean_str(lic.get("raw_key") or lic.get("key"))
+        key_masked = f"{m_key[:4]}-****-{m_key[-4:]}" if len(m_key) > 8 else (m_key or "JACS-KEY")
+        credit_bal = float(lic.get("credit_balance") if lic.get("credit_balance") is not None else 0.0)
+
+        devices_map[m_id] = {
+            "id": m_id,
+            "device_name": m_name,
+            "customer_name": m_name,
+            "customer_contact": lic.get("customer_contact") or "",
+            "hwid": m_hwid,
+            "license_key": key_masked,
+            "credit_balance": credit_bal,
+            "status": str(lic.get("status") or "active"),
+            "expires_at": lic.get("expires_at"),
+            "total_requests": 0,
+            "success_requests": 0,
+            "failed_requests": 0,
+            "avg_latency_ms": 0,
+            "total_latency_ms": 0,
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "total_tokens": 0,
+            "cost_vnd": 0.0,
+            "credits_used": 0.0,
+            "last_active_at": lic.get("last_active_at") or lic.get("updated_at"),
+            "last_used_model": None,
+            "models_used": {},
+            "features_used": {},
+        }
+
+    # Aggregate actual requests from results into devices_map
+    for r in results:
+        r_lic_id = _clean_str(r.get("license_id"))
+        r_hwid = _clean_str(r.get("hwid"))
+        r_key = _clean_str(r.get("key"))
+        r_name = _clean_str(r.get("client_name") or r.get("customer_name"))
+
+        matched_dev_id = None
+        if r_lic_id and r_lic_id in devices_map:
+            matched_dev_id = r_lic_id
+        else:
+            lic_match = _resolve_lic(r_lic_id, r_key, r_hwid, r_name)
+            if lic_match and _clean_str(lic_match.get("id")) in devices_map:
+                matched_dev_id = _clean_str(lic_match.get("id"))
+
+        if not matched_dev_id:
+            # Route unlinked requests to first registered device or single fallback group
+            if len(all_licenses) == 1:
+                matched_dev_id = _clean_str(all_licenses[0].get("id"))
+            else:
+                fallback_key = "desktop-client-unlinked"
+                if fallback_key not in devices_map:
+                    devices_map[fallback_key] = {
+                        "id": "desktop-client-unlinked",
+                        "device_name": "Khách Hàng Desktop",
+                        "customer_name": "Khách Hàng Desktop",
+                        "customer_contact": "",
+                        "hwid": r_hwid,
+                        "license_key": r_key,
+                        "credit_balance": 0.0,
+                        "status": "active",
+                        "expires_at": None,
+                        "total_requests": 0,
+                        "success_requests": 0,
+                        "failed_requests": 0,
+                        "avg_latency_ms": 0,
+                        "total_latency_ms": 0,
+                        "tokens_in": 0,
+                        "tokens_out": 0,
+                        "total_tokens": 0,
+                        "cost_vnd": 0.0,
+                        "credits_used": 0.0,
+                        "last_active_at": r.get("timestamp"),
+                        "last_used_model": None,
+                        "models_used": {},
+                        "features_used": {},
+                    }
+                matched_dev_id = fallback_key
+
+        d = devices_map[matched_dev_id]
+        d["total_requests"] += 1
+        if r["status"] == "Oke":
+            d["success_requests"] += 1
+        else:
+            d["failed_requests"] += 1
+
+        d["total_latency_ms"] += r.get("latency_ms", 0)
+        d["tokens_in"] += r.get("tokens_in", 0)
+        d["tokens_out"] += r.get("tokens_out", 0)
+        d["total_tokens"] += r.get("total_tokens", 0)
+        d["cost_vnd"] += r.get("cost_vnd", 0.0)
+        d["credits_used"] += r.get("credit_used", 0.0)
+
+        m_model = _clean_str(r.get("model")) or "gemini-2.5-flash"
+        if m_model not in d["models_used"]:
+            d["models_used"][m_model] = {
+                "count": 0,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "total_tokens": 0,
+                "credits_used": 0.0,
+                "cost_vnd": 0.0,
+            }
+        d["models_used"][m_model]["count"] += 1
+        d["models_used"][m_model]["tokens_in"] += r.get("tokens_in", 0)
+        d["models_used"][m_model]["tokens_out"] += r.get("tokens_out", 0)
+        d["models_used"][m_model]["total_tokens"] += r.get("total_tokens", 0)
+        d["models_used"][m_model]["credits_used"] += r.get("credit_used", 0.0)
+        d["models_used"][m_model]["cost_vnd"] += r.get("cost_vnd", 0.0)
+
+        m_feat = _clean_str(r.get("feature_name")) or "Phân tích Video Multimodal"
+        if m_feat not in d["features_used"]:
+            d["features_used"][m_feat] = {
+                "count": 0,
+                "tokens": 0,
+                "credits": 0.0,
+            }
+        d["features_used"][m_feat]["count"] += 1
+        d["features_used"][m_feat]["tokens"] += r.get("total_tokens", 0)
+        d["features_used"][m_feat]["credits"] += r.get("credit_used", 0.0)
+
+        d["last_used_model"] = m_model
+        if not d["last_active_at"] or str(r.get("timestamp", "")) > str(d["last_active_at"]):
+            d["last_active_at"] = r.get("timestamp")
+
+    # Ingest historical ai_client_usage if requests were archived or DB has older summary
+    for u in all_usage:
+        u_lic_id = _clean_str(u.get("license_id"))
+        u_cust_name = _clean_str(u.get("customer_name"))
+        lic_match = _resolve_lic(u_lic_id, _clean_str(u.get("license_key")), "", u_cust_name)
+        target_dev_id = _clean_str(lic_match.get("id")) if lic_match else (u_lic_id if u_lic_id in devices_map else None)
+        if target_dev_id and target_dev_id in devices_map:
+            dev = devices_map[target_dev_id]
+            u_reqs = int(u.get("total_requests", 0))
+            if u_reqs > dev["total_requests"]:
+                diff_reqs = u_reqs - dev["total_requests"]
+                dev["total_requests"] = u_reqs
+                dev["success_requests"] += diff_reqs
+                dev["tokens_in"] = max(dev["tokens_in"], int(u.get("total_input_tokens", 0)))
+                dev["tokens_out"] = max(dev["tokens_out"], int(u.get("total_output_tokens", 0)))
+                dev["total_tokens"] = max(dev["total_tokens"], dev["tokens_in"] + dev["tokens_out"])
+                dev["credits_used"] = max(dev["credits_used"], float(u.get("total_credits_used", 0.0)))
+                dev["cost_vnd"] = max(dev["cost_vnd"], float(u.get("estimated_cost_vnd", 0.0)))
+                if u.get("last_used_model") and not dev["last_used_model"]:
+                    dev["last_used_model"] = u.get("last_used_model")
+
+    device_list = []
+    for d in devices_map.values():
+        if d["total_requests"] > 0:
+            d["avg_latency_ms"] = round(d["total_latency_ms"] / d["total_requests"], 0)
+            d["success_rate_pct"] = round((d["success_requests"] / d["total_requests"]) * 100, 1)
+        else:
+            d["avg_latency_ms"] = 0
+            d["success_rate_pct"] = 100.0
+
+        d["cost_vnd"] = round(d["cost_vnd"], 0)
+        d["credits_used"] = round(d["credits_used"], 2)
+
+        d["top_models"] = [
+            {
+                "model": k,
+                "count": v["count"],
+                "tokens_in": v["tokens_in"],
+                "tokens_out": v["tokens_out"],
+                "total_tokens": v["total_tokens"],
+                "credits_used": round(v["credits_used"], 2),
+                "cost_vnd": round(v["cost_vnd"], 0),
+            }
+            for k, v in sorted(d["models_used"].items(), key=lambda x: x[1]["count"], reverse=True)
+        ]
+
+        d["top_features"] = [
+            {
+                "feature": k,
+                "count": v["count"],
+                "tokens": v["tokens"],
+                "credits": round(v["credits"], 2),
+            }
+            for k, v in sorted(d["features_used"].items(), key=lambda x: x[1]["count"], reverse=True)
+        ]
+
+        device_list.append(d)
+
+    # Sort devices by total requests descending
+    device_list.sort(key=lambda x: x["total_requests"], reverse=True)
 
     total_count = len(results)
     success_count = sum(1 for r in results if r["status"] == "Oke")
@@ -513,10 +977,13 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
                 "avg_latency_ms": avg_latency,
                 "smoothness_status": "Rất Mượt" if avg_latency < 3000 else "Bình Thường" if avg_latency < 8000 else "Cảnh Báo Độ Trễ / Lỗi",
             },
+            "devices": device_list,
             "logs": results[:limit],
             "total": total_count,
         }
     }
+
+
 
 
 

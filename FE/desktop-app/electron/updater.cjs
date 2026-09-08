@@ -7,7 +7,7 @@ const childProcess = require("node:child_process");
 const { once } = require("node:events");
 
 const MAX_UPDATE_BYTES = 4 * 1024 * 1024 * 1024;
-const VERSION_PATTERN = /^v(\d+)\.(\d+)\.(\d+)$/;
+const VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)$/i;
 
 function trustedUrl(value) {
   try {
@@ -26,7 +26,9 @@ function versionParts(value) {
 function compareVersions(left, right) {
   const a = versionParts(left);
   const b = versionParts(right);
-  if (!a || !b) return 0;
+  if (!a && !b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
   for (let index = 0; index < 3; index += 1) {
     if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
   }
@@ -35,9 +37,12 @@ function compareVersions(left, right) {
 
 function validateRelease(release, platform, currentVersion) {
   if (!release || typeof release !== "object") throw new Error("Manifest cập nhật trống");
-  if (release.platform !== platform) throw new Error("Bản cập nhật không dành cho hệ điều hành này");
-  if (!versionParts(release.version) || compareVersions(release.version, currentVersion) <= 0) throw new Error("Phiên bản cập nhật không hợp lệ hoặc đã cũ");
-  if (!trustedUrl(release.download_url)) throw new Error("URL cập nhật không được tin cậy");
+  if (release.platform && platform && release.platform !== platform) throw new Error("Bản cập nhật không dành cho hệ điều hành này");
+  if (!versionParts(release.version) || compareVersions(release.version, currentVersion) <= 0) {
+    throw new Error("Phiên bản cập nhật không hợp lệ hoặc đã cũ");
+  }
+  const downloadUrl = release.download_url || release.url;
+  if (!trustedUrl(downloadUrl)) throw new Error("URL cập nhật không được tin cậy");
   if (!/^[a-f0-9]{128}$/i.test(String(release.sha512 || ""))) throw new Error("Manifest thiếu SHA-512 hợp lệ");
   return release;
 }
@@ -68,13 +73,14 @@ function safeFileName(url, version, platform) {
 
 async function downloadRelease({ release, platform, currentVersion, tempDirectory, signal, onProgress, fetchImpl = fetch }) {
   validateRelease(release, platform, currentVersion);
+  const downloadUrl = release.download_url || release.url;
   const directory = path.join(tempDirectory || os.tmpdir(), "jacs-studio-updates", release.version);
   await fsp.mkdir(directory, { recursive: true, mode: 0o755 });
-  const targetPath = path.join(directory, safeFileName(release.download_url, release.version, platform));
+  const targetPath = path.join(directory, safeFileName(downloadUrl, release.version, platform));
   const partialPath = `${targetPath}.part`;
   await fsp.rm(partialPath, { force: true });
-  const response = await fetchImpl(release.download_url, { redirect: "follow", signal, headers: { Accept: "application/octet-stream" } });
-  const finalUrl = response.url || release.download_url;
+  const response = await fetchImpl(downloadUrl, { redirect: "follow", signal, headers: { Accept: "application/octet-stream" } });
+  const finalUrl = response.url || downloadUrl;
   if (!trustedUrl(finalUrl)) throw new Error("Máy chủ chuyển hướng tới URL không được tin cậy");
   if (!response.ok || !response.body) throw new Error(`Không tải được bản cập nhật (HTTP ${response.status})`);
   const contentLength = Number(response.headers?.get?.("content-length") || 0);

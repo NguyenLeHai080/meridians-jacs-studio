@@ -15,6 +15,8 @@ export type EditorScene = {
   detail: string;
   /** Contextual line used by the voice and subtitle tracks in the editor. */
   subtitle?: string;
+  voiceover?: string;
+  translation?: string;
   /** Caption cues relative to the scene clip, used by the live preview. */
   subtitleCues?: Array<{ start: number; end: number; text: string }>;
   accent: string;

@@ -102,7 +102,35 @@ async def test_provider(provider_id: UUID, _: dict = Depends(require_auth)):
         secret,
         get_settings().provider_timeout_seconds,
     )
+    # Record test connection to ai_gateway_logs
+    try:
+        from datetime import UTC, datetime
+        now_utc = datetime.now(UTC)
+        is_ok = result.status == "reachable"
+        store.create("ai_gateway_logs", {
+            "id": f"log-{int(now_utc.timestamp() * 1000)}",
+            "model": str(provider.get("model", "ai-model")),
+            "provider_type": str(provider.get("provider_type", "api")),
+            "latency_ms": int(result.latency_ms or 0),
+            "status_code": int(result.http_status or (200 if is_ok else 400)),
+            "status": "Oke" if is_ok else "Fail",
+            "tokens_in": 16,
+            "tokens_out": 8,
+            "total_tokens": 24,
+            "credits_deducted": 0.0,
+            "cost_vnd": 0.0,
+            "feature_name": "Test Kết Nối AI (Admin)",
+            "error_message": result.detail if not is_ok else None,
+            "license_id": "ADMIN-PANEL",
+            "license_key": "ADMIN-TEST",
+            "customer_name": "Admin Portal",
+            "timestamp": now_utc.isoformat(),
+            "created_at": now_utc,
+        })
+    except Exception:
+        pass
     return {"data": {"provider_id": str(provider["id"]), **result.__dict__, "capabilities": provider["capabilities"]}}
+
 
 
 DEFAULT_MODELS_PRICING = [
@@ -147,6 +175,19 @@ DEFAULT_MODELS_PRICING = [
     },
     {
         "id": "mp-4",
+        "model": "claude-opus-5",
+        "provider_name": "Anthropic Claude",
+        "category": "cinema",
+        "cost_input_price": 900.0,
+        "cost_output_price": 1500.0,
+        "input_price": 1350.0,
+        "output_price": 2200.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Biên kịch điện ảnh cao cấp thế hệ mới, plot twist & cao trào nghẹt thở",
+    },
+    {
+        "id": "mp-5",
         "model": "claude-opus-4.8",
         "provider_name": "Anthropic Claude",
         "category": "cinema",
@@ -159,7 +200,20 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Kịch bản điện ảnh & review phim triệu view, xây dựng cao trào",
     },
     {
-        "id": "mp-5",
+        "id": "mp-6",
+        "model": "gpt-5.6-sol",
+        "provider_name": "OpenAI",
+        "category": "cinema",
+        "cost_input_price": 750.0,
+        "cost_output_price": 1200.0,
+        "input_price": 1100.0,
+        "output_price": 1800.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Mô hình kịch bản đỉnh cao VIP, phân tích tâm lý nhân vật đa chiều",
+    },
+    {
+        "id": "mp-7",
         "model": "gpt-5.5",
         "provider_name": "OpenAI",
         "category": "cinema",
@@ -172,7 +226,7 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Kịch bản điện ảnh thế hệ mới, văn phong đa tầng nghĩa",
     },
     {
-        "id": "mp-6",
+        "id": "mp-8",
         "model": "gpt-4o",
         "provider_name": "OpenAI",
         "category": "vision",
@@ -185,7 +239,20 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Thị giác nhận diện khung hình, trích xuất nhân vật & âm thanh",
     },
     {
-        "id": "mp-7",
+        "id": "mp-9",
+        "model": "deepseek-chat",
+        "provider_name": "DeepSeek",
+        "category": "speed",
+        "cost_input_price": 150.0,
+        "cost_output_price": 300.0,
+        "input_price": 250.0,
+        "output_price": 500.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "DeepSeek-V3 siêu tốc độ, chi phí siêu rẻ và tối ưu kịch bản",
+    },
+    {
+        "id": "mp-10",
         "model": "deepseek-reasoner",
         "provider_name": "DeepSeek",
         "category": "reasoning",
@@ -198,7 +265,20 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Suy luận logic CoT (Chain-of-Thought) độc lập, chi phí siêu rẻ",
     },
     {
-        "id": "mp-8",
+        "id": "mp-11",
+        "model": "gemini-2.5-pro",
+        "provider_name": "Google Gemini",
+        "category": "vision",
+        "cost_input_price": 500.0,
+        "cost_output_price": 900.0,
+        "input_price": 800.0,
+        "output_price": 1400.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Context 2M Tokens: Xử lý toàn bộ video phim 2 tiếng liền mạch",
+    },
+    {
+        "id": "mp-12",
         "model": "llama-3.3-70b-versatile",
         "provider_name": "Groq",
         "category": "speed",
@@ -211,7 +291,7 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Phản hồi kịch bản thời gian thực dưới 200ms trên chip LPU",
     },
     {
-        "id": "mp-9",
+        "id": "mp-13",
         "model": "eleven_multilingual_v2",
         "provider_name": "ElevenLabs",
         "category": "tts",
@@ -224,7 +304,7 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Lồng tiếng AI đa cảm xúc phòng thu điện ảnh",
     },
     {
-        "id": "mp-10",
+        "id": "mp-14",
         "model": "vi-manhdung",
         "provider_name": "Vbee",
         "category": "tts",
@@ -237,7 +317,7 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Giọng đọc Review Phim YouTube quốc dân Việt Nam",
     },
     {
-        "id": "mp-11",
+        "id": "mp-15",
         "model": "whisper-large-v3",
         "provider_name": "Whisper",
         "category": "transcription",
@@ -250,6 +330,26 @@ DEFAULT_MODELS_PRICING = [
         "purpose": "Bóc tách audio phim thành phụ đề chuẩn xác từng mili-giây",
     },
 ]
+
+
+def _infer_provider_type(provider_name: str, model: str) -> str:
+    p = str(provider_name or "").lower()
+    m = str(model or "").lower()
+    if "gemini" in p or "google" in p or "gemini" in m:
+        return "gemini"
+    if "claude" in p or "anthropic" in p or "claude" in m or "opus" in m or "sonnet" in m:
+        return "anthropic"
+    if "deepseek" in p or "deepseek" in m:
+        return "deepseek"
+    if "groq" in p or "llama" in m:
+        return "groq"
+    if "eleven" in p or "eleven" in m:
+        return "elevenlabs"
+    if "whisper" in p or "whisper" in m:
+        return "whisper"
+    if "vbee" in p:
+        return "tts"
+    return "openai"
 
 
 def _get_or_seed_models_pricing() -> list[dict]:
@@ -337,7 +437,18 @@ async def sync_provider_models(user: dict = Depends(require_auth)):
 async def get_available_models():
     """Public/Client endpoint: Return only models currently licensed/selling for Desktop Tool."""
     all_pricing = _get_or_seed_models_pricing()
-    # Filter only is_selling
-    active_models = [m for m in all_pricing if m.get("is_selling", False)]
+    # Filter only is_selling and enrich with name and provider_type
+    active_models = []
+    for m in all_pricing:
+        if m.get("is_selling", False):
+            p_name = m.get("provider_name", "AI Provider")
+            model_id = m.get("model", "")
+            p_type = _infer_provider_type(p_name, model_id)
+            active_models.append({
+                **m,
+                "name": f"{p_name} ({model_id})" if not m.get("name") else m["name"],
+                "provider_type": m.get("provider_type") or p_type,
+            })
     return {"data": active_models}
+
 

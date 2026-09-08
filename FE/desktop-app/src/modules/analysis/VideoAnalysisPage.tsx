@@ -61,31 +61,38 @@ const SCENE_CATEGORIES = [
 
 export const PROVIDER_MODEL_PRESETS: Record<string, { label: string; tag: string }[]> = {
   gemini: [
-    { label: "gemini-2.5-flash", tag: "⚡ [Khuyên Dùng Phân Tích] Siêu Nhanh, Đa Ngữ Cảnh" },
+    { label: "gemini-2.5-flash", tag: "⚡ [Khuyên Dùng Phân Tích] Siêu Nhanh, Multimodal 1M Token" },
+    { label: "gemini-flash-latest", tag: "🌟 [Mới Nhất] Tự động cập nhật Google AI Studio" },
     { label: "gemini-1.5-flash", tag: "⚡ [Phân Tích Video] Ngữ Cảnh 1M Token Ổn Định" },
-    { label: "gemini-1.5-pro", tag: "🧠 [Phân Tích Chi Tiết Khung Hình] 2M Token" },
-    { label: "gemini-2.0-flash", tag: "⚡ Tốc độ cao" },
-    { label: "gemini-2.5-pro", tag: "🧠 Suy luận chuyên sâu" },
+    { label: "gemini-1.5-pro", tag: "🧠 [Phân Tích Chi Tiết Khung Hình] 2M Token Chuyên Sâu" },
+    { label: "gemini-2.0-flash", tag: "⚡ Tốc độ cao thế hệ mới" },
+    { label: "gemini-2.5-pro", tag: "🧠 [Suy Luận Đỉnh Cao] Xử lý toàn bộ phim dài 2 giờ" },
   ],
   openai: [
-    { label: "gpt-4o-mini", tag: "⚡ [Khuyên Dùng OpenAI] Nhanh & Tối Ưu Chi Phí" },
-    { label: "gpt-4o", tag: "🧠 [Đỉnh Cao Thị Giác & Phân Tích] GPT-4o Vision" },
-    { label: "gpt-4-turbo", tag: "Ngữ cảnh lớn 128k" },
-    { label: "o3-mini", tag: "Tư duy logic cao cấp" },
+    { label: "gpt-5.6-sol", tag: "⭐ [VIP Kịch Bản] Mô hình kịch bản đỉnh cao" },
+    { label: "gpt-5.5", tag: "🎬 [Điện Ảnh Thế Hệ Mới] Văn phong đa tầng nghĩa" },
+    { label: "gpt-4o", tag: "🧠 [Flagship Multimodal] Nhận diện khung hình & âm thanh" },
+    { label: "gpt-4o-mini", tag: "⚡ [Siêu Tiết Kiệm] Phản hồi nhanh, tối ưu chi phí" },
+    { label: "o3-mini", tag: "🧠 [Suy Luận Logic] Khớp cảnh chính xác từng giây" },
+    { label: "gpt-4-turbo", tag: "📜 Ngữ cảnh lớn 128k tokens" },
   ],
   anthropic: [
-    { label: "claude-3-5-sonnet-latest", tag: "✍️ [Biên Kịch Điện Ảnh] Kịch Bản Sắc Sảo" },
-    { label: "claude-3-5-haiku-latest", tag: "⚡ Tốc độ cao" },
-    { label: "claude-3-opus-latest", tag: "Phân tích chuyên sâu" },
+    { label: "claude-3-7-sonnet", tag: "✍️ [Đỉnh Cao Kịch Bản] Tư duy lai & Viết văn siêu mượt" },
+    { label: "claude-3-5-sonnet-20241022", tag: "🎬 [Biên Kịch Điện Ảnh] Kịch bản sâu sắc & Giàu cảm xúc" },
+    { label: "claude-3-5-sonnet-latest", tag: "🎬 [Bản Mới Nhất] Tối ưu kịch bản viral triệu view" },
+    { label: "claude-opus-5", tag: "👑 [Thế Hệ Mới] Biên kịch điện ảnh cao cấp & Plot twist" },
+    { label: "claude-opus-4.8", tag: "👑 [Review Phim Triệu View] Xây dựng cao trào nghẹt thở" },
+    { label: "claude-opus-4.8-thinking", tag: "🧠 [Thinking Mode] Phát hiện lỗ hổng cốt truyện" },
+    { label: "claude-3-5-haiku", tag: "⚡ [Siêu Tốc Độ] Phản hồi tức thì" },
   ],
   deepseek: [
-    { label: "deepseek-chat", tag: "⚡ [DeepSeek-V3] Siêu Rẻ & Thông Minh" },
-    { label: "deepseek-reasoner", tag: "🧠 [DeepSeek-R1] Tư Duy Suy Luận Phân Cảnh Sâu" },
+    { label: "deepseek-chat", tag: "⚡ [DeepSeek-V3] Siêu Rẻ & Thông Minh Vượt Trội" },
+    { label: "deepseek-reasoner", tag: "🧠 [DeepSeek-R1] Tư Duy Lập Luận Chain-of-Thought" },
   ],
   groq: [
-    { label: "llama-3.3-70b-versatile", tag: "⚡ [Groq Llama 3.3 70B] Siêu Tốc Độ" },
-    { label: "llama-3.1-8b-instant", tag: "Llama 3.1 8B tức thì" },
-    { label: "whisper-large-v3", tag: "Bóc giọng nói phụ đề" },
+    { label: "llama-3.3-70b-versatile", tag: "⚡ [Groq Llama 3.3 70B] Siêu tốc độ dưới 200ms" },
+    { label: "llama-3.1-8b-instant", tag: "⚡ Llama 3.1 8B tức thì" },
+    { label: "whisper-large-v3", tag: "🎙️ Bóc giọng nói phụ đề chuẩn xác" },
   ],
   ollama: [
     { label: "llava", tag: "Local Vision AI (Offline)" },
@@ -101,11 +108,75 @@ export const PROVIDER_MODEL_PRESETS: Record<string, { label: string; tag: string
   ],
 };
 
+export function getProviderBrandType(p?: ProviderProfile | null): string {
+  if (!p) return "gemini";
+  const str = `${p.providerType || ""} ${p.name || ""} ${p.model || ""}`.toLowerCase();
+  if (str.includes("gemini") || str.includes("google")) return "gemini";
+  if (str.includes("claude") || str.includes("anthropic") || str.includes("opus") || str.includes("sonnet")) return "anthropic";
+  if (str.includes("deepseek")) return "deepseek";
+  if (str.includes("groq") || str.includes("llama")) return "groq";
+  if (str.includes("ollama")) return "ollama";
+  if (str.includes("openrouter") || str.includes("openai-compatible")) return "openai-compatible";
+  return "openai";
+}
+
+export function formatProviderLabel(p: ProviderProfile): string {
+  const brand = getProviderBrandType(p);
+  const brandName =
+    brand === "gemini"
+      ? "Google Gemini"
+      : brand === "anthropic"
+      ? "Anthropic Claude"
+      : brand === "deepseek"
+      ? "DeepSeek"
+      : brand === "groq"
+      ? "Groq Cloud"
+      : "OpenAI";
+
+  if (p.isManaged) {
+    let cleanName = p.name || "";
+    if (!cleanName || cleanName.startsWith("(") || cleanName === p.model) {
+      cleanName = `👑 ${brandName} (${p.model || "Gateway"})`;
+    }
+    return `${cleanName} 🟢 (Cloud Gateway)`;
+  }
+
+  let cleanName = p.name || "";
+  if (!cleanName || cleanName.startsWith("(") || cleanName === p.model) {
+    cleanName = `${brandName} (BYOK)`;
+  }
+  return `${cleanName} ${p.hasApiKey ? "🟢 (Có Key)" : "🟡 (Chưa có key)"}`;
+}
+
 const PRESET_PROMPTS = [
   {
+    id: "universal_storytelling",
+    title: "🌟 Kể Chuyện & Tóm Tắt Toàn Diện (Tự Động Nhận Diện Mọi Video)",
+    desc: "Tự động nhận diện thể loại (Phim, Vlog, Đời sống, Tin tức, Vụ án, Hướng dẫn...) và biên kịch Voice-over cuốn hút theo đúng nội dung thực tế",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp (Master Storyteller & Scriptwriter) hàng đầu. Hãy phân tích toàn bộ nội dung video từ đầu đến cuối dựa trên các khung hình và lời thoại bóc băng thực tế.
+
+# NHIỆM VỤ CHÍNH (CORE TASK)
+1. QUAN SÁT & BÓC TÁCH: Đọc hiểu 100% hình ảnh và lời thoại thực tế của video gốc. Tuyệt đối bám sát diễn biến thực tế, không bịa đặt sai lệch nội dung hay thể loại của video.
+2. TỰ ĐỘNG THÍCH ỨNG THEO THỂ LOẠI:
+   - Phim / Hoạt hình / Drama: Tóm tắt cốt truyện, nhân vật, cao trào và plot twist đắt giá.
+   - Vlog / Ẩm thực / Du lịch / Đời sống: Kể lại trải nghiệm, địa điểm, cảm xúc và những điểm nhấn thú vị.
+   - Tin tức / Phóng sự / Thời sự: Tóm tắt trung thực dòng sự kiện, nhân vật và ý nghĩa xã hội.
+   - Vụ án / Pháp luật / Cảnh sát: Phân tích điều tra, chứng cứ và kết luận pháp lý.
+   - Hướng dẫn / Công nghệ / Game: Tóm tắt các điểm then chốt, mẹo hay và kết quả.
+3. BIÊN KỊCH KỂ CHUYỆN (VOICEOVER): Viết kịch bản kể chuyện bằng NGÔI THỨ 3 với văn phong lôi cuốn, mượt mà, cảm xúc, không chèn mốc thời gian vào câu đọc.
+4. TỰ ĐỘNG KHỚP CẢNH VIDEO: Mốc source_start và source_end của từng phân cảnh BẮT BUỘC chỉ đúng đoạn video có hình ảnh minh họa cho câu kể voiceover để hệ thống tự động cắt và ráp video khớp 100%.
+
+# CẤU TRÚC STORYTELLING BẮT BUỘC (3 HỒI & HOOK 10S MỞ MÀN):
+1. [00:00 - 00:10] HOOK CAO TRÀO MỞ MÀN: Trích đoạn câu nói hoặc tình tiết ấn tượng/kịch tính nhất để giữ chân người xem trong 3 giây đầu.
+2. [HỒI 1] BỐI CẢNH & KHỞI ĐẦU: Giới thiệu nhân vật, hoàn cảnh, sự kiện mở đầu.
+3. [HỒI 2] DIỄN BIẾN & CAO TRÀO: Đi sâu vào những tình huống trọng tâm, mâu thuẫn, thử thách hoặc bước ngoặt đắt giá nhất.
+4. [HỒI 3] HỒI KẾT & THÔNG ĐIỆP: Kết quả chung cuộc, đọng lại cảm xúc và bài học/thông điệp ý nghĩa.`,
+  },
+  {
     id: "master_cops_storytelling",
-    title: "🚔 Cops & Biên Kịch Kể Chuyện Kịch Tính Cao Trào (3 Hồi & Gold Hook 10s)",
-    desc: "Cấu trúc 3 hồi dồn dập + Hook 10s gay cấn nghẹt thở, tự động nhặt đúng trích đoạn video kịch tính tương ứng với lời kể",
+    title: "🚔 Cops & Hồ Sơ Phá Án Kịch Tính (Police Bodycam / True Crime)",
+    desc: "Cấu trúc 3 hồi dồn dập + Hook 10s gay cấn nghẹt thở, trực giác nghiệp vụ cảnh sát và đấu trí tâm lý",
     prompt: `# VAI TRÒ (ROLE)
 Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp (Master Storyteller & Scriptwriter) chuyên chuyển thể các tư liệu video đời thực/pháp luật/cảnh sát/xã hội thành kịch bản Voice-over kịch tính, gay cấn, lôi cuốn theo cấu trúc Hook cao trào và giữ chân người xem tối đa.
 
@@ -118,32 +189,42 @@ Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp (Master Storytelle
 # CẤU TRÚC STORYTELLING BẮT BUỘC (3 HỒI & HOOK CAO TRÀO GAY CẤN)
 1. [00:00 - 00:10] HOOK CAO TRÀO NGHẸT THỞ (BẮT BUỘC ĐẨY LÊN ĐẦU):
 - Thời lượng đọc: Đúng 10 giây đầu (khoảng 25 - 35 từ).
-- Kỹ thuật: Bê nguyên video gốc đoạn hook dưới 10s hoặc trích xuất ngay câu thoại đắt giá nhất / tình tiết mâu thuẫn sốc nhất của video (Ví dụ: tiếng khóc cầu cứu, câu nói lật mặt, bằng chứng rợn người, hành động bất thường).
+- Kỹ thuật: Bê nguyên video gốc đoạn hook dưới 10s hoặc trích xuất ngay câu thoại đắt giá nhất / tình tiết mâu thuẫn sốc nhất của video.
 - Mục tiêu: Chặn người xem lướt qua trong 3 giây đầu, tạo khoảng trống tò mò (curiosity gap) cực lớn.
 
 2. [00:10 - 01:15] HỒI 1: KHỞI NGUỒN & NGHỊCH LÝ BAN ĐẦU:
 - Diễn tả theo hướng giật tít để đưa hồi 2 vào cao trào.
-- Bối cảnh sự việc bắt đầu từ một chi tiết tưởng chừng rất nhỏ nhặt, bình thường (lỗi giao thông, dừng xe kiểm tra, va chạm nhẹ, cuộc gặp tình cờ).
-- Khắc họa sự đối lập/nghịch lý: Vẻ ngoài bình thản, vỏ bọc hoàn hảo của đối tượng vs. sự bất thường, run sợ hoặc vết nứt tâm lý của nạn nhân/nghi phạm.
-- Gieo mầm xung đột đầu tiên.
+- Bối cảnh sự việc bắt đầu từ một chi tiết tưởng chừng rất nhỏ nhặt, bình thường (dừng xe kiểm tra, va chạm nhẹ, cuộc gặp tình cờ).
+- Khắc họa sự đối lập/nghịch lý: Vẻ ngoài bình thản của đối tượng vs. sự bất thường hoặc vết nứt tâm lý.
 
 3. [01:15 - 02:45] HỒI 2: XUNG ĐỘT LEO THANG & LỚP MẶT NẠ BỊ XÉ TOẠC:
-- Đi sâu vào diễn biến chi tiết nổi bật, tâm lý nhân vật.
 - Quá trình thẩm vấn/đối chất/khám xét/truy bắt, bóc trần từng lớp dối trá.
-- Phân tích độ lệch pha tâm lý: Sự ngây thơ, bị thao túng của nạn nhân đối lập với sự lọc lõi, tráo trở của kẻ chủ mưu/nghi phạm.
-- Cao trào cảm xúc: Khoảnh khắc sự thật vỡ vụn, nạn nhân thức tỉnh hoặc hoảng loạn cực độ, đối tượng bị khống chế.
+- Cao trào cảm xúc: Khoảnh khắc sự thật vỡ vụn, đối tượng bị khống chế hoặc lộ diện toàn bộ sự thật.
 
 4. [02:45 - 04:30+] HỒI 3: KẾT CỤC, CÔNG LÝ & BÀI HỌC QUAN SÁT XÃ HỘI:
-- Bằng chứng không thể chối cãi được đưa ra ánh sáng (hồ sơ tiền án, tang vật, kết quả pháp lý).
-- Số phận của các nhân vật (kẻ thủ ác đối diện pháp luật, nạn nhân được giải cứu/bảo vệ).
-- Đoạn kết mang triết lý nhân sinh: Rút ra bài học từ góc nhìn "Nghịch lý cuộc sống", "Tâm lý & Xã hội" và sự nghiêm minh của pháp luật.
+- Bằng chứng không thể chối cãi được đưa ra ánh sáng.
+- Bài học đọng lại về pháp luật và nhân tâm xã hội.
 
 # PHONG CÁCH VĂN PHONG & KHỚP CẢNH VIDEO
-- Phong cách chủ đạo: "Cảnh sát tuần tra / Hồ sơ phá án (Police Bodycam / Cops / True Crime)" — Nhấn mạnh vào trực giác nghiệp vụ của cảnh sát tuần tra (Cop's Gut Feeling), diễn biến căng thẳng nghẹt thở, lời khai đối chiếu mâu thuẫn, những manh mối bị phát hiện ngay tại hiện trường.
-- Ngôi kể: Ngôi thứ ba hoàn toàn ("gã đàn ông", "cô bé", "người mẹ", "hắn", "viên cảnh sát tuần tra", "sĩ quan cảnh sát", "tổ công tác"...).
-- Nhịp điệu: Đoạn đầu nhanh dồn dập; đoạn giữa kịch tính đấu trí tâm lý; đoạn kết đanh thép, thượng tôn pháp luật và sâu sắc.
-- TỰ ĐỘNG KHỚP CẢNH VIDEO: Mốc source_start và source_end trong mảng scenes phải chỉ đúng đoạn video có diễn biến hình ảnh tương ứng với lời kể voiceover để khi chuyển sang Timeline sẽ tự động cắt và ráp video chuẩn xác 100%.
-- TUYỆT ĐỐI KHÔNG đọc các con số mốc thời gian ("tại mốc 00:00", "lúc...", "ở phút...") trong lời thoại voiceover mà phải kể chuyện tự nhiên, liền mạch 100%.`,
+- Phong cách: Cảnh sát tuần tra / Hồ sơ phá án (Police Bodycam / Cops / True Crime).
+- Ngôi kể: Ngôi thứ ba hoàn toàn ("gã đàn ông", "cô bé", "hắn", "viên cảnh sát tuần tra", "sĩ quan cảnh sát"...).
+- TỰ ĐỘNG KHỚP CẢNH VIDEO: Mốc source_start và source_end phải chỉ đúng đoạn video minh họa cho câu kể voiceover.`,
+  },
+  {
+    id: "movie_review",
+    title: "🎬 Review Phim Điện Ảnh & Hoạt Hình (Cao Trào & Plot Twist)",
+    desc: "Tập trung vào plot twist, cao trào, diễn biến gay cấn, ngắt nghỉ kịch tính và nhặt cảnh phim đắt giá",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là một Chuyên gia Kể chuyện & Review Phim Điện Ảnh chuyên nghiệp triệu view với phong cách kể chuyện gay cấn nghẹt thở.
+
+# CẤU TRÚC STORYTELLING:
+1. [00:00 - 00:10] HOOK CAO TRÀO: Câu dẫn giật gân về bí mật hoặc bước ngoặt lớn nhất của tác phẩm để giữ chân người xem.
+2. [HỒI 1] Giới thiệu nhân vật & biến cố bất ngờ xảy đến.
+3. [HỒI 2] Đấu trí nghẹt thở, những cú plot twist bất ngờ và cao trào mâu thuẫn.
+4. [HỒI 3] Hồi kết mãn nhãn và thông điệp triết lý của tác phẩm.
+
+# KHỚP CẢNH VIDEO:
+- Mốc source_start và source_end phải khớp chính xác phân đoạn phim có hành động tương ứng với lời kể.`,
   },
   {
     id: "reality_show",
@@ -164,19 +245,6 @@ Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp chuyên phân tíc
 - Khớp cảnh: Chỉ đúng mốc source_start và source_end của video gốc có khoảnh khắc tranh luận/biểu cảm tương ứng với lời thoại.`,
   },
   {
-    id: "movie_review",
-    title: "🎬 Review Phim Điện Ảnh Cao Trào & Plot Twist Nghẹt Thở",
-    desc: "Tập trung vào plot twist, cao trào, diễn biến gay cấn, ngắt nghỉ kịch tính và nhặt cảnh phim đắt giá",
-    prompt: `# VAI TRÒ (ROLE)
-Bạn là một Chuyên gia Kể chuyện & Review Phim Điện Ảnh chuyên nghiệp triệu view với phong cách kể chuyện gay cấn nghẹt thở.
-
-# CẤU TRÚC:
-1. [00:00 - 00:10] HOOK CAO TRÀO: Câu dẫn giật gân về bí mật hoặc bước ngoặt lớn nhất của tác phẩm để giữ chân người xem.
-2. [HỒI 1] Giới thiệu nhân vật & biến cố bất ngờ xảy đến.
-3. [HỒI 2] Đấu trí nghẹt thở, những cú plot twist bất ngờ.
-4. [HỒI 3] Hồi kết mãn nhãn và thông điệp triết lý của tác phẩm.`,
-  },
-  {
     id: "tiktok_viral",
     title: "⚡ Video Ngắn TikTok / Reels / Shorts Viral",
     desc: "Tối ưu hóa 3 giây đầu giữ chân người xem, nhịp điệu nhanh, dồn dập",
@@ -185,7 +253,20 @@ Bạn là một Chuyên gia Sáng tạo Nội dung Ngắn Viral (TikTok/Shorts/R
 
 # YÊU CẦU:
 - Hook cực gắt trong 3 giây đầu tiên để giữ chân người xem (Retention > 90%).
-- Nhịp điệu dồn dập, câu chữ gãy gọn, giàu cảm xúc, kích thích tương tác comment/share.`,
+- Nhịp điệu dồn dập, câu chữ gãy gọn, giàu cảm xúc, kích thích tương tác comment/share.
+- Mốc source_start và source_end chọn đúng các khoảnh khắc visual bắt mắt nhất.`,
+  },
+  {
+    id: "news_digest",
+    title: "📰 Tin Tức, Phóng Sự & Thời Sự Nóng Hổi",
+    desc: "Khách quan, súc tích, tóm tắt sự kiện chính xác và rành mạch",
+    prompt: `# VAI TRÒ (ROLE)
+Bạn là Biên tập viên Thời sự & Phóng sự Điều tra.
+
+# YÊU CẦU:
+- Khách quan, trung thực, mạch lạc, giọng văn đanh thép chuẩn mực báo chí.
+- Bóc tách mốc thời gian, nhân vật, sự kiện và kết luận xác thực.
+- Khớp cảnh chính xác theo dòng thời gian sự kiện.`,
   },
   {
     id: "mystery_story",
@@ -199,15 +280,15 @@ Bạn là Người Dẫn Chuyện Trinh Thám & Vụ Án Bí Ẩn.
 - Kể chuyện theo cấu trúc 3 hồi: Manh mối ban đầu ➔ Đấu trí lần theo dấu vết ➔ Sự thật rùng mình được phơi bày.`,
   },
   {
-    id: "news_digest",
-    title: "📰 Tin Tức & Thời Sự Nóng Hổi",
-    desc: "Khách quan, súc tích, tóm tắt sự kiện chính xác và rành mạch",
+    id: "tech_tutorial",
+    title: "💻 Hướng Dẫn Kỹ Thuật, Công Nghệ & Review Sản Phẩm",
+    desc: "Rõ ràng, trực quan, cô đọng các bước thực hành và đánh giá ưu nhược điểm",
     prompt: `# VAI TRÒ (ROLE)
-Bạn là Biên tập viên Thời sự & Phóng sự Điều tra.
+Bạn là Chuyên gia Đánh giá Công nghệ & Hướng dẫn Kỹ thuật.
 
 # YÊU CẦU:
-- Khách quan, trung thực, mạch lạc, giọng văn đanh thép chuẩn mực báo chí.
-- Bóc tách mốc thời gian, nhân vật, sự kiện và kết luận pháp lý rõ ràng.`,
+- Mạch lạc, trực quan, làm nổi bật các tính năng chính, thao tác quan trọng và mẹo sử dụng.
+- Khớp cảnh chính xác với thao tác trên màn hình hoặc sản phẩm được giới thiệu.`,
   },
 ];
 
@@ -332,6 +413,7 @@ export function VideoAnalysisPage({
 
   // Providers & Settings
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [cloudModels, setCloudModels] = useState<any[]>([]);
   const [defaultProviderId, setDefaultProviderId] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [isCustomModel, setIsCustomModel] = useState(false);
@@ -340,19 +422,37 @@ export function VideoAnalysisPage({
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [defaultVoiceId, setDefaultVoiceId] = useState("vi-adam-review");
   const [defaultLanguage, setDefaultLanguage] = useState("vi");
+
+  // Fetch available cloud models on mount
+  useEffect(() => {
+    const apiBase = String((import.meta as any).env?.VITE_API_URL || "https://jacs-studio.nexoratech.com.vn").replace(/\/$/, "");
+    fetch(`${apiBase}/api/v1/ai-providers/models-available`, { signal: AbortSignal.timeout(5000) })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        const available = payload?.data || [];
+        if (Array.isArray(available) && available.length > 0) {
+          setCloudModels(available);
+        }
+      })
+      .catch(() => {});
+  }, []);
   
   // Script Preset Style & Prompt State
   const [selectedPresetId, setSelectedPresetId] = useState<string>(() => {
-    return localStorage.getItem("jacs_selected_preset_id") || PRESET_PROMPTS[0].id;
+    const saved = localStorage.getItem("jacs_selected_preset_id");
+    if (!saved || saved === "master_cops_storytelling") {
+      return PRESET_PROMPTS[0].id;
+    }
+    return saved;
   });
   const [defaultPrompt, setDefaultPrompt] = useState<string>(() => {
     const savedPresetId = localStorage.getItem("jacs_selected_preset_id");
-    if (savedPresetId && savedPresetId !== "__custom__") {
+    if (savedPresetId && savedPresetId !== "__custom__" && savedPresetId !== "master_cops_storytelling") {
       const found = PRESET_PROMPTS.find((p) => p.id === savedPresetId);
       if (found) return found.prompt;
     }
     const savedCustom = localStorage.getItem("jacs_default_prompt");
-    if (savedCustom) return savedCustom;
+    if (savedCustom && !savedCustom.includes("Cảnh sát tuần tra")) return savedCustom;
     return PRESET_PROMPTS[0].prompt;
   });
 
@@ -368,7 +468,7 @@ export function VideoAnalysisPage({
 
   // Target output script duration state & Mapping Rules
   const [durationMode, setDurationMode] = useState<"rules" | "fixed">(() => {
-    return (localStorage.getItem("jacs_duration_mode") as any) || "rules";
+    return (localStorage.getItem("jacs_duration_mode") as any) || "fixed";
   });
   const [durationRules, setDurationRules] = useState<DurationMappingRule[]>(() => {
     try {
@@ -380,7 +480,7 @@ export function VideoAnalysisPage({
     } catch {}
     return DEFAULT_DURATION_RULES;
   });
-  const [targetDuration, setTargetDuration] = useState<"full" | "60s" | "3m" | "5m" | "10m" | "custom">("5m");
+  const [targetDuration, setTargetDuration] = useState<"full" | "60s" | "3m" | "5m" | "10m" | "15m" | "custom">("5m");
   const [customDurationMinutes, setCustomDurationMinutes] = useState<number>(5);
 
   // Multi-Provider / Multi-Model pool & Parallel concurrency state (Cắm đêm siêu tốc)
@@ -389,7 +489,7 @@ export function VideoAnalysisPage({
   });
   const [batchConcurrency, setBatchConcurrency] = useState<number>(() => {
     const val = Number(localStorage.getItem("jacs_batch_concurrency"));
-    return val >= 1 && val <= 5 ? val : 3;
+    return val >= 1 && val <= 10 ? val : 3;
   });
 
   const updateDurationMode = (mode: "rules" | "fixed") => {
@@ -408,7 +508,7 @@ export function VideoAnalysisPage({
   };
 
   const updateBatchConcurrency = (c: number) => {
-    const safe = Math.max(1, Math.min(5, c));
+    const safe = Math.max(1, Math.min(10, c));
     setBatchConcurrency(safe);
     try { localStorage.setItem("jacs_batch_concurrency", String(safe)); } catch {}
   };
@@ -449,7 +549,7 @@ export function VideoAnalysisPage({
   function getEffectivePromptWithDuration(
     promptText: string,
     mode: "rules" | "fixed",
-    durationKey: "full" | "60s" | "3m" | "5m" | "10m" | "custom",
+    durationKey: "full" | "60s" | "3m" | "5m" | "10m" | "15m" | "custom",
     customMins: number
   ): string {
     let finalPrompt = promptText.trim();
@@ -467,6 +567,8 @@ export function VideoAnalysisPage({
           ? "khoảng 5 phút (tổng số từ kịch bản khoảng 1200 - 1500 từ tiếng Việt, chuẩn review phim / phóng sự chuyên nghiệp)"
           : durationKey === "10m"
           ? "khoảng 10 phút (tổng số từ kịch bản khoảng 2400 - 2800 từ tiếng Việt, phân tích sâu sắc, chi tiết từng tình tiết và đối thoại)"
+          : durationKey === "15m"
+          ? "khoảng 15 phút (tổng số từ kịch bản khoảng 3600 - 4200 từ tiếng Việt, phân tích sâu sắc toàn diện tất cả các hồi và cao trào)"
           : `khoảng ${customMins} phút (tổng số từ kịch bản khoảng ${customMins * 280} từ tiếng Việt)`;
 
       finalPrompt += `\n\n# YÊU CẦU THỜI LƯỢNG KỊCH BẢN & TỰ ĐỘNG CẮT KHỚP CẢNH VIDEO (BẮT BUỘC):
@@ -514,7 +616,25 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
       .then((raw) => {
         const p = Array.isArray(raw) ? raw : [];
         setProviders(p);
-        const active = p.find((item) => item && item.enabled && item.hasApiKey && Array.isArray(item.capabilities) && item.capabilities.includes("analysis"));
+
+        // Filter analysis-capable providers
+        const analysisList = p.filter(
+          (item) =>
+            item &&
+            item.enabled &&
+            item.providerType !== "elevenlabs" &&
+            !String(item.name || "").toLowerCase().includes("elevenlabs")
+        );
+
+        const savedProviderId = localStorage.getItem("jacs_default_analysis_provider_id");
+        const matchingSaved = analysisList.find((item) => item.id === savedProviderId);
+
+        const userByok = analysisList.find(
+          (item) => item.hasApiKey && !item.isManaged
+        );
+
+        const active = matchingSaved || userByok || analysisList.find((item) => item.hasApiKey) || analysisList[0];
+
         if (active) {
           setDefaultProviderId(active.id);
           setSelectedModel(active.model || "");
@@ -549,9 +669,21 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
     }
   }
 
-  // Filter active providers configured and enabled in system
+  // Filter active providers configured and enabled in system (excluding voice-only like ElevenLabs)
   const configuredProviders = useMemo(() => {
-    return (providers || []).filter((p) => p && p.enabled);
+    const analysisList = (providers || []).filter(
+      (p) =>
+        p &&
+        p.enabled &&
+        p.providerType !== "elevenlabs" &&
+        !String(p.name || "").toLowerCase().includes("elevenlabs")
+    );
+    // Sort: User's BYOK providers (hasApiKey & !isManaged) at the TOP, then Cloud Gateway
+    return [...analysisList].sort((a, b) => {
+      const aScore = (!a.isManaged && a.hasApiKey) ? 3 : (!a.isManaged ? 2 : (a.hasApiKey ? 1 : 0));
+      const bScore = (!b.isManaged && b.hasApiKey) ? 3 : (!b.isManaged ? 2 : (b.hasApiKey ? 1 : 0));
+      return bScore - aScore;
+    });
   }, [providers]);
 
   // Selected pool keys state
@@ -589,14 +721,33 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
   // Full available pool items across all configured and managed providers of the tool
   const allAvailablePoolItems = useMemo<ProviderPoolItem[]>(() => {
     const list: ProviderPoolItem[] = [];
+    const seen = new Set<string>();
+
     for (const p of configuredProviders) {
       if (p && p.enabled && (p.hasApiKey || p.isManaged)) {
-        list.push({
-          providerId: p.id,
-          model: p.model || "",
-          name: p.name || (p.isManaged ? "Cloud AI Gateway" : "AI Provider"),
-          providerType: p.providerType || "gemini",
-        });
+        const brand = getProviderBrandType(p);
+        const brandName =
+          brand === "gemini"
+            ? "Google Gemini"
+            : brand === "anthropic"
+            ? "Anthropic Claude"
+            : brand === "deepseek"
+            ? "DeepSeek"
+            : brand === "groq"
+            ? "Groq Cloud"
+            : "OpenAI";
+        const cleanName = p.isManaged ? `👑 ${brandName} (Cloud)` : `${brandName} (BYOK)`;
+        const pModel = p.model || (brand === "gemini" ? "gemini-2.5-flash" : brand === "anthropic" ? "claude-3-7-sonnet" : brand === "deepseek" ? "deepseek-chat" : "gpt-5.6-sol");
+        const key = `${p.id}:${pModel}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          list.push({
+            providerId: p.id,
+            model: pModel,
+            name: cleanName,
+            providerType: brand,
+          });
+        }
       }
     }
     return list;
@@ -623,24 +774,46 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
   }, [configuredProviders, providers, defaultProviderId]);
 
   const availableModels = useMemo(() => {
-    const pType = selectedProvider?.providerType || "gemini";
-    const presets = PROVIDER_MODEL_PRESETS[pType] || PROVIDER_MODEL_PRESETS.gemini || [];
+    const brand = getProviderBrandType(selectedProvider);
+    const presets = PROVIDER_MODEL_PRESETS[brand] || PROVIDER_MODEL_PRESETS.gemini || [];
     const currentModel = selectedProvider?.model;
-    if (currentModel && !presets.some((m) => m.label === currentModel)) {
-      return [{ label: currentModel, tag: "Đang lưu cấu hình" }, ...presets];
+
+    // Merge with models returned from cloud models endpoint
+    const cloudList = (cloudModels || []).filter((m) => {
+      const mStr = `${m.provider_name || ""} ${m.model || ""} ${m.provider_type || ""}`.toLowerCase();
+      if (brand === "gemini") return mStr.includes("gemini") || mStr.includes("google");
+      if (brand === "anthropic") return mStr.includes("claude") || mStr.includes("anthropic") || mStr.includes("opus") || mStr.includes("sonnet");
+      if (brand === "deepseek") return mStr.includes("deepseek");
+      if (brand === "groq") return mStr.includes("groq") || mStr.includes("llama");
+      return !mStr.includes("gemini") && !mStr.includes("claude") && !mStr.includes("deepseek") && !mStr.includes("groq");
+    });
+
+    const merged = [...presets];
+    for (const cm of cloudList) {
+      if (cm.model && !merged.some((m) => m.label === cm.model)) {
+        merged.push({
+          label: cm.model,
+          tag: cm.purpose || `⭐ [${cm.provider_name || "Cloud"}] Đã cấp phép`,
+        });
+      }
     }
-    return presets;
-  }, [selectedProvider]);
+
+    if (currentModel && !merged.some((m) => m.label === currentModel)) {
+      return [{ label: currentModel, tag: "⭐ Mô hình đã chọn" }, ...merged];
+    }
+    return merged;
+  }, [selectedProvider, cloudModels]);
 
   // Sync selectedModel whenever selectedProvider changes
   useEffect(() => {
-    if (selectedProvider && !selectedModel) {
+    if (selectedProvider) {
       setSelectedModel(selectedProvider.model || "");
     }
   }, [selectedProvider?.id, selectedProvider?.model]);
 
   function handleSelectProvider(id: string) {
     setDefaultProviderId(id);
+    try { localStorage.setItem("jacs_default_analysis_provider_id", id); } catch {}
     const p = providers.find((item) => item.id === id);
     if (p) {
       setSelectedModel(p.model || "");
@@ -896,8 +1069,8 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
     }
 
     const pId = overrideProviderId || defaultProviderId || job.providerId;
-    const voice = overrideVoice || defaultVoiceId || job.narratorVoice;
-    const lang = overrideLang || defaultLanguage || job.languages?.[0] || "vi";
+    const voice = overrideVoice || defaultVoiceId || (job.narratorVoice && !job.narratorVoice.startsWith("en-") ? job.narratorVoice : "vi-adam-review");
+    const lang = overrideLang || defaultLanguage || "vi";
     const prompt = overridePrompt || job.customPrompt || defaultPrompt;
 
     setRunningJobIds((prev) => new Set(prev).add(job.id));
@@ -949,7 +1122,19 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
 
     const opId = `analysis-${job.id}-${Date.now()}`;
 
-    const targetMins = targetDuration === "60s" ? 1 : targetDuration === "3m" ? 3 : targetDuration === "5m" ? 5 : targetDuration === "10m" ? 10 : (customDurationMinutes || 5);
+    const targetMins = targetDuration === "full"
+      ? (job.durationSeconds && job.durationSeconds > 10 ? Math.ceil(job.durationSeconds / 60) : 10)
+      : targetDuration === "60s"
+      ? 1
+      : targetDuration === "3m"
+      ? 3
+      : targetDuration === "5m"
+      ? 5
+      : targetDuration === "10m"
+      ? 10
+      : targetDuration === "15m"
+      ? 15
+      : (customDurationMinutes || 5);
     const effectivePrompt = getEffectivePromptWithDuration(prompt, durationMode, targetDuration, customDurationMinutes);
     const rules = overrideDurationRules ?? (durationMode === "rules" ? durationRules : undefined);
     const pool = overrideProviderPool ?? (useProviderPool ? activeProviderPool : undefined);
@@ -962,6 +1147,7 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
         narratorVoice: voice,
         customPrompt: effectivePrompt.trim() || undefined,
         targetDurationMinutes: targetMins,
+        durationMode: durationMode,
         durationRules: rules,
         providerPool: pool,
         analysisMode: "story_recap",
@@ -2582,11 +2768,24 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
                           onChange={(e) => handleSelectProvider(e.target.value)}
                           style={{ width: "100%", background: "rgba(0,0,0,0.45)", border: "1px solid rgba(255, 255, 255, 0.14)", borderRadius: "6px", padding: "7px 10px", color: "#f8fafc", fontSize: "12px", outline: "none", cursor: "pointer" }}
                         >
-                          {configuredProviders.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name || p.providerType.toUpperCase()} {p.hasApiKey ? "🟢 (Có Key)" : "🟡 (Chưa có key)"}
-                            </option>
-                          ))}
+                          {configuredProviders.some((p) => !p.isManaged) && (
+                            <optgroup label="🔑 NHÀ CUNG CẤP BYOK (API KEY RIÊNG)">
+                              {configuredProviders.filter((p) => !p.isManaged).map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {formatProviderLabel(p)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {configuredProviders.some((p) => p.isManaged) && (
+                            <optgroup label="⚡ CLOUD AI GATEWAY (ADMIN CẤP PHÉP)">
+                              {configuredProviders.filter((p) => p.isManaged).map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {formatProviderLabel(p)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                       </div>
 
@@ -2773,13 +2972,14 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
                   ) : (
                     /* Mode 2: FIXED TARGET OUTPUT DURATION */
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", width: "100%", boxSizing: "border-box" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: "8px", width: "100%", boxSizing: "border-box" }}>
                         {[
                           { key: "full", label: "🎬 Toàn Bộ", sub: "Theo video gốc" },
                           { key: "60s", label: "⚡ 60 Giây", sub: "Shorts / TikTok / Reels" },
                           { key: "3m", label: "⏱️ 3 Phút", sub: "Review ngắn gọn" },
                           { key: "5m", label: "⏱️ 5 Phút", sub: "Chuẩn Recap / Review" },
                           { key: "10m", label: "⏱️ 10 Phút", sub: "Phóng sự chuyên sâu" },
+                          { key: "15m", label: "⏱️ 15 Phút", sub: "Review chi tiết toàn cảnh" },
                           { key: "custom", label: "✍️ Tùy Chỉnh", sub: "Nhập số phút mong muốn" },
                         ].map((dur) => {
                           const isSelected = targetDuration === dur.key;
@@ -2787,7 +2987,10 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
                             <button
                               key={dur.key}
                               type="button"
-                              onClick={() => setTargetDuration(dur.key as any)}
+                              onClick={() => {
+                                setTargetDuration(dur.key as any);
+                                updateDurationMode("fixed");
+                              }}
                               style={{
                                 background: isSelected ? "rgba(217, 119, 6, 0.25)" : "rgba(10, 13, 20, 0.6)",
                                 border: isSelected ? "1.5px solid #f59e0b" : "1px solid rgba(255,255,255,0.08)",

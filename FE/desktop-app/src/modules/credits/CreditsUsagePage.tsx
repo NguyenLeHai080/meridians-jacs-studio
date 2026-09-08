@@ -21,12 +21,14 @@ import {
 import type { Job, NavKey } from "../../core/types";
 import { getRuntime } from "../../core/runtime";
 import { getBankConfig, heartbeatLicense, type BankConfigPublic } from "../../core/api";
+import { CreditTopupModal } from "./CreditTopupModal";
 
 interface CreditsUsagePageProps {
   jobs: Job[];
   onNavigate: (key: NavKey) => void;
   onOpenTimeline?: (jobId?: string) => void;
   onOpenRenewal?: () => void;
+  onOpenTopup?: () => void;
   creditBalance?: number;
   allowedModels?: string[] | null;
   onSyncAdminGrant?: () => void;
@@ -53,6 +55,7 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
   onNavigate,
   onOpenTimeline,
   onOpenRenewal,
+  onOpenTopup,
   creditBalance,
   allowedModels,
   onSyncAdminGrant,
@@ -63,6 +66,15 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
   const [bankConfig, setBankConfig] = useState<BankConfigPublic | null>(null);
   const [activeLicenseKey, setActiveLicenseKey] = useState<string>("JACS-PRO-LICENSE");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showTopupModal, setShowTopupModal] = useState(false);
+
+  const handleOpenTopup = () => {
+    if (onOpenTopup) {
+      onOpenTopup();
+    } else {
+      setShowTopupModal(true);
+    }
+  };
 
   // Real-time server credit balance and allowed models mapped from Admin Portal
   const [serverCreditBalance, setServerCreditBalance] = useState<number>(() => {
@@ -233,9 +245,11 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
         await runtime.readJobs();
       }
       if (onSyncAdminGrant) {
-        onSyncAdminGrant();
+        await onSyncAdminGrant();
       }
       await syncCreditWithServer();
+      const cfg = await getBankConfig().catch(() => null);
+      if (cfg) setBankConfig(cfg);
     } finally {
       setTimeout(() => setIsRefreshing(false), 400);
     }
@@ -260,32 +274,35 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
     <div className="credits-usage-page">
       <style>{`
         .credits-usage-page {
-          padding: 20px 24px;
+          width: 100%;
+          max-width: 100%;
+          box-sizing: border-box;
+          padding: 20px 24px 110px;
           color: #f8fafc;
-          max-width: 1680px;
-          margin: 0 auto;
+          margin: 0;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
         }
         .credits-header-wrapper {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 20px;
+          margin-bottom: 18px;
           flex-wrap: wrap;
-          gap: 16px;
+          gap: 14px;
         }
         .credits-grid-cards {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
           gap: 16px;
-          margin-bottom: 24px;
+          margin-bottom: 22px;
         }
         .credits-card {
           background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%);
           border-radius: 14px;
-          padding: 18px 20px;
+          padding: 16px 18px;
           backdrop-filter: blur(12px);
           transition: transform 0.2s ease, box-shadow 0.2s ease;
+          min-width: 0;
         }
         .credits-card:hover {
           transform: translateY(-2px);
@@ -294,7 +311,7 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
           background: rgba(18, 24, 38, 0.9);
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 14px;
-          padding: 20px;
+          padding: 18px;
           box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
           backdrop-filter: blur(10px);
         }
@@ -332,7 +349,7 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
         }
         .credits-custom-table {
           width: 100%;
-          min-width: 1150px;
+          min-width: 1000px;
           border-collapse: separate;
           border-spacing: 0;
         }
@@ -354,9 +371,14 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
         .credits-custom-table tr:hover td {
           background: rgba(245, 158, 11, 0.03);
         }
-        @media (max-width: 768px) {
+        @media (max-width: 1150px) {
+          .credits-grid-cards {
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          }
+        }
+        @media (max-width: 850px) {
           .credits-usage-page {
-            padding: 14px 16px;
+            padding: 12px 14px;
           }
           .credits-grid-cards {
             grid-template-columns: 1fr;
@@ -428,7 +450,7 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => onOpenRenewal?.()}
+            onClick={handleOpenTopup}
             style={{
               padding: "8px 18px",
               fontSize: "12.5px",
@@ -500,7 +522,7 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
 
           <button
             type="button"
-            onClick={() => onOpenRenewal?.()}
+            onClick={handleOpenTopup}
             style={{
               background: isCreditOut ? "#ef4444" : "#f59e0b",
               border: "none",
@@ -966,6 +988,15 @@ export const CreditsUsagePageComponent: React.FC<CreditsUsagePageProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Credit Top-up Modal */}
+      <CreditTopupModal
+        isOpen={showTopupModal}
+        onClose={() => setShowTopupModal(false)}
+        onSyncAdminGrant={onSyncAdminGrant}
+        currentKey={activeLicenseKey}
+        currentBalance={remainingCredits}
+      />
     </div>
   );
 };

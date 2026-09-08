@@ -163,3 +163,89 @@ class SepayTransactionResponse(BaseModel):
     created_at: datetime | str | None = None
     raw_content: str | None = None
 
+
+class CreditPackageBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)  # e.g. "Base", "Starter", "Growth", "Pro"
+    price: float = Field(ge=0)  # e.g. 250000.0, 500000.0, 1000000.0, 3000000.0
+    base_credits: float = Field(ge=0)  # e.g. 153846.0
+    bonus_percent: float = Field(default=0.0, ge=0)  # e.g. 2.0, 7.0
+    total_credits: float = Field(ge=0)  # e.g. 156923.0
+    badge: str | None = Field(default=None, max_length=64)  # "ĐỀ XUẤT", "PHỔ BIẾN", "HOT", etc.
+    description: str | None = Field(default=None, max_length=255)
+    sort_order: int = Field(default=1)
+    is_active: bool = Field(default=True)
+
+
+class CreateCreditPackageRequest(CreditPackageBase):
+    pass
+
+
+class UpdateCreditPackageRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    price: float | None = Field(default=None, ge=0)
+    base_credits: float | None = Field(default=None, ge=0)
+    bonus_percent: float | None = Field(default=None, ge=0)
+    total_credits: float | None = Field(default=None, ge=0)
+    badge: str | None = Field(default=None, max_length=64)
+    description: str | None = Field(default=None, max_length=255)
+    sort_order: int | None = None
+    is_active: bool | None = None
+
+
+class CreditPackageResponse(CreditPackageBase):
+    id: str
+    created_at: datetime | str | None = None
+    updated_at: datetime | str | None = None
+
+
+class CreditTopupOrderRequest(BaseModel):
+    license_key: str = Field(min_length=1, max_length=100)
+    hwid: str | None = Field(default=None, max_length=120)
+    package_id: str | None = Field(default="custom", max_length=64)
+    package_name: str | None = Field(default="Nạp tùy ý", max_length=100)
+    amount: float = Field(gt=0)
+    customer_name: str | None = Field(default=None, max_length=160)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class CreditTopupOrderResponse(BaseModel):
+    order_id: str
+    license_key: str
+    hwid: str | None = None
+    customer_name: str | None = None
+    package_id: str | None = None
+    package_name: str
+    amount: float
+    credits_expected: float
+    bonus_percent: float = 0.0
+    transfer_content: str
+    bank_name: str
+    bank_bin: str
+    account_number: str
+    account_name: str
+    qr_url: str
+    status: str = "PENDING"  # "PENDING", "APPROVED", "REJECTED", "REVOKED"
+    created_at: str | None = None
+
+
+class CreditTopupTransactionItem(BaseModel):
+    id: str
+    order_code: str
+    license_id: str | None = None
+    license_key: str | None = None
+    hwid: str | None = None
+    customer_name: str
+    package_id: str | None = None
+    package_name: str
+    amount: float
+    credits_granted: float
+    bonus_percent: float = 0.0
+    transfer_content: str
+    payment_method: str = "vietqr"
+    status: str = "PENDING"  # "PENDING", "APPROVED", "REJECTED", "REVOKED"
+    created_at: str | datetime | None = None
+    approved_at: str | datetime | None = None
+    approved_by: str | None = None
+    notes: str | None = None
+
+

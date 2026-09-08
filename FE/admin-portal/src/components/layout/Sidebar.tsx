@@ -154,13 +154,13 @@ export function Sidebar({
 
           <button
             type="button"
-            className={`menu-item ${activeMenu === "plans" ? "active" : ""}`}
+            className={`menu-item ${activeMenu === "plans" || (activeMenu as any) === "credit_packages" ? "active" : ""}`}
             onClick={() => handleNav("plans")}
           >
             <span className="menu-icon">
-              <Layers size={17} />
+              <Coins size={17} />
             </span>
-            <span className="menu-label">Cấu hình gói</span>
+            <span className="menu-label">Cấu hình gói credit</span>
           </button>
 
           <button
@@ -169,9 +169,9 @@ export function Sidebar({
             onClick={() => handleNav("model_pricing")}
           >
             <span className="menu-icon">
-              <Coins size={17} />
+              <Layers size={17} />
             </span>
-            <span className="menu-label">Bảng giá model</span>
+            <span className="menu-label">Cấu hình gói model</span>
           </button>
 
           <button

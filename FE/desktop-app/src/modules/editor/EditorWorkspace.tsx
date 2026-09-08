@@ -21,12 +21,20 @@ function fileUrl(value?: string) {
   return `jacs-media://local?path=${encodeURIComponent(value)}`;
 }
 
-function toSeconds(value: string | undefined): number {
+function toSeconds(value: string | number | undefined | null): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
   if (!value) return 0;
-  const parts = value.split(":").map(Number);
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return Number(value) || 0;
+  const str = String(value).trim().replace(/,/g, ".");
+  if (/^\d+(?:\.\d+)?$/.test(str)) return Number(str);
+  const parts = str.split(":").map(Number);
+  if (parts.length === 3 && Number.isFinite(parts[0]) && Number.isFinite(parts[1]) && Number.isFinite(parts[2])) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  if (parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+    return parts[0] * 60 + parts[1];
+  }
+  const match = str.match(/(\d+(?:\.\d+)?)/);
+  return match ? Number(match[1]) : 0;
 }
 
 function formatSeconds(total: number, withDecimals = false): string {
@@ -113,6 +121,12 @@ export function EditorWorkspace({
   sourceJobId: initialSourceJobId,
 }: Props) {
   const [selectedSourceJobId, setSelectedSourceJobId] = useState(initialSourceJobId || "");
+
+  useEffect(() => {
+    if (initialSourceJobId) {
+      setSelectedSourceJobId(initialSourceJobId);
+    }
+  }, [initialSourceJobId]);
   const [sceneId, setSceneId] = useState("");
   const [playing, setPlaying] = useState(false);
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
@@ -212,27 +226,30 @@ export function EditorWorkspace({
   }, [sourceJob, selectedSourceJobId]);
 
   const defaultVoiceForLang = useCallback((lang?: string, gender?: string) => {
-    const l = lang || "vi";
-    if (l === "en") return gender === "female" ? "en-jenny" : "en-adam";
-    if (l === "ja") return gender === "female" ? "ja-female" : "ja-male";
-    if (l === "ko") return gender === "female" ? "ko-female" : "ko-male";
+    const l = (lang || "vi").toLowerCase();
+    if (l === "en" || l === "en-us") return gender === "female" ? "en-jenny" : "en-adam";
+    if (l === "ja" || l === "ja-jp") return gender === "female" ? "ja-female" : "ja-male";
+    if (l === "ko" || l === "ko-kr") return gender === "female" ? "ko-female" : "ko-male";
     if (l === "zh" || l.startsWith("zh")) return gender === "female" ? "zh-CN-female" : "zh-CN-male";
     if (l === "fr") return gender === "female" ? "fr-female" : "fr-male";
     if (l === "es") return gender === "female" ? "es-female" : "es-male";
-    return gender === "female" ? "vbee-maiphuong" : "vbee-manhdung";
+    return gender === "female" ? "vi-hoaimy-review" : "vi-adam-review";
   }, []);
 
-  const [selectedVoice, setSelectedVoice] = useState<string>(
-    sourceJob?.narratorVoice || defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender)
-  );
+  const [selectedVoice, setSelectedVoice] = useState<string>(() => {
+    if (sourceJob?.narratorVoice && !sourceJob.narratorVoice.startsWith("en-")) {
+      return sourceJob.narratorVoice;
+    }
+    return sourceJob?.narratorGender === "female" ? "vi-hoaimy-review" : "vi-adam-review";
+  });
 
   useEffect(() => {
-    if (sourceJob?.narratorVoice) {
+    if (sourceJob?.narratorVoice && !sourceJob.narratorVoice.startsWith("en-")) {
       setSelectedVoice(sourceJob.narratorVoice);
     } else {
-      setSelectedVoice(defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender));
+      setSelectedVoice(sourceJob?.narratorGender === "female" ? "vi-hoaimy-review" : "vi-adam-review");
     }
-  }, [sourceJob?.id, sourceJob?.narratorVoice, sourceJob?.languages, sourceJob?.narratorGender, defaultVoiceForLang]);
+  }, [sourceJob?.id, sourceJob?.narratorVoice, sourceJob?.narratorGender]);
 
   useEffect(() => {
     if (sourceJob) {
@@ -390,18 +407,9 @@ export function EditorWorkspace({
       return;
     }
 
-    const initial: EditorScene[] = sourceJob.analysis.scenes.map((s, idx) => ({
-      id: s.id || `scene-${idx + 1}`,
-      start: s.start || "00:00",
-      end: s.end || formatSeconds(idx * 5 + 5),
-      sourceStart: s.sourceStart || s.start,
-      sourceEnd: s.sourceEnd || s.end,
-      sourceTimeStart: s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start),
-      sourceTimeEnd: s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end),
-      action_visual: s.action_visual || s.detail,
-      title: s.title || `Cảnh ${idx + 1}`,
-      detail: s.detail || "",
-      subtitle:
+    let cursorTime = 0;
+    const initial: EditorScene[] = sourceJob.analysis.scenes.map((s, idx) => {
+      const sub =
         s.voiceover ||
         ((s as unknown as Record<string, string>).narration) ||
         ((s as unknown as Record<string, string>).voiceScript) ||
@@ -411,9 +419,45 @@ export function EditorWorkspace({
         ((s as unknown as Record<string, string>).text) ||
         s.translation ||
         s.detail ||
-        "",
-      accent: idx % 2 === 0 ? "cyan" : "purple",
-    }));
+        "";
+
+      const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
+      const voiceEstSec = Math.max(4, Math.round(wordCount / 2.75));
+
+      let tStart = (s as any).timeStart ?? toSeconds(s.start);
+      let tEnd = (s as any).timeEnd ?? toSeconds(s.end);
+
+      if (!Number.isFinite(tEnd) || tEnd <= tStart) {
+        tStart = cursorTime;
+        tEnd = cursorTime + voiceEstSec;
+      }
+      cursorTime = Math.max(cursorTime + 1, tEnd);
+
+      let srcStartSec = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
+      let srcEndSec = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
+
+      if (!Number.isFinite(srcStartSec) || srcStartSec < 0) {
+        srcStartSec = Math.max(0, idx * 15);
+      }
+      if (!Number.isFinite(srcEndSec) || srcEndSec <= srcStartSec) {
+        srcEndSec = srcStartSec + Math.max(tEnd - tStart, 5);
+      }
+
+      return {
+        id: s.id || `scene-${idx + 1}`,
+        start: formatSeconds(tStart),
+        end: formatSeconds(tEnd),
+        sourceStart: formatSeconds(srcStartSec),
+        sourceEnd: formatSeconds(srcEndSec),
+        sourceTimeStart: srcStartSec,
+        sourceTimeEnd: srcEndSec,
+        action_visual: s.action_visual || s.detail,
+        title: s.title || `Cảnh ${idx + 1}`,
+        detail: s.detail || "",
+        subtitle: sub,
+        accent: idx % 2 === 0 ? "cyan" : "purple",
+      };
+    });
 
     setEditorScenes(initial);
     setScenesHistory([initial]);
@@ -1225,11 +1269,12 @@ export function EditorWorkspace({
       const tEnd = timelineCursor + dur;
       timelineCursor += dur;
 
-      if (s.subtitle?.trim()) {
+      const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
+      if (sceneText) {
         timelineSubtitleSegments.push({
           start: tStart,
           end: tEnd,
-          text: s.subtitle.trim(),
+          text: sceneText,
         });
       }
 
@@ -1244,19 +1289,20 @@ export function EditorWorkspace({
         action_visual: s.action_visual || s.detail,
         title: s.title,
         detail: s.detail || "",
-        voiceover: s.subtitle || "",
-        translation: s.subtitle || "",
+        voiceover: sceneText || s.subtitle || "",
+        translation: sceneText || s.subtitle || "",
       };
     });
 
     const cutClips = editorScenes.map((s) => {
       const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
       const srcEnd = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
+      const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
       return {
         sourceStart: srcStart,
         sourceEnd: srcEnd,
         duration: Math.max(0.5, srcEnd - srcStart),
-        text: s.subtitle || s.detail,
+        text: sceneText || s.subtitle || s.detail,
         title: s.title,
       };
     }).filter((c) => c.sourceEnd > c.sourceStart);
@@ -1264,7 +1310,10 @@ export function EditorWorkspace({
     const isVoiceMuted = Boolean(trackMutes.voice);
     const isOriginalAudioMuted = Boolean(trackMutes.originalAudio) || originalAudioVolume === 0 || sourceJob.keepOriginalAudio === false;
     const isCaptionsMuted = Boolean(trackMutes.captions);
-    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === (selectedVoice || "").toLowerCase());
+    const effectiveVoice = selectedVoice || sourceJob.narratorVoice || defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender) || "vi-namminh";
+    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === effectiveVoice.toLowerCase());
+    const hasAnyNarration = editorScenes.some((s) => Boolean(s.subtitle?.trim() || s.voiceover?.trim() || s.detail?.trim()));
+    const fullNarrationText = editorScenes.map((s) => stripSceneMetadata(s.subtitle || s.voiceover || s.detail)).filter(Boolean).join(" ");
 
     const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
     const totalDuration = timelineCursor || sequenceDuration || sourceJob.durationSeconds || 60;
@@ -1295,17 +1344,20 @@ export function EditorWorkspace({
       mode: "local-gpu",
       aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
       keepOriginalAudio: !isOriginalAudioMuted,
-      narratorEnabled: !isVoiceMuted && Boolean(selectedVoice && editorScenes.some((s) => s.subtitle?.trim())),
+      narratorEnabled: !isVoiceMuted && hasAnyNarration,
       narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
-      narratorVoice: selectedVoice,
+      narratorVoice: effectiveVoice,
       subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
-      subtitleText: editorScenes.map((s) => s.subtitle).filter(Boolean).join(" "),
+      subtitleStyle: subtitleStyle || "gold",
+      subtitleText: fullNarrationText,
+      narrationText: fullNarrationText,
       subtitleSegments: timelineSubtitleSegments as any,
       cutClips,
       timelineClips: cutClips as any,
       analysis: {
         summary: sourceJob.analysis?.summary || `Dự án timeline ghép hoàn chỉnh (${editorScenes.length} phân cảnh)`,
-        scenes: fullScenes,
+        scenes: fullScenes as any,
+        voiceScript: fullNarrationText,
         score: sourceJob.analysis?.score || 9.5,
         tokensUsed: sourceJob.analysis?.tokensUsed || 0,
         creditsUsed: sourceJob.analysis?.creditsUsed || 0,
@@ -1328,13 +1380,15 @@ export function EditorWorkspace({
     const isVoiceMuted = Boolean(trackMutes.voice);
     const isOriginalAudioMuted = Boolean(trackMutes.originalAudio) || originalAudioVolume === 0 || sourceJob.keepOriginalAudio === false;
     const isCaptionsMuted = Boolean(trackMutes.captions);
-    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === (selectedVoice || "").toLowerCase());
+    const effectiveVoice = selectedVoice || sourceJob.narratorVoice || defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender) || "vi-namminh";
+    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === effectiveVoice.toLowerCase());
     const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
 
     editorScenes.forEach((scene, index) => {
       const srcStartSec = scene.sourceTimeStart ?? toSeconds(scene.sourceStart || scene.start);
       const srcEndSec = scene.sourceTimeEnd ?? toSeconds(scene.sourceEnd || scene.end);
       const sceneDur = Math.max(0.5, srcEndSec - srcStartSec);
+      const sceneText = stripSceneMetadata(scene.subtitle || scene.voiceover || scene.translation || scene.detail || "").trim();
       onAddJob({
         id: `export-scene-${Date.now()}-${index + 1}`,
         name: `${effectiveTitle} · Cảnh ${index + 1}: ${scene.title}`,
@@ -1345,11 +1399,13 @@ export function EditorWorkspace({
         mode: "local-gpu",
         aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
         keepOriginalAudio: !isOriginalAudioMuted,
-        narratorEnabled: !isVoiceMuted && Boolean(selectedVoice && scene.subtitle?.trim()),
+        narratorEnabled: !isVoiceMuted && Boolean(sceneText),
         narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
-        narratorVoice: selectedVoice,
+        narratorVoice: effectiveVoice,
         subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
-        subtitleText: scene.subtitle,
+        subtitleStyle: subtitleStyle || "gold",
+        subtitleText: sceneText,
+        narrationText: sceneText,
         clipStartSeconds: srcStartSec,
         clipEndSeconds: srcEndSec,
         cutClips: [
@@ -1357,15 +1413,16 @@ export function EditorWorkspace({
             sourceStart: srcStartSec,
             sourceEnd: srcEndSec,
             duration: sceneDur,
-            text: scene.subtitle || scene.detail,
+            text: sceneText,
             title: scene.title,
           },
         ],
-        subtitleSegments: scene.subtitle?.trim()
-          ? [{ start: 0, end: sceneDur, text: scene.subtitle.trim() }]
+        subtitleSegments: sceneText
+          ? [{ start: 0, end: sceneDur, text: sceneText }]
           : [],
         analysis: {
           summary: sourceJob.analysis?.summary || `Phân cảnh ${index + 1}: ${scene.title}`,
+          voiceScript: sceneText,
           scenes: [
             {
               id: scene.id,
@@ -1377,8 +1434,8 @@ export function EditorWorkspace({
               sourceTimeEnd: srcEndSec,
               title: scene.title,
               detail: scene.detail || "",
-              voiceover: scene.subtitle || "",
-              translation: scene.subtitle || "",
+              voiceover: sceneText,
+              translation: sceneText,
             },
           ],
           score: sourceJob.analysis?.score || 9.5,
@@ -3203,11 +3260,19 @@ export function EditorWorkspace({
             <div className="ts-lane-header-row header-audio">
               <button
                 type="button"
-                className="ts-lane-btn"
+                className={`ts-lane-btn ${trackMutes.voice ? "is-muted" : ""}`}
                 title={trackMutes.voice ? "Bật tiếng Thuyết minh" : "Tắt tiếng Thuyết minh (Mute Voice)"}
-                onClick={() => setTrackMutes((c) => ({ ...c, voice: !c.voice, voice1: !c.voice, voice2: !c.voice, voice3: !c.voice }))}
+                onClick={() => {
+                  setTrackMutes((c) => {
+                    const next = !c.voice;
+                    setProjectMessage(next ? "🔇 Đã tắt Voice thuyết minh khi xuất" : "🎙️ Đã bật Voice thuyết minh khi xuất");
+                    setTimeout(() => setProjectMessage(""), 2000);
+                    return { ...c, voice: next, voice1: next, voice2: next, voice3: next };
+                  });
+                }}
+                style={{ color: trackMutes.voice ? "#ef4444" : "#a855f7" }}
               >
-                <Icon name="mic" size={11} />
+                <Icon name={trackMutes.voice ? "volume-mute" : "mic"} size={11} />
               </button>
               <button
                 type="button"

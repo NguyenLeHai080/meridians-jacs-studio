@@ -1,5 +1,3 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, Query
 
 from app.core.security import require_auth
@@ -20,7 +18,7 @@ async def list_releases(_: dict = Depends(require_auth)):
 
 
 @router.post("/{release_id}/publish", response_model=ReleaseResponse)
-async def publish_release(release_id: UUID, _: dict = Depends(require_auth)):
+async def publish_release(release_id: str, _: dict = Depends(require_auth)):
     from app.core.errors import AppError
 
     release = store.get("releases", release_id)
@@ -32,7 +30,7 @@ async def publish_release(release_id: UUID, _: dict = Depends(require_auth)):
 
 
 @router.post("/{release_id}/unpublish", response_model=ReleaseResponse)
-async def unpublish_release(release_id: UUID, _: dict = Depends(require_auth)):
+async def unpublish_release(release_id: str, _: dict = Depends(require_auth)):
     from app.core.errors import AppError
 
     release = store.get("releases", release_id)
@@ -42,7 +40,7 @@ async def unpublish_release(release_id: UUID, _: dict = Depends(require_auth)):
 
 
 @router.delete("/{release_id}")
-async def delete_release(release_id: UUID, _: dict = Depends(require_auth)):
+async def delete_release(release_id: str, _: dict = Depends(require_auth)):
     from app.core.errors import AppError
 
     release = store.get("releases", release_id)
