@@ -253,16 +253,16 @@ export function EditorWorkspace({
 
   useEffect(() => {
     if (sourceJob) {
-      const isOriginalMuted = sourceJob.keepOriginalAudio === false || Boolean(sourceJob.analysis?.storyPlan?.status === "approved") || Boolean(sourceJob.narratorEnabled);
-      if (isOriginalMuted) {
+      if (sourceJob.keepOriginalAudio === false) {
         setTrackMutes((prev) => ({ ...prev, originalAudio: true }));
         setOriginalAudioVolume(0);
-      } else if (sourceJob.keepOriginalAudio === true) {
+      } else {
+        const vol = typeof sourceJob.originalAudioVolume === "number" ? sourceJob.originalAudioVolume : 20;
         setTrackMutes((prev) => ({ ...prev, originalAudio: false }));
-        setOriginalAudioVolume(100);
+        setOriginalAudioVolume(vol);
       }
     }
-  }, [sourceJob?.id, sourceJob?.keepOriginalAudio, sourceJob?.narratorEnabled, sourceJob?.analysis?.storyPlan?.status]);
+  }, [sourceJob?.id, sourceJob?.keepOriginalAudio, sourceJob?.originalAudioVolume, sourceJob?.narratorEnabled]);
 
   function stripSceneMetadata(text?: string): string {
     if (!text) return "";
@@ -1365,6 +1365,9 @@ export function EditorWorkspace({
       mode: "local-gpu",
       aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
       keepOriginalAudio: !isOriginalAudioMuted,
+      interweaveAudio: !isOriginalAudioMuted && originalAudioVolume < 90,
+      originalAudioVolume: isOriginalAudioMuted ? 0 : originalAudioVolume,
+      autoDucking: true,
       narratorEnabled: !isVoiceMuted && hasAnyNarration,
       narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
       narratorVoice: effectiveVoice,
@@ -1420,6 +1423,9 @@ export function EditorWorkspace({
         mode: "local-gpu",
         aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
         keepOriginalAudio: !isOriginalAudioMuted,
+        interweaveAudio: !isOriginalAudioMuted && originalAudioVolume < 90,
+        originalAudioVolume: isOriginalAudioMuted ? 0 : originalAudioVolume,
+        autoDucking: true,
         narratorEnabled: !isVoiceMuted && Boolean(sceneText),
         narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
         narratorVoice: effectiveVoice,
@@ -2342,10 +2348,10 @@ export function EditorWorkspace({
 
               <div className="ts-audio-slider-block">
                 <div className="ts-audio-slider-label">
-                  <span>Âm thanh video gốc</span>
+                  <span>🎧 Âm thanh gốc (Đan nền & Còi/Hiện trường)</span>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                     <strong style={{ color: trackMutes.originalAudio ? "#ef4444" : "#f59e0b" }}>
-                      {trackMutes.originalAudio ? "Đang tắt" : `${originalAudioVolume}%`}
+                      {trackMutes.originalAudio ? "Đang tắt (0%)" : `${originalAudioVolume}% ${originalAudioVolume <= 30 ? "(Đan nền)" : ""}`}
                     </strong>
                     <button
                       type="button"
@@ -2353,16 +2359,78 @@ export function EditorWorkspace({
                       onClick={() => {
                         setTrackMutes((c) => {
                           const next = !c.originalAudio;
-                          setProjectMessage(next ? "🔇 Đã tắt âm thanh gốc video" : "🔊 Đã bật lại âm thanh gốc video");
+                          setProjectMessage(next ? "🔇 Đã tắt âm thanh gốc video" : "🔊 Đã bật âm thanh gốc video");
                           setTimeout(() => setProjectMessage(""), 2000);
                           return { ...c, originalAudio: next };
                         });
                       }}
                       style={{ padding: "1px 6px", fontSize: "9.5px", color: trackMutes.originalAudio ? "#ef4444" : "#2dd4bf" }}
                     >
-                      {trackMutes.originalAudio ? "🔇 Bật lại" : "🔊 Tắt gốc"}
+                      {trackMutes.originalAudio ? "🔇 Bật lại" : "🔊 Tắt"}
                     </button>
                   </div>
+                </div>
+                <div style={{ display: "flex", gap: "4px", marginBottom: "6px", marginTop: "2px" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTrackMutes((c) => ({ ...c, originalAudio: true }));
+                      setOriginalAudioVolume(0);
+                    }}
+                    style={{
+                      flex: 1,
+                      fontSize: "9.5px",
+                      padding: "2px 4px",
+                      borderRadius: "4px",
+                      border: trackMutes.originalAudio || originalAudioVolume === 0 ? "1px solid #ef4444" : "1px solid rgba(255,255,255,0.1)",
+                      background: trackMutes.originalAudio || originalAudioVolume === 0 ? "rgba(239, 68, 68, 0.2)" : "rgba(255,255,255,0.04)",
+                      color: trackMutes.originalAudio || originalAudioVolume === 0 ? "#fca5a5" : "#94a3b8",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🔇 Tắt hẳn
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTrackMutes((c) => ({ ...c, originalAudio: false }));
+                      setOriginalAudioVolume(20);
+                      setProjectMessage("🎧 Đã đặt mức Đan tiếng gốc: 20% âm lượng nền");
+                      setTimeout(() => setProjectMessage(""), 2000);
+                    }}
+                    style={{
+                      flex: 1.4,
+                      fontSize: "9.5px",
+                      padding: "2px 4px",
+                      borderRadius: "4px",
+                      border: !trackMutes.originalAudio && originalAudioVolume === 20 ? "1px solid #f59e0b" : "1px solid rgba(255,255,255,0.1)",
+                      background: !trackMutes.originalAudio && originalAudioVolume === 20 ? "rgba(245, 158, 11, 0.25)" : "rgba(255,255,255,0.04)",
+                      color: !trackMutes.originalAudio && originalAudioVolume === 20 ? "#fbbf24" : "#94a3b8",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🎧 Đan nền (20%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTrackMutes((c) => ({ ...c, originalAudio: false }));
+                      setOriginalAudioVolume(100);
+                    }}
+                    style={{
+                      flex: 1,
+                      fontSize: "9.5px",
+                      padding: "2px 4px",
+                      borderRadius: "4px",
+                      border: !trackMutes.originalAudio && originalAudioVolume === 100 ? "1px solid #10b981" : "1px solid rgba(255,255,255,0.1)",
+                      background: !trackMutes.originalAudio && originalAudioVolume === 100 ? "rgba(16, 185, 129, 0.2)" : "rgba(255,255,255,0.04)",
+                      color: !trackMutes.originalAudio && originalAudioVolume === 100 ? "#6ee7b7" : "#94a3b8",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🔊 Đầy đủ (100%)
+                  </button>
                 </div>
                 <input
                   type="range"
