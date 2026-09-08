@@ -2557,12 +2557,15 @@ async function synthesizeSceneAlignedNarration({
       const paddedPath = path.join(directory, `pad_snip_${String(i).padStart(4, "0")}.mp3`);
       if (ffmpeg) {
         let filter = "";
+        const naturalPause = 0.35;
         if (actualSnipDur > segDur * 0.95 && !snip.includes("silence_")) {
-          const speedRatio = Math.min(1.4, actualSnipDur / (segDur * 0.90));
+          const speedRatio = Math.min(1.35, actualSnipDur / (segDur * 0.90));
           const tempo = speedRatio > 1.02 ? atempoChain(speedRatio) : "";
-          filter = tempo ? `${tempo},apad=pad_dur=30,atrim=0:${segDur.toFixed(3)}` : `apad=pad_dur=30,atrim=0:${segDur.toFixed(3)}`;
+          const targetDur = (actualSnipDur / speedRatio) + 0.2;
+          filter = tempo ? `${tempo},apad=pad_dur=10,atrim=0:${targetDur.toFixed(3)}` : `apad=pad_dur=10,atrim=0:${(actualSnipDur + 0.2).toFixed(3)}`;
         } else {
-          filter = `apad=pad_dur=30,atrim=0:${segDur.toFixed(3)}`;
+          const targetDur = Math.min(segDur, actualSnipDur + naturalPause);
+          filter = `apad=pad_dur=10,atrim=0:${targetDur.toFixed(3)}`;
         }
         try {
           await runProcess(ffmpeg, [
@@ -2855,36 +2858,35 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     const canUseProviderTts = Boolean(record?.enabled && record.apiKey && record.capabilities?.includes("tts"));
 
     try {
-      const alignedResult = await synthesizeSceneAlignedNarration({
-        record: canUseProviderTts ? record : undefined,
-        narrationText: effectiveNarrationText,
-        subtitleSegments: options.subtitleSegments,
-        renderedDuration,
-        clipStart,
-        voice: options.narratorVoice,
-        gender: options.narratorGender,
-        languageCode: options.language,
-        operationId,
-        ffmpeg,
-      });
-      narrationPath = alignedResult.path;
-      if (narrationPath) {
-        voiceEngine = canUseProviderTts ? "provider" : "local";
+      if (canUseProviderTts) {
+        narrationPath = await synthesizeNarration(record, effectiveNarrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
+        if (narrationPath) voiceEngine = "provider";
+      }
+      if (!narrationPath) {
+        narrationPath = await synthesizeLocalNarration(effectiveNarrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
+        if (narrationPath) voiceEngine = "local";
       }
     } catch (err) {
-      console.warn("[TTS] Scene-aligned narration fallback:", err?.message || err);
-      // Fallback to standard narration synthesis so render pipeline never breaks
+      console.warn("[TTS] Continuous narration synthesis fallback:", err?.message || err);
       try {
-        if (canUseProviderTts) {
-          narrationPath = await synthesizeNarration(record, effectiveNarrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
-          if (narrationPath) voiceEngine = "provider";
-        }
-        if (!narrationPath) {
-          narrationPath = await synthesizeLocalNarration(effectiveNarrationText, options.narratorVoice, options.narratorGender, options.language, operationId);
-          if (narrationPath) voiceEngine = "local";
+        const alignedResult = await synthesizeSceneAlignedNarration({
+          record: canUseProviderTts ? record : undefined,
+          narrationText: effectiveNarrationText,
+          subtitleSegments: options.subtitleSegments,
+          renderedDuration,
+          clipStart,
+          voice: options.narratorVoice,
+          gender: options.narratorGender,
+          languageCode: options.language,
+          operationId,
+          ffmpeg,
+        });
+        narrationPath = alignedResult.path;
+        if (narrationPath) {
+          voiceEngine = canUseProviderTts ? "provider" : "local";
         }
       } catch (fallbackErr) {
-        console.warn("[TTS] Fallback narration failed:", fallbackErr?.message || fallbackErr);
+        console.warn("[TTS] Aligned fallback failed:", fallbackErr?.message || fallbackErr);
       }
     }
 
