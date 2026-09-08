@@ -20,9 +20,13 @@ function buildAudioFilter({
   narrationTempo = 1,
   duckOriginalAudio = false,
   autoDucking = false,
+  removeOriginalBgm = false,
+  isolateVocals = false,
 }) {
   const inputs = [];
   const srcAudio = String(audioInputLabel || "[0:a]").startsWith("[") ? String(audioInputLabel || "[0:a]") : `[${audioInputLabel}]`;
+  const bgmFilter = (removeOriginalBgm || isolateVocals) ? "stereotools=mlev=1.35:slev=0.25:sbal=0,highpass=f=95,lowpass=f=8200,afftdn=nf=-20" : "";
+
   if (keepOriginalAudio && hasOriginalAudio) {
     let origVol = 1;
     if (typeof originalAudioVolume === "number" && !isNaN(originalAudioVolume)) {
@@ -30,7 +34,7 @@ function buildAudioFilter({
     } else if ((duckOriginalAudio || autoDucking) && Number.isInteger(narrationInputIndex)) {
       origVol = 0.2;
     }
-    inputs.push({ label: srcAudio, volume: origVol });
+    inputs.push({ label: srcAudio, volume: origVol, extraFilter: bgmFilter });
   }
   if (Number.isInteger(narrationInputIndex)) inputs.push({ label: `[${narrationInputIndex}:a]`, volume: 1 });
   if (Number.isInteger(musicInputIndex)) {
@@ -42,11 +46,12 @@ function buildAudioFilter({
   // Avoid an unnecessary filter graph when the original stream is used as-is.
   if (inputs.length === 1) {
     const input = inputs[0];
-    if ((input.label === "[0:a]" || input.label === "0:a") && input.volume === 1) {
+    if ((input.label === "[0:a]" || input.label === "0:a") && input.volume === 1 && !input.extraFilter) {
       return null;
     }
     const tempo = Number.isInteger(narrationInputIndex) && input.label === `[${narrationInputIndex}:a]` ? atempoChain(narrationTempo) : "";
     const filterParts = [];
+    if (input.extraFilter) filterParts.push(input.extraFilter);
     if (input.volume !== 1) filterParts.push(`volume=${input.volume}`);
     if (tempo) filterParts.push(tempo);
     const filterStr = filterParts.length ? filterParts.join(",") : "anull";
@@ -54,7 +59,11 @@ function buildAudioFilter({
   }
   const normalized = inputs.map((input, index) => {
     const tempo = Number.isInteger(narrationInputIndex) && input.label === `[${narrationInputIndex}:a]` ? atempoChain(narrationTempo) : "";
-    return `${input.label}volume=${input.volume}${tempo ? `,${tempo}` : ""}[a${index}]`;
+    const filterParts = [];
+    if (input.extraFilter) filterParts.push(input.extraFilter);
+    filterParts.push(`volume=${input.volume}`);
+    if (tempo) filterParts.push(tempo);
+    return `${input.label}${filterParts.join(",")}[a${index}]`;
   });
   const mixInputs = inputs.map((_input, index) => `[a${index}]`).join("");
   return `${normalized.join(";")};${mixInputs}amix=inputs=${inputs.length}:duration=longest:dropout_transition=2[aout]`;
