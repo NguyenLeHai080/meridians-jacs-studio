@@ -35,7 +35,8 @@ export async function playAudioStream(
   audioDataOrUrl: string,
   onEnded?: () => void,
   onError?: (error: Error) => void,
-  playbackRate: number = 1.0
+  playbackRate: number = 1.0,
+  offsetSeconds: number = 0
 ): Promise<() => void> {
   stopGlobalAudio();
 
@@ -92,7 +93,8 @@ export async function playAudioStream(
       onEnded?.();
     };
 
-    source.start(0);
+    const safeOffset = Math.max(0, Math.min(Math.max(0, decodedBuffer.duration - 0.05), offsetSeconds));
+    source.start(0, safeOffset);
 
     return () => {
       stopGlobalAudio();
@@ -137,6 +139,9 @@ export async function playAudioStream(
       };
 
       audio.load();
+      if (offsetSeconds > 0) {
+        audio.currentTime = offsetSeconds;
+      }
       audio.playbackRate = safeRate;
       await audio.play();
 

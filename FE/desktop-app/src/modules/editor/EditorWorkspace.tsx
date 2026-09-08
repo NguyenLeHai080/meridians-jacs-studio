@@ -284,7 +284,7 @@ export function EditorWorkspace({
     return cleaned;
   }
 
-  const playSceneAudio = async (text?: string, scId?: string) => {
+  const playSceneAudio = async (text?: string, scId?: string, offsetSeconds: number = 0) => {
     const rawClean = stripSceneMetadata(text);
     if (!rawClean || typeof window === "undefined") return;
     stopSceneAudio();
@@ -310,7 +310,8 @@ export function EditorWorkspace({
           speechUrl,
           () => setSpeakingSceneId(null),
           () => setSpeakingSceneId(null),
-          rateToUse
+          rateToUse,
+          offsetSeconds
         );
         return;
       }
@@ -655,9 +656,11 @@ export function EditorWorkspace({
 
               // Trigger voice narration for the new scene
               const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
-              if (!isMutedLane && currentScene.subtitle) {
+              const sceneText = currentScene.subtitle || currentScene.voiceover || currentScene.translation || "";
+              if (!isMutedLane && sceneText) {
                 lastSpokenSceneRef.current = currentScene.id;
-                void playSceneAudio(currentScene.subtitle, currentScene.id);
+                const voiceOffset = Math.max(0, next - toSeconds(currentScene.voiceStart || currentScene.start));
+                void playSceneAudio(sceneText, currentScene.id, voiceOffset);
               }
             } else if (videoRef.current && videoRef.current.paused) {
               // Ensure video is playing smoothly without interruption
@@ -692,9 +695,11 @@ export function EditorWorkspace({
             void videoRef.current.play().catch(() => undefined);
           }
           const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
-          if (!isMutedLane && currentScene.subtitle) {
+          const sceneText = currentScene.subtitle || currentScene.voiceover || currentScene.translation || "";
+          if (!isMutedLane && sceneText) {
             lastSpokenSceneRef.current = currentScene.id;
-            void playSceneAudio(currentScene.subtitle, currentScene.id);
+            const voiceOffset = Math.max(0, playheadSeconds - toSeconds(currentScene.voiceStart || currentScene.start));
+            void playSceneAudio(sceneText, currentScene.id, voiceOffset);
           }
         }
       } else if (videoRef.current) {
@@ -1571,14 +1576,55 @@ export function EditorWorkspace({
     };
   }, [activeScene, copiedScene, editorScenes, historyIdx, scenesHistory]);
 
+  // Dynamic Scene under Playhead for Real-Time Subtitles & Playback
+  const currentPlaybackScene = useMemo(() => {
+    if (!effectiveScenes.length) return null;
+    return (
+      effectiveScenes.find((s) => {
+        const cStart = toSeconds(s.captionStart || s.voiceStart || s.start);
+        const cEnd = toSeconds(s.captionEnd || s.voiceEnd || s.end);
+        return playheadSeconds >= cStart && playheadSeconds < cEnd;
+      }) ||
+      effectiveScenes.find((s) => {
+        const sStart = toSeconds(s.start);
+        const sEnd = toSeconds(s.end);
+        return playheadSeconds >= sStart && playheadSeconds < sEnd;
+      }) ||
+      (playheadSeconds >= sequenceDuration ? effectiveScenes[effectiveScenes.length - 1] : effectiveScenes[0])
+    );
+  }, [effectiveScenes, playheadSeconds, sequenceDuration]);
+
+  // When playing or scrubbing, subtitle overlay tracks the playhead scene
+  const activeDisplayScene = currentPlaybackScene || activeScene;
+
   // Subtitle Karaoke Word Highlight
-  const sceneStartSec = toSeconds(activeScene.start);
-  const sceneEndSec = toSeconds(activeScene.end);
-  const sceneDur = Math.max(0.5, sceneEndSec - sceneStartSec);
-  const currentOffset = Math.max(0, Math.min(sceneDur, playheadSeconds - sceneStartSec));
-  const progressRatio = currentOffset / sceneDur;
-  const subtitleWords = (activeScene.subtitle || "").split(/\s+/).filter(Boolean);
-  const activeWordIdx = Math.floor(progressRatio * subtitleWords.length);
+  const currentRawSub = activeDisplayScene?.subtitle || activeDisplayScene?.voiceover || activeDisplayScene?.translation || "";
+  const currentCleanSub = stripSceneMetadata(currentRawSub);
+  const subtitleWords = currentCleanSub.split(/\s+/).filter(Boolean);
+
+  const subStartSec = toSeconds(
+    activeDisplayScene?.captionStart || activeDisplayScene?.voiceStart || activeDisplayScene?.start
+  );
+  const subEndSec = toSeconds(
+    activeDisplayScene?.captionEnd || activeDisplayScene?.voiceEnd || activeDisplayScene?.end
+  );
+  const subDur = Math.max(0.3, subEndSec - subStartSec);
+
+  let activeWordIdx = -1;
+  if (subtitleWords.length > 0) {
+    if (playheadSeconds >= subStartSec && playheadSeconds <= subEndSec) {
+      const currentOffset = playheadSeconds - subStartSec;
+      const progressRatio = Math.max(0, Math.min(1.0, currentOffset / subDur));
+      activeWordIdx = Math.min(
+        subtitleWords.length - 1,
+        Math.floor(progressRatio * subtitleWords.length)
+      );
+    } else if (playheadSeconds > subEndSec) {
+      activeWordIdx = subtitleWords.length;
+    } else {
+      activeWordIdx = -1;
+    }
+  }
 
   const activeFilterObj = FILTER_PRESETS.find((f) => f.id === selectedFilter) || FILTER_PRESETS[0];
   const activeMaskObj = MASK_PRESETS.find((m) => m.id === selectedMask) || MASK_PRESETS[0];
@@ -2549,12 +2595,12 @@ export function EditorWorkspace({
                 <div className={`ts-subtitle-overlay-box pos-${subtitlePosition}`}>
                   <div className={`ts-subtitle-overlay-text size-${subtitleSize} style-${subtitleStyle}`}>
                     {subtitleWords.map((word, wIdx) => {
-                      const isSpoken = wIdx <= activeWordIdx;
+                      const isSpoken = activeWordIdx >= 0 && wIdx <= activeWordIdx;
                       const isCurrent = wIdx === activeWordIdx;
 
                       return (
                         <span
-                          key={wIdx}
+                          key={`${activeDisplayScene?.id || "sub"}-${wIdx}`}
                           className={`ts-sub-word ${isCurrent ? "is-current" : isSpoken ? "is-spoken" : "is-pending"}`}
                         >
                           {word}
