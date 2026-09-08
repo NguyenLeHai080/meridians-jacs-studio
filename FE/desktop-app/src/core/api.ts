@@ -145,3 +145,85 @@ export async function getClientBillingHistory(licenseKey: string) {
   );
 }
 
+export type CreditPackagePublic = {
+  id: string;
+  name: string;
+  price: number;
+  base_credits: number;
+  bonus_percent: number;
+  total_credits: number;
+  badge?: string | null;
+  description?: string | null;
+  sort_order?: number;
+  is_active: boolean;
+};
+
+export async function getCreditPackages(): Promise<CreditPackagePublic[]> {
+  return request<CreditPackagePublic[]>("/api/v1/billing/credit-packages");
+}
+
+export type CreditTopupOrderResult = {
+  order_id: string;
+  license_key: string;
+  hwid?: string | null;
+  customer_name?: string | null;
+  package_id?: string | null;
+  package_name: string;
+  amount: number;
+  credits_expected: number;
+  bonus_percent: number;
+  transfer_content: string;
+  bank_name: string;
+  bank_bin: string;
+  account_number: string;
+  account_name: string;
+  qr_url: string;
+  status: string;
+  created_at?: string;
+};
+
+export async function createCreditTopupOrder(payload: {
+  license_key: string;
+  hwid?: string;
+  package_id?: string;
+  package_name?: string;
+  amount: number;
+  customer_name?: string;
+  notes?: string;
+}): Promise<CreditTopupOrderResult> {
+  return request<CreditTopupOrderResult>("/api/v1/billing/credit-topup/create", {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      license_key: normalizeLicenseKey(payload.license_key),
+      hwid: payload.hwid ? normalizeDeviceId(payload.hwid) : undefined,
+    }),
+  });
+}
+
+export async function checkCreditTopupStatus(orderId?: string, licenseKey?: string): Promise<{
+  data: {
+    found: boolean;
+    order_id?: string;
+    status: string;
+    credits_granted: number;
+    credit_balance: number;
+    approved_at?: string;
+  };
+}> {
+  const params = new URLSearchParams();
+  if (orderId) params.set("order_id", orderId);
+  if (licenseKey) params.set("license_key", normalizeLicenseKey(licenseKey));
+  return request<{
+    data: {
+      found: boolean;
+      order_id?: string;
+      status: string;
+      credits_granted: number;
+      credit_balance: number;
+      approved_at?: string;
+    };
+  }>(`/api/v1/billing/credit-topup/check-status?${params.toString()}`);
+}
+
+

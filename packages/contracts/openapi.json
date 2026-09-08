@@ -2354,6 +2354,452 @@
         }
       }
     },
+    "/api/v1/billing/credit-packages": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Credit Packages",
+        "description": "Retrieve all active credit packages (public for Desktop Tool & Admin Portal).",
+        "operationId": "list_credit_packages_api_v1_billing_credit_packages_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CreditPackageResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Credit Packages Api V1 Billing Credit Packages Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Credit Package",
+        "description": "Create a new credit package.",
+        "operationId": "create_credit_package_api_v1_billing_credit_packages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCreditPackageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPackageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/billing/credit-packages/{package_id}": {
+      "put": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Update Credit Package",
+        "description": "Update an existing credit package.",
+        "operationId": "update_credit_package_api_v1_billing_credit_packages__package_id__put",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCreditPackageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditPackageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Delete Credit Package",
+        "description": "Delete a credit package.",
+        "operationId": "delete_credit_package_api_v1_billing_credit_packages__package_id__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Credit Package Api V1 Billing Credit Packages  Package Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/credit-topup/create": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Create Credit Topup Order",
+        "description": "Desktop App client endpoint: Create/Update a credit top-up order and generate dynamic VietQR.",
+        "operationId": "create_credit_topup_order_api_v1_billing_credit_topup_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditTopupOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditTopupOrderResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/credit-topup/transactions": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Credit Topup Transactions",
+        "description": "Admin Portal endpoint: Get real-time list of all completed/verified credit topup transactions.",
+        "operationId": "list_credit_topup_transactions_api_v1_billing_credit_topup_transactions_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CreditTopupTransactionItem"
+                  },
+                  "title": "Response List Credit Topup Transactions Api V1 Billing Credit Topup Transactions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/credit-topup/transactions/{transaction_id}/approve": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Approve Credit Topup Transaction",
+        "description": "Admin Portal endpoint: Approve a credit top-up order and AUTOMATICALLY GRANT CREDITS to device/license.",
+        "operationId": "approve_credit_topup_transaction_api_v1_billing_credit_topup_transactions__transaction_id__approve_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transaction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Approve Credit Topup Transaction Api V1 Billing Credit Topup Transactions  Transaction Id  Approve Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/credit-topup/transactions/{transaction_id}/reject": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Reject Credit Topup Transaction",
+        "description": "Admin Portal endpoint: Reject/Cancel a credit top-up order.",
+        "operationId": "reject_credit_topup_transaction_api_v1_billing_credit_topup_transactions__transaction_id__reject_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "transaction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Transaction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Reject Credit Topup Transaction Api V1 Billing Credit Topup Transactions  Transaction Id  Reject Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/credit-topup/check-status": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Check Credit Topup Status",
+        "description": "Desktop App client endpoint: Check status of recent credit topup order.",
+        "operationId": "check_credit_topup_status_api_v1_billing_credit_topup_check_status_get",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Order Id"
+            }
+          },
+          {
+            "name": "license_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "License Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Check Credit Topup Status Api V1 Billing Credit Topup Check Status Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/clients/sessions": {
       "get": {
         "tags": [
@@ -2629,7 +3075,6 @@
             "required": true,
             "schema": {
               "type": "string",
-              "format": "uuid",
               "title": "Release Id"
             }
           }
@@ -2677,7 +3122,6 @@
             "required": true,
             "schema": {
               "type": "string",
-              "format": "uuid",
               "title": "Release Id"
             }
           }
@@ -2725,7 +3169,6 @@
             "required": true,
             "schema": {
               "type": "string",
-              "format": "uuid",
               "title": "Release Id"
             }
           }
@@ -3548,6 +3991,80 @@
         }
       }
     },
+    "/api/v1/telemetry/ai-request": {
+      "post": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "Ingest Ai Request",
+        "description": "High-throughput real-time AI telemetry endpoint for Desktop Tools & API Gateway.\nRecords model latencies, token counts, costs, errors and updates client stats.",
+        "operationId": "ingest_ai_request_api_v1_telemetry_ai_request_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiRequestTelemetryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/telemetry/logs": {
       "post": {
         "tags": [
@@ -3853,7 +4370,7 @@
           "telemetry"
         ],
         "summary": "List Global Requests",
-        "description": "Returns 100% REAL live database logs of all AI requests across all providers, models,\nmachines and API Gateway traffic with real latencies, token counts, costs and statuses.",
+        "description": "Returns 100% REAL live database logs of all AI requests across all providers, models,\nmachines and API Gateway traffic with real latencies, token counts, costs and statuses.\nIncludes comprehensive per-device AI performance analytics from User Management (Quản lý máy người dùng).",
         "operationId": "list_global_requests_api_v1_telemetry_global_requests_get",
         "security": [
           {
@@ -4270,6 +4787,125 @@
   },
   "components": {
     "schemas": {
+      "AiRequestTelemetryInput": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Model",
+            "default": "gemini-2.5-flash"
+          },
+          "provider_type": {
+            "type": "string",
+            "maxLength": 60,
+            "title": "Provider Type",
+            "default": "ai_gateway"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Latency Ms",
+            "default": 0
+          },
+          "status_code": {
+            "type": "integer",
+            "title": "Status Code",
+            "default": 200
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Status",
+            "default": "Oke"
+          },
+          "tokens_in": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tokens In",
+            "default": 0
+          },
+          "tokens_out": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tokens Out",
+            "default": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Tokens",
+            "default": 0
+          },
+          "credits_deducted": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Credits Deducted",
+            "default": 0.0
+          },
+          "cost_vnd": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Cost Vnd",
+            "default": 0.0
+          },
+          "feature_name": {
+            "type": "string",
+            "maxLength": 160,
+            "title": "Feature Name",
+            "default": "Phân tích Video AI"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "license_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Key"
+          },
+          "hwid": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hwid"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "title": "AiRequestTelemetryInput"
+      },
       "BankAccountResponse": {
         "properties": {
           "bank_name": {
@@ -4988,6 +5624,79 @@
         "type": "object",
         "title": "CreateBillingTransactionRequest"
       },
+      "CreateCreditPackageRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Price"
+          },
+          "base_credits": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Base Credits"
+          },
+          "bonus_percent": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Bonus Percent",
+            "default": 0.0
+          },
+          "total_credits": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Total Credits"
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 1
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "price",
+          "base_credits",
+          "total_credits"
+        ],
+        "title": "CreateCreditPackageRequest"
+      },
       "CreateLicenseRequest": {
         "properties": {
           "customer_name": {
@@ -5244,6 +5953,468 @@
         },
         "type": "object",
         "title": "CreditConfigResponse"
+      },
+      "CreditPackageResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Price"
+          },
+          "base_credits": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Base Credits"
+          },
+          "bonus_percent": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Bonus Percent",
+            "default": 0.0
+          },
+          "total_credits": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Total Credits"
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 1
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "price",
+          "base_credits",
+          "total_credits",
+          "id"
+        ],
+        "title": "CreditPackageResponse"
+      },
+      "CreditTopupOrderRequest": {
+        "properties": {
+          "license_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "License Key"
+          },
+          "hwid": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hwid"
+          },
+          "package_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Id",
+            "default": "custom"
+          },
+          "package_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Name",
+            "default": "Nạp tùy ý"
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 160
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "license_key",
+          "amount"
+        ],
+        "title": "CreditTopupOrderRequest"
+      },
+      "CreditTopupOrderResponse": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id"
+          },
+          "license_key": {
+            "type": "string",
+            "title": "License Key"
+          },
+          "hwid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hwid"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "package_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Id"
+          },
+          "package_name": {
+            "type": "string",
+            "title": "Package Name"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "credits_expected": {
+            "type": "number",
+            "title": "Credits Expected"
+          },
+          "bonus_percent": {
+            "type": "number",
+            "title": "Bonus Percent",
+            "default": 0.0
+          },
+          "transfer_content": {
+            "type": "string",
+            "title": "Transfer Content"
+          },
+          "bank_name": {
+            "type": "string",
+            "title": "Bank Name"
+          },
+          "bank_bin": {
+            "type": "string",
+            "title": "Bank Bin"
+          },
+          "account_number": {
+            "type": "string",
+            "title": "Account Number"
+          },
+          "account_name": {
+            "type": "string",
+            "title": "Account Name"
+          },
+          "qr_url": {
+            "type": "string",
+            "title": "Qr Url"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "PENDING"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "license_key",
+          "package_name",
+          "amount",
+          "credits_expected",
+          "transfer_content",
+          "bank_name",
+          "bank_bin",
+          "account_number",
+          "account_name",
+          "qr_url"
+        ],
+        "title": "CreditTopupOrderResponse"
+      },
+      "CreditTopupTransactionItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "order_code": {
+            "type": "string",
+            "title": "Order Code"
+          },
+          "license_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Id"
+          },
+          "license_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License Key"
+          },
+          "hwid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hwid"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "package_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Id"
+          },
+          "package_name": {
+            "type": "string",
+            "title": "Package Name"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "credits_granted": {
+            "type": "number",
+            "title": "Credits Granted"
+          },
+          "bonus_percent": {
+            "type": "number",
+            "title": "Bonus Percent",
+            "default": 0.0
+          },
+          "transfer_content": {
+            "type": "string",
+            "title": "Transfer Content"
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "default": "vietqr"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "PENDING"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "order_code",
+          "customer_name",
+          "package_name",
+          "amount",
+          "credits_granted",
+          "transfer_content"
+        ],
+        "title": "CreditTopupTransactionItem"
       },
       "DesktopJobCreate": {
         "properties": {
@@ -7617,8 +8788,15 @@
       "ReleaseResponse": {
         "properties": {
           "id": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "title": "Id"
           },
           "version": {
@@ -8564,6 +9742,119 @@
         },
         "type": "object",
         "title": "UpdateCreditConfigRequest"
+      },
+      "UpdateCreditPackageRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "base_credits": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Credits"
+          },
+          "bonus_percent": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bonus Percent"
+          },
+          "total_credits": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Credits"
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "UpdateCreditPackageRequest"
       },
       "UserResponse": {
         "properties": {

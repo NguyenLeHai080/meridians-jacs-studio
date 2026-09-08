@@ -14,7 +14,7 @@ const fallbackInfo: MachineInfo = {
   machineIdSource: "platform",
   platform: "windows",
   arch: "x64",
-  appVersion: "0.8.28",
+  appVersion: "0.8.35",
 };
 
 const browserProviders: ProviderProfile[] = [];
