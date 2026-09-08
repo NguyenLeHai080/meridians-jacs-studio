@@ -206,6 +206,7 @@ export function EditorWorkspace({
 
   const timelineViewportRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stemAudioRef = useRef<HTMLAudioElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingPlayhead = useRef(false);
 
@@ -214,6 +215,9 @@ export function EditorWorkspace({
   const lpFilterRef = useRef<BiquadFilterNode | null>(null);
   const peakFilterRef = useRef<BiquadFilterNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
+
+  const [isolatedStemPath, setIsolatedStemPath] = useState<string | null>(null);
+  const [isIsolatingStem, setIsIsolatingStem] = useState<boolean>(false);
 
   const sourceCandidates = useMemo(
     () => jobs.filter((job) => job.localPath || job.sourceType === "url" || job.analysis || job.source),
@@ -266,6 +270,23 @@ export function EditorWorkspace({
       setRemoveOriginalBgm(Boolean(sourceJob.removeOriginalBgm || sourceJob.isolateVocals));
     }
   }, [sourceJob?.id, sourceJob?.removeOriginalBgm, sourceJob?.isolateVocals]);
+
+  // Auto trigger AI Vocal & SFX Stem Isolation in background for live preview
+  useEffect(() => {
+    if (!removeOriginalBgm || !sourceJob?.localPath || !getRuntime().isolateVocals) {
+      return;
+    }
+    let isMounted = true;
+    setIsIsolatingStem(true);
+    getRuntime().isolateVocals!(sourceJob.localPath).then((res) => {
+      if (isMounted && res?.ok && res?.path) {
+        setIsolatedStemPath(res.path);
+      }
+    }).finally(() => {
+      if (isMounted) setIsIsolatingStem(false);
+    });
+    return () => { isMounted = false; };
+  }, [removeOriginalBgm, sourceJob?.localPath]);
 
   useEffect(() => {
     if (sourceJob) {
@@ -572,11 +593,24 @@ export function EditorWorkspace({
     const isOrigMuted = muted || Boolean(trackMutes.originalAudio) || originalAudioVolume === 0;
     const vol = isOrigMuted ? 0 : Math.max(0, Math.min(1, originalAudioVolume / 100));
 
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = vol;
+    if (removeOriginalBgm && isolatedStemPath) {
+      if (gainNodeRef.current) {
+        gainNodeRef.current.gain.value = 0;
+      }
+      video.muted = true;
+      if (stemAudioRef.current) {
+        stemAudioRef.current.volume = isOrigMuted ? 0 : vol;
+      }
     } else {
-      video.muted = isOrigMuted;
-      video.volume = vol;
+      if (gainNodeRef.current) {
+        gainNodeRef.current.gain.value = vol;
+      } else {
+        video.muted = isOrigMuted;
+        video.volume = vol;
+      }
+      if (stemAudioRef.current) {
+        stemAudioRef.current.volume = 0;
+      }
     }
 
     if (hpFilterRef.current && lpFilterRef.current && peakFilterRef.current) {
@@ -593,7 +627,29 @@ export function EditorWorkspace({
         peakFilterRef.current.gain.value = 0;
       }
     }
-  }, [muted, trackMutes.originalAudio, originalAudioVolume, removeOriginalBgm]);
+  }, [muted, trackMutes.originalAudio, originalAudioVolume, removeOriginalBgm, isolatedStemPath]);
+
+  // Synchronize AI isolated stem audio track with video playback
+  useEffect(() => {
+    const stemAudio = stemAudioRef.current;
+    if (!stemAudio || !removeOriginalBgm || !isolatedStemPath) {
+      if (stemAudio) {
+        stemAudio.pause();
+      }
+      return;
+    }
+    if (playing) {
+      if (videoRef.current) {
+        if (Math.abs(stemAudio.currentTime - videoRef.current.currentTime) > 0.08) {
+          stemAudio.currentTime = videoRef.current.currentTime;
+        }
+      }
+      stemAudio.playbackRate = speedVal || 1.0;
+      stemAudio.play().catch(() => {});
+    } else {
+      stemAudio.pause();
+    }
+  }, [playing, removeOriginalBgm, isolatedStemPath, speedVal]);
 
   const effectiveScenes = useMemo(() => {
     return activeTrimming?.tempScenes || editorScenes;
@@ -2561,11 +2617,21 @@ export function EditorWorkspace({
                     style={{ accentColor: "#a855f7", width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
                   />
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                       <span style={{ fontSize: "11.5px", fontWeight: 700, color: removeOriginalBgm ? "#c084fc" : "#e2e8f0", display: "block" }}>
                         🎼 AI Vocal & SFX Remover (Tách Nhạc Nền)
                       </span>
-                      {removeOriginalBgm && (
+                      {removeOriginalBgm && isIsolatingStem && (
+                        <span style={{ fontSize: "9px", background: "#f59e0b", color: "#000", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
+                          ⏳ ĐANG BÓC TÁCH...
+                        </span>
+                      )}
+                      {removeOriginalBgm && !isIsolatingStem && isolatedStemPath && (
+                        <span style={{ fontSize: "9px", background: "#10b981", color: "#fff", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
+                          ✓ 100% SẠCH NHẠC NỀN
+                        </span>
+                      )}
+                      {removeOriginalBgm && !isIsolatingStem && !isolatedStemPath && (
                         <span style={{ fontSize: "9px", background: "#a855f7", color: "#fff", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
                           AI ĐANG LỌC
                         </span>
@@ -2770,6 +2836,14 @@ export function EditorWorkspace({
                   <small>Chọn video từ danh sách hoặc tải file mới</small>
                 </div>
               )}
+
+              {/* Auxiliary AI Isolated Stem Audio element for realtime preview */}
+              <audio
+                ref={stemAudioRef}
+                src={isolatedStemPath ? fileUrl(isolatedStemPath) : undefined}
+                preload="auto"
+                style={{ display: "none" }}
+              />
 
               {/* Active Sticker Badges on Video */}
               {activeStickers.length > 0 && (

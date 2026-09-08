@@ -699,8 +699,7 @@ function voiceWorkerInvocation() {
     path.join(projectRoot, "voice_worker.py"),
   ].filter(Boolean);
   const script = scriptCandidates.find((candidate) => { try { return fs.statSync(candidate).isFile(); } catch { return false; } });
-  if (!script) return null;
-  const python = process.env.JACS_PYTHON_PATH || (process.platform === "win32" ? "python.exe" : "python3");
+  const python = process.env.JACS_PYTHON_PATH || findPythonExecutable();
   return { command: python, prefix: [script] };
 }
 
@@ -3021,6 +3020,13 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     const validLogo = Boolean(logoPath && fs.existsSync(logoPath) && fs.statSync(logoPath).size > 100);
 
     let inputIdx = 1;
+    let stemInputIndex = undefined;
+    if (!hasCuts && isolatedStemPath && fs.existsSync(isolatedStemPath)) {
+      stemInputIndex = inputIdx++;
+      if (clipStart) args.push("-ss", String(clipStart));
+      if (clipDuration) args.push("-t", String(clipDuration));
+      args.push("-thread_queue_size", "64", "-i", path.resolve(isolatedStemPath));
+    }
     const narrationInputIndex = validNarration ? inputIdx++ : undefined;
     const musicInputIndex = validMusic ? inputIdx++ : undefined;
     const logoInputIndex = validLogo ? inputIdx++ : undefined;
@@ -3031,7 +3037,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
     if (renderedDuration) args.push("-t", String(renderedDuration));
 
     const graph = [];
-    const hasAudio = Boolean(probe.hasAudio && options.keepOriginalAudio !== false);
+    const hasAudio = Boolean((probe.hasAudio || stemInputIndex !== undefined) && options.keepOriginalAudio !== false);
 
     const focusX = subjectFocus ? Math.max(0, Math.min(1, Number(subjectFocus.x))) : 0.5;
     const filters = {
@@ -3061,7 +3067,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
 
     const audioFilter = buildAudioFilter({
       hasOriginalAudio: hasAudio,
-      audioInputLabel: "[0:a]",
+      audioInputLabel: (stemInputIndex !== undefined ? `[${stemInputIndex}:a]` : "[0:a]"),
       narrationInputIndex,
       musicInputIndex,
       keepOriginalAudio: options.keepOriginalAudio !== false,
