@@ -46,8 +46,9 @@ export type Job = {
   backgroundMusicVolume?: number;
   backgroundMusicPath?: string;
   subtitlesEnabled?: boolean;
-  subtitleStyle?: "bottom" | "center" | "top";
+  subtitleStyle?: "bottom" | "center" | "top" | "gold" | "white" | "neon" | "box";
   subtitleText?: string;
+  narrationText?: string;
   subtitleSegments?: Array<{ start: number; end: number; text: string }>;
   logoPath?: string;
   logoPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -255,7 +256,7 @@ export type DesktopRuntime = {
   pickImage?: () => Promise<string | null>;
   downloadVideo?: (url: string, operationId?: string) => Promise<string>;
   probeVideo?: (path: string) => Promise<VideoProbe>;
-  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId" | "customPrompt"> & { targetDurationMinutes?: number; durationRules?: DurationMappingRule[]; providerPool?: ProviderPoolItem[]; analysisMode?: string; scriptStylePreset?: string }) => Promise<AnalysisResult>;
+  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId" | "customPrompt"> & { targetDurationMinutes?: number; durationMode?: "rules" | "fixed"; durationRules?: DurationMappingRule[]; providerPool?: ProviderPoolItem[]; analysisMode?: string; scriptStylePreset?: string }) => Promise<AnalysisResult>;
   renderVideo?: (path: string, outputFolder?: string, options?: { mode?: string; startSeconds?: number; endSeconds?: number; outputFileName?: string; aspectRatio?: Job["aspectRatio"]; preferredEngine?: ToolPreferences["preferredEngine"]; subjectTracking?: boolean; keepOriginalAudio?: boolean; backgroundMusic?: boolean; backgroundMusicVolume?: number; backgroundMusicPath?: string; narrationText?: string; narratorEnabled?: boolean; narratorVoice?: string; narratorGender?: "male" | "female"; language?: string; providerId?: string; ttsProviderId?: string; subtitlesEnabled?: boolean; subtitleStyle?: Job["subtitleStyle"]; subtitleText?: string; subtitleSegments?: Array<{ start: number; end: number; text: string }>; logoPath?: string; logoPosition?: Job["logoPosition"]; logoOpacity?: number; scenes?: any[]; cutClips?: any[]; timelineClips?: any[] }, operationId?: string) => Promise<RenderResult>;
   mergeVideos?: (paths: string[], operationId?: string) => Promise<string>;
   onDownloadProgress?: (listener: (value: RuntimeProgress) => void) => () => void;
