@@ -8,12 +8,36 @@ function atempoChain(value) {
   return filters.join(",");
 }
 
-function buildAudioFilter({ hasOriginalAudio, audioInputLabel = "[0:a]", narrationInputIndex, musicInputIndex, keepOriginalAudio = true, musicVolume = 20, narrationTempo = 1, duckOriginalAudio = false }) {
+function buildAudioFilter({
+  hasOriginalAudio,
+  audioInputLabel = "[0:a]",
+  narrationInputIndex,
+  musicInputIndex,
+  keepOriginalAudio = true,
+  interweaveAudio = true,
+  originalAudioVolume,
+  musicVolume = 20,
+  narrationTempo = 1,
+  duckOriginalAudio = false,
+  autoDucking = false,
+}) {
   const inputs = [];
   const srcAudio = String(audioInputLabel || "[0:a]").startsWith("[") ? String(audioInputLabel || "[0:a]") : `[${audioInputLabel}]`;
-  if (keepOriginalAudio && hasOriginalAudio) inputs.push({ label: srcAudio, volume: duckOriginalAudio && Number.isInteger(narrationInputIndex) ? 0.2 : 1 });
+  if (keepOriginalAudio && hasOriginalAudio) {
+    let origVol = 1;
+    if (typeof originalAudioVolume === "number" && !isNaN(originalAudioVolume)) {
+      origVol = Math.max(0, Math.min(1, originalAudioVolume / 100));
+    } else if ((duckOriginalAudio || autoDucking) && Number.isInteger(narrationInputIndex)) {
+      origVol = 0.2;
+    }
+    inputs.push({ label: srcAudio, volume: origVol });
+  }
   if (Number.isInteger(narrationInputIndex)) inputs.push({ label: `[${narrationInputIndex}:a]`, volume: 1 });
-  if (Number.isInteger(musicInputIndex)) inputs.push({ label: `[${musicInputIndex}:a]`, volume: Math.max(0, Math.min(1, Number(musicVolume) / 100)) });
+  if (Number.isInteger(musicInputIndex)) {
+    const rawMVol = Math.max(0, Math.min(1, Number(musicVolume) / 100));
+    const effectiveMVol = autoDucking && Number.isInteger(narrationInputIndex) ? Math.min(rawMVol, 0.15) : rawMVol;
+    inputs.push({ label: `[${musicInputIndex}:a]`, volume: effectiveMVol });
+  }
   if (!inputs.length) return null;
   // Avoid an unnecessary filter graph when the original stream is used as-is.
   if (inputs.length === 1) {
