@@ -560,16 +560,16 @@ export function VideoAnalysisPage({
     } else if (durationKey !== "full") {
       const durationDesc =
         durationKey === "60s"
-          ? "khoảng 60 giây (tổng số từ kịch bản khoảng 150 - 200 từ tiếng Việt, tiết tấu dồn dập, giật gân, phù hợp video ngắn Shorts / TikTok / Reels)"
+          ? "khoảng 60 giây (tổng số từ kịch bản khoảng 180 - 220 từ tiếng Việt chia đều thành 4 - 5 phân cảnh, tiết tấu dồn dập, giật gân, phù hợp video ngắn Shorts / TikTok / Reels)"
           : durationKey === "3m"
-          ? "khoảng 3 phút (tổng số từ kịch bản khoảng 700 - 900 từ tiếng Việt, tóm tắt cô đọng, giữ nhịp nhanh và lôi cuốn)"
+          ? "khoảng 3 phút (tổng số từ kịch bản khoảng 650 - 800 từ tiếng Việt chia đều thành 8 - 10 phân cảnh, tóm tắt cô đọng, giữ nhịp nhanh và lôi cuốn)"
           : durationKey === "5m"
-          ? "khoảng 5 phút (tổng số từ kịch bản khoảng 1200 - 1500 từ tiếng Việt, chuẩn review phim / phóng sự chuyên nghiệp)"
+          ? "khoảng 5 phút (tổng số từ kịch bản khoảng 1100 - 1350 từ tiếng Việt chia đều thành 12 - 16 phân cảnh, chuẩn review phim / phóng sự chuyên nghiệp)"
           : durationKey === "10m"
-          ? "khoảng 10 phút (tổng số từ kịch bản khoảng 2400 - 2800 từ tiếng Việt, phân tích sâu sắc, chi tiết từng tình tiết và đối thoại)"
+          ? "khoảng 10 phút (tổng số từ kịch bản khoảng 2200 - 2600 từ tiếng Việt chia đều thành 22 - 28 phân cảnh, mỗi phân cảnh dài 85 - 110 từ, phân tích sâu sắc toàn diện)"
           : durationKey === "15m"
-          ? "khoảng 15 phút (tổng số từ kịch bản khoảng 3600 - 4200 từ tiếng Việt, phân tích sâu sắc toàn diện tất cả các hồi và cao trào)"
-          : `khoảng ${customMins} phút (tổng số từ kịch bản khoảng ${customMins * 280} từ tiếng Việt)`;
+          ? "khoảng 15 phút (tổng số từ kịch bản khoảng 3300 - 3800 từ tiếng Việt chia đều thành 32 - 38 phân cảnh, mỗi phân cảnh dài 90 - 115 từ, phân tích sâu sắc toàn diện tất cả các hồi và cao trào)"
+          : `khoảng ${customMins} phút (tổng số từ kịch bản khoảng ${customMins * 230} từ tiếng Việt chia đều thành ${Math.max(4, Math.round(customMins * 2.4))} phân cảnh)`;
 
       finalPrompt += `\n\n# YÊU CẦU THỜI LƯỢNG KỊCH BẢN & TỰ ĐỘNG CẮT KHỚP CẢNH VIDEO (BẮT BUỘC):
 1. THỜI LƯỢNG: Hãy phân tích và viết kịch bản voice-over phân cảnh sao cho tổng thời lượng đọc kịch bản kéo dài ${durationDesc}. Tập trung vào các tình tiết cao trào, mâu thuẫn và đắt giá nhất.
