@@ -417,7 +417,8 @@ export function EditorWorkspace({
         "";
 
       const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
-      const voiceEstSec = Math.max(3.5, Math.round((wordCount / 2.75) * 10) / 10);
+      const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
+      const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
       const sceneDur = voiceEstSec;
 
       let srcStartSec = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
@@ -1183,7 +1184,7 @@ export function EditorWorkspace({
     const nextScenes = editorScenes.map((s) => {
       const rawText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "");
       const words = rawText.split(/\s+/).filter(Boolean).length;
-      const sceneDur = Math.max(3.5, Math.round((words / (2.8 * speed)) * 10) / 10);
+      const sceneDur = Math.max(3.0, Math.round((words / (3.65 * speed)) * 10) / 10);
       const startSec = cursor;
       const endSec = cursor + sceneDur;
       cursor = endSec;
@@ -3062,7 +3063,8 @@ export function EditorWorkspace({
                   onChange={(e) => {
                     const newText = e.target.value;
                     const wordCount = newText.split(/\s+/).filter(Boolean).length;
-                    const voiceEstSec = Math.max(2.5, Math.round((wordCount / 2.75) * 10) / 10);
+                    const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
+                    const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
                     const nextScenes = editorScenes.map((s) => {
                       if (s.id !== activeSceneId) return s;
                       const vStart = toSeconds(s.voiceStart || s.start);
@@ -3106,7 +3108,8 @@ export function EditorWorkspace({
                     onClick={() => {
                       const polished = `Khám phá ngay: ${activeScene.subtitle || "Điểm nhấn không thể bỏ qua!"}`;
                       const wordCount = polished.split(/\s+/).filter(Boolean).length;
-                      const voiceEstSec = Math.max(2.5, Math.round((wordCount / 2.75) * 10) / 10);
+                      const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
+                      const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
                       const updated = editorScenes.map((s) => {
                         if (s.id !== activeSceneId) return s;
                         const vStart = toSeconds(s.voiceStart || s.start);

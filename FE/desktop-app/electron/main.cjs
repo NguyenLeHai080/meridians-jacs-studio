@@ -1807,11 +1807,10 @@ function normalizeScenes(value, duration, fallbackScenes, options = {}) {
       }
     }
 
-    // Calibrate clip duration to match speech pacing or target clip pacing so total reaches targetDurMinutes exactly!
+    // Calibrate clip duration to match speech pacing accurately
     const wordCount = cleanVoice.split(/\s+/).filter(Boolean).length;
-    const voiceDuration = Math.max(4, Math.round(wordCount / 2.75));
-
-    const clipDuration = Math.max(voiceDuration, targetClipDur);
+    const voiceDuration = Math.max(3, Math.round(wordCount / 3.65));
+    const clipDuration = voiceDuration;
 
     if (!Number.isFinite(parsedSrcEnd) || parsedSrcEnd <= parsedSrcStart || (parsedSrcEnd - parsedSrcStart < 4)) {
       parsedSrcEnd = Math.min(total, parsedSrcStart + clipDuration);
