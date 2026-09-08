@@ -29,3 +29,11 @@ test("adds a bounded atempo chain when narration must fit a scene", () => {
 test("returns no graph when all audio is disabled", () => {
   assert.equal(buildAudioFilter({ hasOriginalAudio: true, keepOriginalAudio: false }), null);
 });
+
+test("applies deep vocal and SFX stem isolation filter when removeOriginalBgm is enabled", () => {
+  const filter = buildAudioFilter({ hasOriginalAudio: true, removeOriginalBgm: true });
+  assert.match(filter, /stereotools=mlev=1\.8:slev=0\.0/);
+  assert.match(filter, /highpass=f=130/);
+  assert.match(filter, /lowpass=f=6800/);
+  assert.match(filter, /dynaudnorm/);
+});

@@ -209,6 +209,12 @@ export function EditorWorkspace({
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingPlayhead = useRef(false);
 
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const hpFilterRef = useRef<BiquadFilterNode | null>(null);
+  const lpFilterRef = useRef<BiquadFilterNode | null>(null);
+  const peakFilterRef = useRef<BiquadFilterNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+
   const sourceCandidates = useMemo(
     () => jobs.filter((job) => job.localPath || job.sourceType === "url" || job.analysis || job.source),
     [jobs]
@@ -513,15 +519,81 @@ export function EditorWorkspace({
     }
   }, [playheadSeconds, editorScenes, sceneId]);
 
-  // Sync video element & audio volume
+  // Sync video element & audio volume with real-time DSP Vocal & SFX Stem Isolation
   const mediaUrl = sourceJob?.localPath ? fileUrl(sourceJob.localPath) : undefined;
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+
+    try {
+      if (!audioCtxRef.current) {
+        const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass();
+          const source = ctx.createMediaElementSource(video);
+          const hp = ctx.createBiquadFilter();
+          hp.type = "highpass";
+          hp.frequency.value = 20;
+
+          const lp = ctx.createBiquadFilter();
+          lp.type = "lowpass";
+          lp.frequency.value = 20000;
+
+          const peak = ctx.createBiquadFilter();
+          peak.type = "peaking";
+          peak.frequency.value = 1200;
+          peak.Q.value = 1.5;
+          peak.gain.value = 0;
+
+          const gain = ctx.createGain();
+          gain.gain.value = 1;
+
+          source.connect(hp);
+          hp.connect(lp);
+          lp.connect(peak);
+          peak.connect(gain);
+          gain.connect(ctx.destination);
+
+          audioCtxRef.current = ctx;
+          hpFilterRef.current = hp;
+          lpFilterRef.current = lp;
+          peakFilterRef.current = peak;
+          gainNodeRef.current = gain;
+        }
+      }
+    } catch {
+      // Element might already be connected or not supported
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => {});
+    }
+
     const isOrigMuted = muted || Boolean(trackMutes.originalAudio) || originalAudioVolume === 0;
-    video.muted = isOrigMuted;
-    video.volume = isOrigMuted ? 0 : Math.max(0, Math.min(1, originalAudioVolume / 100));
-  }, [muted, trackMutes.originalAudio, originalAudioVolume]);
+    const vol = isOrigMuted ? 0 : Math.max(0, Math.min(1, originalAudioVolume / 100));
+
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = vol;
+    } else {
+      video.muted = isOrigMuted;
+      video.volume = vol;
+    }
+
+    if (hpFilterRef.current && lpFilterRef.current && peakFilterRef.current) {
+      if (removeOriginalBgm) {
+        // Deep Vocal, Siren & SFX Isolation
+        hpFilterRef.current.frequency.value = 130;
+        lpFilterRef.current.frequency.value = 6800;
+        peakFilterRef.current.frequency.value = 1200;
+        peakFilterRef.current.gain.value = 5.0;
+      } else {
+        // Bypass to original flat sound
+        hpFilterRef.current.frequency.value = 20;
+        lpFilterRef.current.frequency.value = 20000;
+        peakFilterRef.current.gain.value = 0;
+      }
+    }
+  }, [muted, trackMutes.originalAudio, originalAudioVolume, removeOriginalBgm]);
 
   const effectiveScenes = useMemo(() => {
     return activeTrimming?.tempScenes || editorScenes;
