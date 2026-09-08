@@ -4,21 +4,21 @@ function clamp(value, min, max) {
 
 function stripSceneMetadata(text) {
   if (!text) return "";
-  let cleaned = String(text)
-    .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[^\]]*\]/gi, "")
-    .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part)\s*\d+[:\-\.]\s*/gi, " ")
+  let cleaned = String(text || "")
+    .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part|Hồi)\s*\d+[^\]]*\]/gi, "")
+    .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part|Hồi)\s*\d+[:\-\.]\s*/gi, " ")
     .replace(/\[\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\]/g, "")
     .replace(/\(\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\)/g, "")
     .replace(/(?:tại|ở|từ)\s+mốc\s+\d{1,2}[:.]\d{2}(?:\s*đến\s+\d{1,2}[:.]\d{2})?,?\s*/gi, "")
     .replace(/(?:vào\s+)?lúc\s+\d{1,2}[:.]\d{2},?\s*/gi, "")
     .replace(/\(\d{1,2}[:.]\d{2}\)/g, "")
     .replace(/\[[^\]]{1,60}\]/g, "")
-    .replace(/[{}[\]"\\]/g, "")
+    .replace(/#\d+\b/g, "")
+    .replace(/["'“”«»‘’`\\{}[\]^~*#_<>]/g, "")
+    .replace(/\.{2,}/g, ".")
+    .replace(/,{2,}/g, ",")
     .replace(/\s+/g, " ")
     .trim();
-  if (!cleaned) {
-    cleaned = String(text).replace(/[{}[\]"\\]/g, "").trim();
-  }
   return cleaned;
 }
 
