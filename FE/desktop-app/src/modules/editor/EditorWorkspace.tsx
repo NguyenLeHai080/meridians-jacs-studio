@@ -408,41 +408,36 @@ export function EditorWorkspace({
     }
 
     let cursorTime = 0;
-    let voiceCursor = 0;
     const initial: EditorScene[] = sourceJob.analysis.scenes.map((s, idx) => {
       const sub =
         s.voiceover ||
         ((s as unknown as Record<string, string>).narration) ||
-        ((s as unknown as Record<string, string>).voiceScript) ||
-        ((s as unknown as Record<string, string>).script) ||
-        ((s as unknown as Record<string, string>).dialogue) ||
-        ((s as unknown as Record<string, string>).subtitle) ||
-        ((s as unknown as Record<string, string>).text) ||
         s.translation ||
         s.detail ||
         "";
 
       const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
-      const voiceEstSec = Math.max(3, Math.round((wordCount / 2.75) * 10) / 10);
+      const voiceEstSec = Math.max(3.5, Math.round((wordCount / 2.75) * 10) / 10);
+
+      // Explicit recap timeline scene duration:
+      // If s.start and s.end were already calculated in analysis, use the scene length,
+      // otherwise use the voice duration so visual, voice and subtitle tracks are 100% 1:1 aligned!
+      const explicitSceneDur = toSeconds(s.end) - toSeconds(s.start);
+      const sceneDur = explicitSceneDur >= 2 && explicitSceneDur <= 60 ? explicitSceneDur : voiceEstSec;
 
       let srcStartSec = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
-      let srcEndSec = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
-
       if (!Number.isFinite(srcStartSec) || srcStartSec < 0) {
         srcStartSec = Math.max(0, idx * 15);
       }
-      if (!Number.isFinite(srcEndSec) || srcEndSec <= srcStartSec) {
-        srcEndSec = srcStartSec + Math.max(voiceEstSec, 5);
-      }
+      const srcEndSec = srcStartSec + sceneDur;
 
-      const clipDur = Math.max(0.5, srcEndSec - srcStartSec);
       const tStart = cursorTime;
-      const tEnd = cursorTime + clipDur;
+      const tEnd = cursorTime + sceneDur;
       cursorTime = tEnd;
 
-      const vStart = voiceCursor;
-      const vEnd = voiceCursor + voiceEstSec;
-      voiceCursor = vEnd + 0.3;
+      // Voice track and Captions track align EXACTLY with the scene visuals!
+      const vStart = tStart;
+      const vEnd = tStart + voiceEstSec;
 
       return {
         id: s.id || `scene-${idx + 1}`,
