@@ -8,7 +8,9 @@ import { EditLicenseModal } from "./modal/EditLicenseModal";
 import { ResetHwidModal } from "./modal/ResetHwidModal";
 import { RenewLicenseModal } from "./modal/RenewLicenseModal";
 import { licenseService } from "../services/licenseService";
+import { confirmDialog, showToast } from "../../../core/swal";
 import "../lang"; // Auto-registers licenses translation
+
 
 interface LicensesPageProps {
   licenses?: License[];
@@ -98,9 +100,24 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
   };
 
   const handleDelete = async (lic: License) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa license của ${lic.customer_name}? Hành động này không thể hoàn tác.`)) {
-      return;
-    }
+    const confirmed = await confirmDialog({
+      title: "Xác nhận xóa License?",
+      html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
+        <p>Bạn có chắc chắn muốn xóa license của <b>${lic.customer_name}</b>?</p>
+        <p style="margin: 6px 0 10px; font-size: 12.5px; color: #64748b;">
+          License Key: <code style="color: #e11d48; font-weight: 700;">${lic.key_hint}</code>
+        </p>
+        <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #9f1239;">
+          ⚠️ Hành động này không thể hoàn tác!
+        </div>
+      </div>`,
+      icon: "warning",
+      confirmButtonText: "Xóa vĩnh viễn",
+      cancelButtonText: "Hủy bỏ",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
+
     try {
       await licenseService.delete(lic.id);
       notify(`Đã xóa vĩnh viễn license của ${lic.customer_name}`, "success");
@@ -109,6 +126,7 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
       notify(err instanceof Error ? err.message : "Không xóa được license", "error");
     }
   };
+
 
   return (
     <>

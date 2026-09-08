@@ -4,7 +4,9 @@ import type { TelemetryLog } from "../../../core/types";
 import { useTelemetry } from "../hooks/useTelemetry";
 import { telemetryService } from "../services/telemetryService";
 import { DataTable, StatusBadge, FilterSelect, Button, Column } from "../../../components/common";
+import { confirmDialog } from "../../../core/swal";
 import { useI18n } from "../../../core/i18n";
+
 import "../lang"; // Auto-registers telemetry translation
 
 interface TelemetryPageProps {
@@ -78,7 +80,21 @@ export const TelemetryPage: React.FC<TelemetryPageProps> = ({
   };
 
   const handleClearLogs = async () => {
-    if (!confirm("Bạn có chắc muốn xóa toàn bộ nhật ký hệ thống?")) return;
+    const confirmed = await confirmDialog({
+      title: "Xóa toàn bộ nhật ký hệ thống?",
+      html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
+        <p>Bạn có chắc muốn xóa toàn bộ bản ghi sự cố và telemetry của hệ thống?</p>
+        <p style="font-size: 12.5px; color: #e11d48; margin-top: 6px;">
+          ⚠️ Hành động này sẽ dọn dẹp sạch toàn bộ lịch sử log hiện có.
+        </p>
+      </div>`,
+      icon: "warning",
+      confirmButtonText: "Xóa tất cả log",
+      cancelButtonText: "Hủy bỏ",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
+
     try {
       await telemetryService.clearLogs();
       notify("Đã xóa toàn bộ nhật ký sự cố", "success");
@@ -87,6 +103,7 @@ export const TelemetryPage: React.FC<TelemetryPageProps> = ({
       notify(err instanceof Error ? err.message : "Lỗi xóa log", "error");
     }
   };
+
 
   const columns: Column<TelemetryLog>[] = [
     {

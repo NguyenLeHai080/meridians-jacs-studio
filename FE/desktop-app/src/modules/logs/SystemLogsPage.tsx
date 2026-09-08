@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { Job, NavKey } from "../../core/types";
 import { getRuntime } from "../../core/runtime";
+import { popup } from "../../shared/popup";
 import {
   ExclamationTriangleFill,
   XCircleFill,
@@ -49,11 +50,17 @@ export function SystemLogsPage({
   const [systemBaseLogs, setSystemBaseLogs] = useState<LogEntry[]>([]);
   const [copiedAll, setCopiedAll] = useState(false);
   const [copiedErrors, setCopiedErrors] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+    if (msg.startsWith("✓") || msg.startsWith("🎉")) {
+      popup.success(msg);
+    } else if (msg.startsWith("❌")) {
+      popup.error(msg, undefined, true);
+    } else if (msg.startsWith("⚠️")) {
+      popup.warning(msg, undefined, true);
+    } else {
+      popup.toast(msg, "info");
+    }
   };
 
   // 1. Base Boot & Hardware Logs
@@ -263,24 +270,37 @@ export function SystemLogsPage({
   };
 
   return (
-    <div className="system-logs-workspace animate-fade-in" style={{ padding: "16px 20px", maxWidth: "1680px", margin: "0 auto" }}>
+    <div
+      className="system-logs-workspace animate-fade-in"
+      style={{
+        padding: "10px 16px 80px 16px",
+        width: "100%",
+        margin: 0,
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box",
+        height: "100%",
+        flex: "1 1 0%",
+        overflowY: "auto",
+      }}
+    >
       
       {/* 1. Header & Actions */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "3px 8px", borderRadius: "5px", fontSize: "11px", fontWeight: 800, color: "#38bdf8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
-            <TerminalFill size={11} /> SYSTEM RUNTIME & ERROR LOGS
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "10px", flexShrink: 0 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.35)", padding: "2px 8px", borderRadius: "5px", fontSize: "10.5px", fontWeight: 800, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "3px" }}>
+            <TerminalFill size={10} /> SYSTEM RUNTIME & ERROR LOGS · NHẬT KÝ HỆ THỐNG
           </div>
-          <h1 style={{ fontSize: "21px", fontWeight: 800, color: "#f8fafc", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
-            <CpuFill size={22} color="#38bdf8" />
+          <h1 style={{ fontSize: "18px", fontWeight: 800, color: "#f8fafc", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <CpuFill size={18} color="#fbbf24" />
             Nhật Ký Hoạt Động & Chẩn Đoán Lỗi Hệ Thống
           </h1>
-          <p style={{ fontSize: "12.5px", color: "#94a3b8", margin: "4px 0 0" }}>
+          <p style={{ fontSize: "11.5px", color: "#94a3b8", margin: "2px 0 0" }}>
             Theo dõi chi tiết log vận hành, trạng thái các job xử lý, lỗi AI Provider, GPU Render và thông số chẩn đoán lỗi.
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
           {errorLogs.length > 0 && (
             <button
               type="button"
@@ -314,17 +334,17 @@ export function SystemLogsPage({
 
       {/* 2. Error Diagnostic & Auto-Troubleshoot Banner (When Errors Exist) */}
       {errorLogs.length > 0 && (
-        <div style={{ background: "linear-gradient(90deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.08))", border: "1px solid rgba(239, 68, 68, 0.35)", borderRadius: "10px", padding: "14px 16px", marginBottom: "16px" }}>
+        <div style={{ background: "linear-gradient(90deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.08))", border: "1px solid rgba(239, 68, 68, 0.35)", borderRadius: "8px", padding: "12px 14px", marginBottom: "12px", flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171" }}>
-                <ExclamationTriangleFill size={16} />
+              <div style={{ width: "30px", height: "30px", borderRadius: "6px", background: "rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171" }}>
+                <ExclamationTriangleFill size={15} />
               </div>
               <div>
-                <h4 style={{ fontSize: "13.5px", fontWeight: 800, color: "#fca5a5", margin: 0 }}>
+                <h4 style={{ fontSize: "13px", fontWeight: 800, color: "#fca5a5", margin: 0 }}>
                   Phát hiện {errorLogs.length} sự cố / lỗi trong quá trình xử lý Job
                 </h4>
-                <p style={{ fontSize: "11.5px", color: "#cbd5e1", margin: "2px 0 0" }}>
+                <p style={{ fontSize: "11px", color: "#cbd5e1", margin: "2px 0 0" }}>
                   Hệ thống tự động phát hiện nguyên nhân và gợi ý khắc phục nhanh bên dưới:
                 </p>
               </div>
@@ -359,47 +379,47 @@ export function SystemLogsPage({
       )}
 
       {/* 3. KPI Summary Bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "10px", marginBottom: "14px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "8px", marginBottom: "12px", flexShrink: 0 }}>
         
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <TerminalFill size={15} />
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
+            <TerminalFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>TỔNG BẢN GHI LOG</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#f8fafc" }}>{allLogs.length} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>events</span></div>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>TỔNG BẢN GHI LOG</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{allLogs.length} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>events</span></div>
           </div>
         </div>
 
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: errorLogs.length ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid rgba(255,255,255,0.08)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.15)", color: "#f87171", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <XCircleFill size={15} />
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: errorLogs.length ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(239, 68, 68, 0.15)", color: "#f87171", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
+            <XCircleFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>LỖI PHÁT SINH (ERROR)</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: errorLogs.length ? "#f87171" : "#94a3b8" }}>
-              {errorLogs.length} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>lỗi</span>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>LỖI PHÁT SINH (ERROR)</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: errorLogs.length ? "#f87171" : "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {errorLogs.length} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>lỗi</span>
             </div>
           </div>
         </div>
 
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <ExclamationTriangleFill size={15} />
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: "1px solid rgba(245, 158, 11, 0.2)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
+            <ExclamationTriangleFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>CẢNH BÁO (WARN)</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#fbbf24" }}>{warnLogs.length} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>cảnh báo</span></div>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>CẢNH BÁO (WARN)</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#fbbf24", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{warnLogs.length} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>cảnh báo</span></div>
           </div>
         </div>
 
-        <div style={{ background: "rgba(15, 23, 42, 0.7)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "34px", height: "34px", borderRadius: "8px", background: "rgba(16, 185, 129, 0.15)", color: "#34d399", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <CheckCircleFill size={15} />
+        <div style={{ background: "rgba(18, 22, 32, 0.8)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: "8px", padding: "8px 12px", display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div style={{ width: "34px", height: "34px", borderRadius: "7px", background: "rgba(16, 185, 129, 0.12)", color: "#34d399", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "15px", flexShrink: 0 }}>
+            <CheckCircleFill />
           </div>
-          <div>
-            <div style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 700 }}>THÔNG TIN (INFO)</div>
-            <div style={{ fontSize: "16px", fontWeight: 800, color: "#34d399" }}>{infoLogs.length} <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>thành công</span></div>
+          <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>THÔNG TIN (INFO)</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#34d399", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{infoLogs.length} <span style={{ fontSize: "10.5px", color: "#64748b", fontWeight: 500 }}>thành công</span></div>
           </div>
         </div>
 
@@ -478,13 +498,6 @@ export function SystemLogsPage({
 
         </div>
       </div>
-
-      {/* Toast */}
-      {toastMessage && (
-        <div style={{ position: "fixed", bottom: "24px", right: "24px", background: "rgba(15, 23, 42, 0.95)", border: "1px solid rgba(56, 189, 248, 0.4)", borderRadius: "8px", padding: "10px 16px", color: "#38bdf8", fontWeight: 700, fontSize: "12.5px", boxShadow: "0 10px 30px rgba(0,0,0,0.5)", zIndex: 99999, backdropFilter: "blur(12px)" }}>
-          {toastMessage}
-        </div>
-      )}
 
       {/* 5. Terminal Log Console View */}
       <div

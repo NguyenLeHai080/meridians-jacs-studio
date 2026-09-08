@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, Fragment } from "react";
 import type { FormEvent } from "react";
 import { getRuntime, isNativeRuntime } from "../../core/runtime";
 import {
@@ -10,8 +10,56 @@ import {
   type UpdateProgress,
   type UpdateRelease,
 } from "../../core/types";
-import { Icon } from "../../shared/Icon";
 import { Modal } from "../../shared/Modal";
+import { popup } from "../../shared/popup";
+import {
+  Check2,
+  FolderFill,
+  Trash3Fill,
+  PlusLg,
+  Link45deg,
+  GearFill,
+  Sliders,
+  CpuFill,
+  CheckCircleFill,
+  XCircleFill,
+  ArrowRepeat,
+  ShieldLockFill,
+  Stars,
+  EyeFill,
+  KeyFill,
+  LightningChargeFill,
+  BoxArrowUpRight,
+} from "react-bootstrap-icons";
+
+export interface CloudModelItem {
+  id: string;
+  model: string;
+  provider_name: string;
+  category?: string;
+  input_price: number;
+  output_price: number;
+  cost_input_price?: number;
+  cost_output_price?: number;
+  cache_discount_pct?: number;
+  price_per_request?: number;
+  is_selling: boolean;
+  purpose?: string;
+  providerType?: ProviderType;
+}
+
+export const DEFAULT_CLOUD_MODELS: CloudModelItem[] = [
+  { id: "cm-1", model: "gemini-2.5-flash", provider_name: "Google Gemini", category: "vision", input_price: 500, output_price: 900, cache_discount_pct: 20, price_per_request: 0, is_selling: true, purpose: "Thị giác video 1M tokens, trích xuất cảnh & multimodal siêu tốc", providerType: "gemini" },
+  { id: "cm-2", model: "gemini-flash-latest", provider_name: "Google Gemini", category: "vision", input_price: 500, output_price: 900, cache_discount_pct: 20, price_per_request: 0, is_selling: true, purpose: "Bản Flash mới nhất luôn cập nhật từ Google AI Studio", providerType: "gemini" },
+  { id: "cm-3", model: "claude-3-7-sonnet", provider_name: "Anthropic Claude", category: "cinema", input_price: 1100, output_price: 1800, cache_discount_pct: 15, price_per_request: 10, is_selling: true, purpose: "Biên kịch điện ảnh chuyên sâu, văn phong tự nhiên sâu sắc", providerType: "anthropic" },
+  { id: "cm-4", model: "claude-opus-4.8", provider_name: "Anthropic Claude", category: "cinema", input_price: 1250, output_price: 2100, cache_discount_pct: 15, price_per_request: 15, is_selling: true, purpose: "Kịch bản điện ảnh & review phim triệu view, xây dựng cao trào", providerType: "anthropic" },
+  { id: "cm-5", model: "gpt-5.5", provider_name: "OpenAI", category: "cinema", input_price: 1050, output_price: 1650, cache_discount_pct: 20, price_per_request: 10, is_selling: true, purpose: "Kịch bản điện ảnh thế hệ mới, văn phong đa tầng nghĩa", providerType: "openai" },
+  { id: "cm-6", model: "gpt-4o", provider_name: "OpenAI", category: "vision", input_price: 950, output_price: 1500, cache_discount_pct: 20, price_per_request: 8, is_selling: true, purpose: "Phân tích hình ảnh & bối cảnh video chuẩn xác", providerType: "openai" },
+  { id: "cm-7", model: "deepseek-reasoner", provider_name: "DeepSeek", category: "reasoning", input_price: 400, output_price: 700, cache_discount_pct: 25, price_per_request: 0, is_selling: true, purpose: "Mô hình lý luận R1, phân tích logic tình tiết và cấu trúc phim", providerType: "deepseek" },
+  { id: "cm-8", model: "eleven_multilingual_v2", provider_name: "ElevenLabs", category: "voice", input_price: 1500, output_price: 2500, cache_discount_pct: 0, price_per_request: 20, is_selling: true, purpose: "Voice AI số 1 thế giới, ngắt nghỉ như người thật và truyền cảm", providerType: "elevenlabs" },
+  { id: "cm-9", model: "vi-manhdung", provider_name: "Vbee AIVoice", category: "voice", input_price: 600, output_price: 1000, cache_discount_pct: 0, price_per_request: 5, is_selling: true, purpose: "Giọng đọc Review Phim quốc dân Việt Nam (Mạnh Dũng)", providerType: "openai-compatible" },
+  { id: "cm-10", model: "whisper-large-v3", provider_name: "Whisper Audio", category: "transcription", input_price: 350, output_price: 600, cache_discount_pct: 0, price_per_request: 0, is_selling: true, purpose: "Bóc băng hội thoại đa ngôn ngữ, nhận diện tiếng Việt cực chuẩn", providerType: "openai-compatible" },
+];
 
 export const PROVIDER_CONFIGS: Record<
   string,
@@ -26,8 +74,35 @@ export const PROVIDER_CONFIGS: Record<
     ttsModel?: string;
     capabilities: string[];
     hint: string;
+    isGateway?: boolean;
   }
 > = {
+  meridians: {
+    name: "Meridians Gateway (NexoraTech)",
+    type: "openai-compatible",
+    baseUrl: "https://api-meridians.nexoratech.com.vn/v1",
+    defaultModel: "claude-opus-4.8",
+    models: [
+      "claude-opus-4.8",
+      "claude-opus-4.8-thinking",
+      "claude-3-5-sonnet-latest",
+      "gpt-4o",
+      "gpt-4o-mini",
+      "o3-mini",
+      "gemini-2.5-pro",
+      "gemini-2.5-flash",
+      "deepseek-reasoner",
+      "deepseek-chat",
+      "cc/claude-opus-5",
+      "whisper-large-v3",
+    ],
+    loginUrl: "https://jacs-studio.nexoratech.com.vn",
+    loginLabel: "🌐 Cổng AI Gateway Trung Tâm",
+    ttsModel: "eleven_multilingual_v2",
+    capabilities: ["analysis", "vision", "transcription", "tts"],
+    hint: "AI Gateway trung tâm JACS Studio (NexoraTech): Tích hợp toàn diện Claude Opus 4.8, GPT-4o, Gemini Pro 2M, DeepSeek R1, Voice TTS và Whisper.",
+    isGateway: true,
+  },
   elevenlabs: {
     name: "ElevenLabs (Voice AI Số 1 Thế Giới - Đỉnh Cao Cảm Xúc)",
     type: "openai-compatible",
@@ -159,6 +234,22 @@ const PROVIDER_DEFAULTS: Record<
     baseUrl: "https://api.anthropic.com/v1",
     model: "claude-3-5-sonnet-latest",
   },
+  deepseek: {
+    name: "DeepSeek AI",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+  },
+  groq: {
+    name: "Groq Cloud",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "llama-3.3-70b-versatile",
+  },
+  elevenlabs: {
+    name: "ElevenLabs Voice AI",
+    baseUrl: "https://api.elevenlabs.io/v1",
+    model: "eleven_multilingual_v2",
+    ttsModel: "eleven_multilingual_v2",
+  },
   "openai-compatible": {
     name: "OpenAI Compatible",
     baseUrl: "https://api.example.com/v1",
@@ -204,6 +295,10 @@ export function SettingsPage({
   const [testingId, setTestingId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [media, setMedia] = useState<{ ffmpeg: boolean; ffprobe: boolean } | null>(null);
+  const [cloudModels, setCloudModels] = useState<CloudModelItem[]>(DEFAULT_CLOUD_MODELS);
+  const [cloudCategory, setCloudCategory] = useState<string>("all");
+  const [cloudSearchQuery, setCloudSearchQuery] = useState<string>("");
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>("Vừa cập nhật");
   const [updateState, setUpdateState] = useState<{
     checking: boolean;
     installing: boolean;
@@ -223,6 +318,24 @@ export function SettingsPage({
       setLocalPreferences(preferenceResult);
       onPreferencesChanged?.(preferenceResult);
       setProviders(providerResult);
+
+      // Fetch cloud models
+      try {
+        const apiBase = String((import.meta as any).env?.VITE_API_URL || "https://jacs-studio.nexoratech.com.vn").replace(/\/$/, "");
+        const res = await fetch(`${apiBase}/api/v1/ai-providers/models-available`, {
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => null);
+        if (res && res.ok) {
+          const payload = await res.json();
+          const available = payload?.data || [];
+          if (Array.isArray(available) && available.length > 0) {
+            setCloudModels(available);
+            setLastSyncedTime(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
+          }
+        }
+      } catch {
+        // Keep defaults
+      }
     } catch (error) {
       setProviderError(
         error instanceof Error ? error.message : "Không tải được cấu hình tool"
@@ -463,17 +576,204 @@ export function SettingsPage({
   }
 
   async function deleteProvider(id: string) {
-    if (!window.confirm("Xóa provider và API key đã mã hóa khỏi thiết bị?")) return;
+    const confirmed = await popup.confirmDelete(
+      "Xóa Nhà Cung Cấp AI",
+      "Xóa provider và API key đã mã hóa khỏi thiết bị này?"
+    );
+    if (!confirmed) return;
     try {
       await getRuntime().deleteProviderProfile(id);
       setProviders(await getRuntime().getProviderProfiles());
       setProviderMessage("Đã xóa provider khỏi thiết bị.");
+      popup.success("Đã xóa provider khỏi thiết bị.");
     } catch (error) {
-      setProviderError(
-        error instanceof Error ? error.message : "Không xóa được provider"
-      );
+      const msg = error instanceof Error ? error.message : "Không xóa được provider";
+      setProviderError(msg);
+      popup.error("Lỗi xóa provider", msg);
     }
   }
+
+  const [syncingCloud, setSyncingCloud] = useState(false);
+
+  async function syncWithCloudAdmin() {
+    setSyncingCloud(true);
+    setProviderError("");
+    setProviderMessage("");
+    try {
+      const apiBase = String((import.meta as any).env?.VITE_API_URL || "https://jacs-studio.nexoratech.com.vn").replace(/\/$/, "");
+      const res = await fetch(`${apiBase}/api/v1/ai-providers/models-available`, {
+        signal: AbortSignal.timeout(8000),
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const payload = await res.json();
+        const available = payload?.data || [];
+        if (Array.isArray(available) && available.length > 0) {
+          setCloudModels(available);
+          setLastSyncedTime(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
+          await getRuntime().syncManagedProviders?.(available);
+          const updated = await getRuntime().getProviderProfiles();
+          setProviders(updated);
+          setProviderMessage(`✓ Đã đồng bộ thành công ${available.length} Model & AI Provider được cấp phép từ Cloud Admin!`);
+          popup.success(`Đã đồng bộ ${available.length} Model từ Cloud Admin`, "Bảng giá và danh sách Model cấp phép đã được nạp thành công.");
+          return;
+        }
+      }
+
+      const updated = await getRuntime().getProviderProfiles();
+      setProviders(updated);
+      setProviderMessage("✓ Đã làm mới danh sách AI Providers.");
+      popup.success("Làm mới thành công", "Đã cập nhật danh sách AI Provider trên thiết bị.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Không thể đồng bộ từ Cloud Admin";
+      setProviderError(msg);
+      popup.error("Lỗi đồng bộ Cloud Admin", msg);
+    } finally {
+      setSyncingCloud(false);
+    }
+  }
+
+  const [testingModelId, setTestingModelId] = useState<string>("");
+  const [cloudModelTestResults, setCloudModelTestResults] = useState<Record<string, { status: "reachable" | "unreachable"; latencyMs: number; detail: string }>>({});
+
+  function getProviderTypeFromName(pName: string): string {
+    const low = (pName || "").toLowerCase();
+    if (low.includes("gemini") || low.includes("google")) return "gemini";
+    if (low.includes("claude") || low.includes("anthropic")) return "anthropic";
+    if (low.includes("deepseek")) return "openai-compatible";
+    if (low.includes("eleven")) return "elevenlabs";
+    if (low.includes("whisper")) return "whisper";
+    if (low.includes("glm") || low.includes("zhipu")) return "openai-compatible";
+    return "openai";
+  }
+
+  async function testCloudModel(item: CloudModelItem) {
+    const modelKey = item.id || item.model;
+    setTestingModelId(modelKey);
+    setProviderError("");
+    setProviderMessage("");
+
+    const started = Date.now();
+    try {
+      // 1. Kiểm tra xem đã có BYOK Provider cho model này chưa
+      const byok = providers.find(
+        (p) => !p.isManaged && (p.model === item.model || p.providerType === getProviderTypeFromName(item.provider_name))
+      );
+
+      if (byok && byok.hasApiKey) {
+        const res = await getRuntime().testProviderConnection(byok.id);
+        const latency = res.latencyMs || (Date.now() - started);
+        setCloudModelTestResults((prev) => ({
+          ...prev,
+          [modelKey]: {
+            status: res.status === "reachable" ? "reachable" : "unreachable",
+            latencyMs: latency,
+            detail: res.detail || (res.status === "reachable" ? "Kết nối tốt qua API Key cá nhân (BYOK)" : "Lỗi kết nối"),
+          },
+        }));
+
+        if (res.status === "reachable") {
+          popup.success(
+            `✓ Model ${item.model} Khả Dụng!`,
+            `Đã kiểm tra qua API Key cá nhân (${byok.name || item.provider_name}) · Độ trễ: ${latency}ms\nTrạng thái: ${res.detail}`
+          );
+        } else {
+          popup.error(
+            `✕ Lỗi Kết Nối Model ${item.model}`,
+            `Chi tiết: ${res.detail}\nVui lòng kiểm tra lại API Key trong mục BYOK.`
+          );
+        }
+        return;
+      }
+
+      // 2. Kiểm tra qua Cloud Gateway Admin của máy chủ
+      const apiBase = String((import.meta as any).env?.VITE_API_URL || "https://jacs-studio.nexoratech.com.vn").replace(/\/$/, "");
+      const testRes = await fetch(`${apiBase}/api/v1/ai-providers/models-available`, {
+        signal: AbortSignal.timeout(6000),
+      }).catch(() => null);
+
+      const latency = Date.now() - started;
+      if (testRes && testRes.ok && item.is_selling) {
+        setCloudModelTestResults((prev) => ({
+          ...prev,
+          [modelKey]: {
+            status: "reachable",
+            latencyMs: latency,
+            detail: "Đã cấp phép & Sẵn sàng hoạt động qua Cloud Admin Gateway",
+          },
+        }));
+        popup.success(
+          `✓ Model ${item.model} Sẵn Sàng!`,
+          `Nhà cung cấp: ${item.provider_name}\nĐịnh giá: In ${item.input_price}đ / Out ${item.output_price}đ\nTrạng thái: Đã cấp phép chính thức từ Cloud Admin (Độ trễ gateway: ${latency}ms)`
+        );
+      } else {
+        setCloudModelTestResults((prev) => ({
+          ...prev,
+          [modelKey]: {
+            status: item.is_selling ? "reachable" : "unreachable",
+            latencyMs: latency,
+            detail: item.is_selling ? "Sẵn sàng" : "Model đang tạm ngưng",
+          },
+        }));
+        popup.info(
+          `Thông Tin Model ${item.model}`,
+          `Model ${item.model} (${item.provider_name}) ${item.is_selling ? "đã được cấp phép sử dụng" : "đang tạm ngưng"}.\nBạn có thể bấm "🔑 Nhập Key" nếu muốn sử dụng API Key riêng của bạn.`
+        );
+      }
+    } catch (err) {
+      const latency = Date.now() - started;
+      setCloudModelTestResults((prev) => ({
+        ...prev,
+        [modelKey]: {
+          status: "unreachable",
+          latencyMs: latency,
+          detail: err instanceof Error ? err.message : "Lỗi kiểm tra model",
+        },
+      }));
+      popup.error("Không Thể Kiểm Tra Model", err instanceof Error ? err.message : "Lỗi mạng hoặc máy chủ không phản hồi");
+    } finally {
+      setTestingModelId("");
+    }
+  }
+
+  function selectCloudModelForAnalysis(item: CloudModelItem) {
+    const existing = providers.find((p) => p.model === item.model || p.name.toLowerCase().includes(item.provider_name.toLowerCase()));
+    if (existing) {
+      popup.success(`Đã chọn ${item.model}`, `Model ${item.model} (${item.provider_name}) đã sẵn sàng để phân tích video.`);
+      return;
+    }
+    configureBYOKForCloudModel(item);
+  }
+
+  function configureBYOKForCloudModel(item: CloudModelItem) {
+    const pName = item.provider_name.toLowerCase();
+    const pType = item.providerType || (pName.includes("gemini") ? "gemini" : pName.includes("claude") || pName.includes("anthropic") ? "anthropic" : pName.includes("deepseek") ? "deepseek" : pName.includes("eleven") ? "elevenlabs" : "openai");
+    const matchedKey = Object.keys(PROVIDER_CONFIGS).find(k => PROVIDER_CONFIGS[k].type === pType) || "gemini";
+    handleSelectPreset(matchedKey);
+    setProviderForm(prev => prev ? { ...prev, model: item.model, name: `${item.provider_name} (${item.model})` } : null);
+    setIsModalOpen(true);
+  }
+
+  const filteredCloudModels = cloudModels.filter((m) => {
+    const q = cloudSearchQuery.trim().toLowerCase();
+    const matchSearch = !q || m.model.toLowerCase().includes(q) || m.provider_name.toLowerCase().includes(q) || (m.purpose && m.purpose.toLowerCase().includes(q));
+    const matchCategory = cloudCategory === "all" || m.category === cloudCategory;
+    return matchSearch && matchCategory;
+  });
+
+  const byokProviders = useMemo(() => providers.filter((p) => !p.isManaged), [providers]);
+
+  const groupedCloudModels = useMemo(() => {
+    const groups: Record<string, CloudModelItem[]> = {};
+    for (const item of filteredCloudModels) {
+      const provider = item.provider_name || "Khác";
+      if (!groups[provider]) {
+        groups[provider] = [];
+      }
+      groups[provider].push(item);
+    }
+    return groups;
+  }, [filteredCloudModels]);
 
   const [selectedPreset, setSelectedPreset] = useState("gemini");
 
@@ -549,23 +849,71 @@ export function SettingsPage({
   }
 
   return (
-    <div className="page-stack page-enter">
-      {/* Page Title */}
-      <div className="page-title">
-        <div>
-          <p className="eyebrow">SYSTEM / PREFERENCES</p>
-          <h2>Cài đặt tool</h2>
-          <p>
-            Quản lý workspace, thư mục output, quyền riêng tư, engine render và nhà cung cấp AI.
+    <div
+      className="settings-workspace-root animate-fade-in"
+      style={{
+        padding: "10px 16px 96px 16px",
+        width: "100%",
+        margin: 0,
+        display: "flex",
+        flexDirection: "column",
+        boxSizing: "border-box",
+        height: "100%",
+        flex: "1 1 0%",
+        overflowY: "auto",
+      }}
+    >
+      {/* 1. Header & Synchronized Actions */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "10px", flexShrink: 0, width: "100%", boxSizing: "border-box" }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              background: "rgba(245, 158, 11, 0.12)",
+              border: "1px solid rgba(245, 158, 11, 0.35)",
+              padding: "2px 8px",
+              borderRadius: "5px",
+              fontSize: "10.5px",
+              fontWeight: 800,
+              color: "#fbbf24",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              marginBottom: "3px",
+            }}
+          >
+            <Sliders size={10} /> SYSTEM & PREFERENCES · CÀI ĐẶT TOOL
+          </div>
+          <h1 style={{ fontSize: "18px", fontWeight: 800, color: "#f8fafc", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+            <GearFill size={18} color="#fbbf24" />
+            Cài Đặt Hệ Thống & Nhà Cung Cấp AI (BYOK)
+          </h1>
+          <p style={{ fontSize: "11.5px", color: "#94a3b8", margin: "2px 0 0" }}>
+            Quản lý workspace, thư mục output video, quyền riêng tư, engine render FFmpeg và các API Key nhà cung cấp AI.
           </p>
         </div>
-        <div className="page-title-actions">
+
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
           <button
-            className="button-quiet"
             type="button"
+            className="btn-secondary"
             onClick={() => void loadSettings()}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "#f8fafc",
+              padding: "7px 14px",
+              borderRadius: "7px",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
           >
-            <Icon name="check" size={14} /> {loaded ? "Đã đồng bộ" : "Đang tải..."}
+            <Check2 size={13} color="#34d399" /> {loaded ? "Đã đồng bộ" : "Đang tải..."}
           </button>
         </div>
       </div>
@@ -577,15 +925,22 @@ export function SettingsPage({
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
-          gap: "16px",
+          gap: "12px",
+          marginBottom: "12px",
+          width: "100%",
+          boxSizing: "border-box",
         }}
       >
         {/* Card 1: Workspace & Storage */}
-        <section className="panel-card">
+        <section className="panel-card" style={{ borderRadius: "10px", padding: "14px 16px" }}>
           <div className="panel-head">
             <div>
-              <p className="eyebrow">WORKSPACE & STORAGE</p>
-              <h3>Thư mục & Dữ liệu máy</h3>
+              <span style={{ fontSize: "10px", color: "#fbbf24", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                WORKSPACE & STORAGE
+              </span>
+              <h3 style={{ fontSize: "14px", fontWeight: 800, color: "#f8fafc", margin: "2px 0 0" }}>
+                Thư mục & Dữ liệu máy
+              </h3>
             </div>
           </div>
 
@@ -614,7 +969,7 @@ export function SettingsPage({
             <label className="field-label">
               Thư mục Workspace
               <div className="path-input-row">
-                <Icon name="folder" size={14} />
+                <FolderFill size={14} color="#38bdf8" />
                 <span>{localPreferences.workspacePath}</span>
                 <button
                   type="button"
@@ -632,7 +987,7 @@ export function SettingsPage({
             <label className="field-label">
               Thư mục Output Video
               <div className="path-input-row">
-                <Icon name="folder" size={14} />
+                <FolderFill size={14} color="#38bdf8" />
                 <span>{localPreferences.outputPath}</span>
                 <button
                   type="button"
@@ -648,7 +1003,7 @@ export function SettingsPage({
             <label className="field-label">
               Cache & File Tạm
               <div className="path-input-row">
-                <Icon name="folder" size={14} />
+                <FolderFill size={14} color="#38bdf8" />
                 <span>{localPreferences.cachePath}</span>
                 <button
                   type="button"
@@ -691,17 +1046,21 @@ export function SettingsPage({
               type="button"
               onClick={() => void clearCache()}
             >
-              <Icon name="trash" size={13} /> Dọn cache
+              <Trash3Fill size={13} /> Dọn cache
             </button>
           </div>
         </section>
 
         {/* Card 2: Privacy, Engine & Updates */}
-        <section className="panel-card">
+        <section className="panel-card" style={{ borderRadius: "10px", padding: "14px 16px" }}>
           <div className="panel-head">
             <div>
-              <p className="eyebrow">SYSTEM & UPDATES</p>
-              <h3>Hệ thống & Cập nhật</h3>
+              <span style={{ fontSize: "10px", color: "#38bdf8", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                SYSTEM & UPDATES
+              </span>
+              <h3 style={{ fontSize: "14px", fontWeight: 800, color: "#f8fafc", margin: "2px 0 0" }}>
+                Hệ thống & Cập nhật
+              </h3>
             </div>
           </div>
 
@@ -814,72 +1173,118 @@ export function SettingsPage({
         </section>
       </div>
 
-      {/* Section 3: AI Providers Table (BYOK) */}
-      <section className="panel-card" style={{ marginTop: "14px" }}>
-        <div className="panel-head">
+      {/* Section 3: AI Providers Table (BYOK - Dành cho khách tự đăng nhập / thêm key cá nhân) */}
+      <section
+        className="panel-card"
+        style={{
+          borderRadius: "12px",
+          padding: "16px 20px",
+          marginBottom: "28px",
+          width: "100%",
+          boxSizing: "border-box",
+          background: "linear-gradient(180deg, #111827 0%, #0b0f19 100%)",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
+        }}
+      >
+        <div className="panel-head" style={{ marginBottom: "14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
           <div>
-            <p className="eyebrow">AI PROVIDERS & API KEYS</p>
-            <h3>Nhà cung cấp AI (BYOK)</h3>
-            <p className="subtle">
-              Tích hợp OpenAI, Google Gemini, Anthropic hoặc các endpoint API tương thích. API Key được mã hóa an toàn trên hệ thống.
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px" }}>
+              <span style={{ fontSize: "10px", color: "#fbbf24", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "2px 7px", borderRadius: "4px" }}>
+                🔑 AI PROVIDERS & API KEYS (BYOK CÁ NHÂN)
+              </span>
+              <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                {byokProviders.length} kết nối riêng
+              </span>
+            </div>
+            <h3 style={{ fontSize: "15px", fontWeight: 800, color: "#f8fafc", margin: "2px 0 0" }}>
+              Nhà cung cấp AI (BYOK - Bring Your Own Key)
+            </h3>
+            <p className="subtle" style={{ fontSize: "12px", color: "#94a3b8", margin: "3px 0 0" }}>
+              Dành riêng cho API Key do bạn tự thêm hoặc đăng nhập trên tool. Mã hóa an toàn AES-256 trên thiết bị của bạn.
             </p>
           </div>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={openNewProvider}
-            disabled={!native}
-          >
-            <Icon name="plus" size={13} /> {native ? "Thêm AI Provider" : "Mở bản Desktop để thêm"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={openNewProvider}
+              disabled={!native}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 16px",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 800,
+                cursor: native ? "pointer" : "not-allowed",
+                background: "linear-gradient(135deg, #d97706, #f59e0b)",
+                border: "none",
+                color: "#12151f",
+                boxShadow: "0 0 16px rgba(245, 158, 11, 0.4)",
+              }}
+            >
+              <PlusLg size={13} /> {native ? "+ Thêm AI Provider (BYOK)" : "Mở bản Desktop để thêm"}
+            </button>
+          </div>
         </div>
 
-        <div className="jacs-table-wrapper">
-          <table className="jacs-table">
-            <thead>
-              <tr>
-                <th>Tên Provider</th>
-                <th>Loại</th>
-                <th>Model</th>
-                <th>Base URL</th>
-                <th>Trạng thái</th>
-                <th style={{ textAlign: "right" }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {providers.length > 0 ? (
-                providers.map((p) => (
+        {byokProviders.length > 0 ? (
+          <div className="jacs-table-wrapper" style={{ overflowX: "auto" }}>
+            <table className="jacs-table">
+              <thead>
+                <tr style={{ background: "rgba(0, 0, 0, 0.3)" }}>
+                  <th>TÊN PROVIDER</th>
+                  <th>LOẠI NỀN TẢNG</th>
+                  <th>MODEL MẶC ĐỊNH</th>
+                  <th>BASE URL / ENDPOINT</th>
+                  <th>TRẠNG THÁI</th>
+                  <th style={{ textAlign: "right" }}>THAO TÁC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byokProviders.map((p) => (
                   <tr key={p.id}>
                     <td>
-                      <strong style={{ color: "#ffffff" }}>{p.name}</strong>
+                      <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                        <KeyFill size={13} color="#fbbf24" />
+                        <strong style={{ color: "#ffffff", fontSize: "12.5px" }}>{p.name}</strong>
+                      </div>
                     </td>
                     <td>
                       <span
                         style={{
-                          padding: "2px 7px",
-                          borderRadius: "4px",
-                          background: "rgba(255,255,255,0.06)",
-                          fontSize: "10.5px",
+                          padding: "3px 8px",
+                          borderRadius: "5px",
+                          background: "rgba(255, 255, 255, 0.08)",
+                          color: "#cbd5e1",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
                         }}
                       >
                         {p.providerType}
                       </span>
                     </td>
                     <td>
-                      <code>{p.model}</code>
+                      <code style={{ color: "#38bdf8", fontWeight: 700, fontSize: "11.5px" }}>{p.model}</code>
                     </td>
                     <td>
-                      <small style={{ color: "#94a3b8" }}>{p.baseUrl}</small>
+                      <small style={{ color: "#94a3b8", fontFamily: "monospace", fontSize: "11px" }}>{p.baseUrl}</small>
                     </td>
                     <td>
                       <span
                         style={{
                           color: p.enabled ? "#10b981" : "#94a3b8",
-                          fontWeight: 700,
-                          fontSize: "11px",
+                          fontWeight: 750,
+                          fontSize: "11.5px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
                         }}
                       >
-                        {p.enabled ? "● Sẵn sàng" : "○ Tắt"}
+                        {p.enabled ? "● Sẵn sàng" : "○ Đang tắt"}
                       </span>
                     </td>
                     <td style={{ textAlign: "right" }}>
@@ -888,6 +1293,7 @@ export function SettingsPage({
                         className="text-button"
                         onClick={() => void testProvider(p.id)}
                         disabled={testingId === p.id}
+                        style={{ color: "#38bdf8", marginRight: "8px" }}
                       >
                         {testingId === p.id ? "Đang test..." : "Test"}
                       </button>
@@ -895,6 +1301,7 @@ export function SettingsPage({
                         type="button"
                         className="text-button"
                         onClick={() => editProvider(p)}
+                        style={{ color: "#fbbf24", marginRight: "8px" }}
                       >
                         Sửa
                       </button>
@@ -908,14 +1315,445 @@ export function SettingsPage({
                       </button>
                     </td>
                   </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div
+            style={{
+              padding: "24px 20px",
+              borderRadius: "10px",
+              background: "rgba(15, 23, 42, 0.5)",
+              border: "1px dashed rgba(245, 158, 11, 0.3)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "16px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "14px", maxWidth: "720px" }}>
+              <div
+                style={{
+                  width: "38px",
+                  height: "38px",
+                  borderRadius: "8px",
+                  background: "rgba(245, 158, 11, 0.15)",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <KeyFill size={18} color="#fbbf24" />
+              </div>
+              <div>
+                <h4 style={{ margin: "0 0 4px", fontSize: "13.5px", fontWeight: 800, color: "#f8fafc" }}>
+                  Chưa có kết nối BYOK cá nhân nào
+                </h4>
+                <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8", lineHeight: 1.5 }}>
+                  Mặc định tool đang kết nối sử dụng trực tiếp các Model AI được cấp phép chính thức từ <strong>Cloud Admin Gateway</strong> (ở bảng bên dưới).
+                  Nếu bạn muốn dùng API Key riêng của cá nhân (OpenAI, Gemini, Claude, DeepSeek, ElevenLabs...), hãy nhấn <strong>"+ Thêm AI Provider (BYOK)"</strong> hoặc bấm <strong>"🔑 Nhập Key"</strong> ở model tương ứng bên dưới.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={openNewProvider}
+              disabled={!native}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 14px",
+                borderRadius: "7px",
+                fontSize: "12px",
+                fontWeight: 750,
+                background: "rgba(245, 158, 11, 0.12)",
+                border: "1px solid rgba(245, 158, 11, 0.35)",
+                color: "#fbbf24",
+                cursor: native ? "pointer" : "not-allowed",
+              }}
+            >
+              <PlusLg size={12} /> Thêm Key Riêng Của Bạn
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Section 4: BẢNG CẬP NHẬT MODEL & ĐỊNH GIÁ ĐỒNG BỘ TỪ CLOUD ADMIN */}
+      <section
+        className="panel-card"
+        style={{
+          borderRadius: "12px",
+          padding: "18px 20px",
+          marginBottom: "32px",
+          width: "100%",
+          boxSizing: "border-box",
+          background: "linear-gradient(180deg, #101626 0%, #0a0e1a 100%)",
+          border: "1px solid rgba(245, 158, 11, 0.3)",
+          boxShadow: "0 6px 24px rgba(0, 0, 0, 0.4)",
+        }}
+      >
+        <div className="panel-head" style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+              <span style={{ fontSize: "10px", color: "#10b981", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.35)", padding: "2px 8px", borderRadius: "4px" }}>
+                🟢 CLOUD AI LICENSED GATEWAY (ADMIN CẤP PHÉP)
+              </span>
+              <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                Đồng bộ lúc: <b style={{ color: "#f8fafc" }}>{lastSyncedTime}</b>
+              </span>
+            </div>
+            <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#f8fafc", margin: "3px 0 0", display: "flex", alignItems: "center", gap: "7px" }}>
+              <CpuFill size={17} color="#fbbf24" /> Danh Sách Model AI & Định Giá Được Cấp Phép
+            </h3>
+            <p className="subtle" style={{ fontSize: "12px", color: "#94a3b8", margin: "4px 0 0" }}>
+              Các Model AI cao cấp (Gemini 2.5 Flash, Claude 3.7 Sonnet, GPT-4o, DeepSeek Reasoner, Whisper, ElevenLabs) do Admin cấp phép và định giá chính thức.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            {/* Search Input */}
+            <input
+              type="text"
+              placeholder="Tìm model hoặc hãng..."
+              value={cloudSearchQuery}
+              onChange={(e) => setCloudSearchQuery(e.target.value)}
+              style={{
+                padding: "7px 12px",
+                borderRadius: "7px",
+                background: "#080b12",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                color: "#f8fafc",
+                fontSize: "12px",
+                outline: "none",
+                width: "180px",
+              }}
+            />
+
+            {/* Category Filter */}
+            <select
+              value={cloudCategory}
+              onChange={(e) => setCloudCategory(e.target.value)}
+              style={{
+                padding: "7px 12px",
+                borderRadius: "7px",
+                background: "#080b12",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                color: "#fbbf24",
+                fontSize: "12px",
+                fontWeight: 750,
+                outline: "none",
+                cursor: "pointer",
+              }}
+            >
+              <option value="all">Tất cả danh mục ({cloudModels.length})</option>
+              <option value="cinema">🎬 Điện ảnh & Kịch bản</option>
+              <option value="vision">👁️ Thị giác 1M Tokens</option>
+              <option value="reasoning">🧠 Reasoner / Logic R1</option>
+              <option value="voice">🎙️ Voice TTS Review</option>
+              <option value="transcription">📝 Bóc băng Whisper</option>
+            </select>
+
+            {/* Sync Now Button */}
+            <button
+              type="button"
+              onClick={syncWithCloudAdmin}
+              disabled={syncingCloud}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 14px",
+                borderRadius: "7px",
+                fontSize: "12px",
+                fontWeight: 800,
+                background: "linear-gradient(135deg, #d97706, #f59e0b)",
+                color: "#12151f",
+                border: "none",
+                cursor: syncingCloud ? "not-allowed" : "pointer",
+                boxShadow: "0 0 14px rgba(245, 158, 11, 0.35)",
+              }}
+            >
+              <ArrowRepeat size={13} className={syncingCloud ? "animate-spin" : ""} />
+              {syncingCloud ? "Đang đồng bộ..." : "🔄 Cập Nhật Bảng Giá"}
+            </button>
+          </div>
+        </div>
+
+        {/* Table of Grouped Cloud Models */}
+        <div className="jacs-table-wrapper" style={{ maxHeight: "540px", overflowY: "auto", overflowX: "auto" }}>
+          <table className="jacs-table" style={{ width: "100%", minWidth: "1560px", borderCollapse: "separate", borderSpacing: 0 }}>
+            <thead>
+              <tr style={{ background: "rgba(0, 0, 0, 0.35)", position: "sticky", top: 0, zIndex: 10 }}>
+                <th style={{ width: "35px" }}>STT</th>
+                <th style={{ minWidth: "220px" }}>TÊN MODEL AI</th>
+                <th style={{ minWidth: "140px" }}>NHÀ CUNG CẤP</th>
+                <th style={{ minWidth: "220px" }}>CHUYÊN DỤNG / TÍNH NĂNG</th>
+                <th style={{ minWidth: "160px" }}>ĐỊNH GIÁ TOKEN (IN / OUT)</th>
+                <th style={{ minWidth: "160px", color: "#fbbf24" }}>QUY ĐỔI CREDIT (IN / OUT)</th>
+                <th style={{ minWidth: "130px" }}>CACHE / REQUEST</th>
+                <th style={{ minWidth: "120px" }}>TRẠNG THÁI</th>
+                <th style={{ minWidth: "290px", width: "290px", textAlign: "right", whiteSpace: "nowrap" }}>THAO TÁC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.keys(groupedCloudModels).length > 0 ? (
+                Object.entries(groupedCloudModels).map(([providerGroup, items], gIdx) => (
+                  <Fragment key={`grp-body-${providerGroup}-${gIdx}`}>
+                    <tr
+                      key={`grp-head-${providerGroup}-${gIdx}`}
+                      style={{
+                        background: "linear-gradient(90deg, rgba(245, 158, 11, 0.14) 0%, rgba(30, 41, 59, 0.45) 100%)",
+                        borderLeft: "3px solid #f59e0b",
+                      }}
+                    >
+                      <td colSpan={9} style={{ padding: "8px 12px", borderBottom: "1px solid rgba(245, 158, 11, 0.2)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <Stars size={14} color="#fbbf24" />
+                          <strong style={{ color: "#f8fafc", fontSize: "12.5px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                            {providerGroup}
+                          </strong>
+                          <span
+                            style={{
+                              fontSize: "10.5px",
+                              padding: "1px 6px",
+                              borderRadius: "10px",
+                              background: "rgba(245, 158, 11, 0.2)",
+                              color: "#fbbf24",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {items.length} model
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {items.map((item, idx) => (
+                      <tr
+                        key={item.id || `${providerGroup}-${idx}`}
+                        style={{
+                          transition: "background 0.2s ease",
+                          borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+                        }}
+                      >
+                        <td style={{ color: "#64748b", fontWeight: 600, fontSize: "11px" }}>{idx + 1}</td>
+                        <td>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <CpuFill size={13} color="#fbbf24" />
+                              <strong style={{ color: "#ffffff", fontFamily: "monospace", fontSize: "12.5px" }}>
+                                {item.model}
+                              </strong>
+                            </div>
+                            <small style={{ color: "#94a3b8", fontSize: "10.5px", display: "block", marginTop: "2px" }}>
+                              {item.price_per_request ? `Phí cố định: ${item.price_per_request}đ/request` : "gốc: 0đ/request (không tính phí thêm)"}
+                            </small>
+                            {testingModelId === (item.id || item.model) ? (
+                              <div style={{ marginTop: "4px", fontSize: "10.5px", color: "#38bdf8", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <ArrowRepeat size={10} className="animate-spin" /> Đang kiểm tra kết nối AI...
+                              </div>
+                            ) : cloudModelTestResults[item.id || item.model] ? (
+                              <div style={{ marginTop: "4px" }}>
+                                {cloudModelTestResults[item.id || item.model].status === "reachable" ? (
+                                  <span style={{ fontSize: "10.5px", color: "#34d399", fontWeight: 750, background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "1px 6px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                    ✓ Sẵn sàng ({cloudModelTestResults[item.id || item.model].latencyMs}ms)
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: "10.5px", color: "#f87171", fontWeight: 750, background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)", padding: "1px 6px", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                    ✕ {cloudModelTestResults[item.id || item.model].detail || "Lỗi"}
+                                  </span>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 700, color: "#cbd5e1", fontSize: "11.5px" }}>
+                            {item.provider_name}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                              background:
+                                item.category === "cinema"
+                                  ? "rgba(236, 72, 153, 0.15)"
+                                  : item.category === "vision"
+                                  ? "rgba(16, 185, 129, 0.15)"
+                                  : item.category === "voice"
+                                  ? "rgba(245, 158, 11, 0.15)"
+                                  : item.category === "transcription"
+                                  ? "rgba(168, 85, 247, 0.15)"
+                                  : "rgba(255, 255, 255, 0.06)",
+                              color:
+                                item.category === "cinema"
+                                  ? "#f472b6"
+                                  : item.category === "vision"
+                                  ? "#34d399"
+                                  : item.category === "voice"
+                                  ? "#fbbf24"
+                                  : item.category === "transcription"
+                                  ? "#c084fc"
+                                  : "#94a3b8",
+                              fontWeight: 700,
+                              display: "inline-block",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {item.purpose || item.category || "Phân tích AI"}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: "11.5px", color: "#e2e8f0" }}>
+                            <div style={{ color: "#38bdf8", fontWeight: 700 }}>In: {item.input_price}đ/1M</div>
+                            <div style={{ color: "#a78bfa", fontWeight: 700 }}>Out: {item.output_price}đ/1M</div>
+                          </div>
+                        </td>
+                        <td>
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              flexDirection: "column",
+                              gap: "2px",
+                              background: "rgba(245, 158, 11, 0.1)",
+                              border: "1px solid rgba(245, 158, 11, 0.28)",
+                              padding: "3px 8px",
+                              borderRadius: "5px",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              color: "#fbbf24",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <span>In: {((item.input_price || 0) / 1000).toFixed(2)} Cr/1M</span>
+                            <span>Out: {((item.output_price || 0) / 1000).toFixed(2)} Cr/1M</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: "11px", color: "#cbd5e1" }}>
+                            <span style={{ color: "#34d399", fontWeight: 700 }}>
+                              Cache: -{item.cache_discount_pct ?? 20}%
+                            </span>
+                            <br />
+                            <span style={{ color: item.price_per_request ? "#fbbf24" : "#94a3b8" }}>
+                              {item.price_per_request ? `${item.price_per_request}đ/req` : "0đ/req"}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 750,
+                              color: item.is_selling ? "#10b981" : "#94a3b8",
+                              background: item.is_selling ? "rgba(16, 185, 129, 0.12)" : "rgba(148, 163, 184, 0.12)",
+                              border: item.is_selling ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(148, 163, 184, 0.2)",
+                              padding: "3px 7px",
+                              borderRadius: "4px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            {item.is_selling ? "● Đã Cấp Phép" : "○ Tạm Ngưng"}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right", whiteSpace: "nowrap", width: "290px", minWidth: "290px" }}>
+                          <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: "6px", flexWrap: "nowrap", whiteSpace: "nowrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => selectCloudModelForAnalysis(item)}
+                              style={{
+                                background: "linear-gradient(135deg, #d97706, #f59e0b)",
+                                border: "none",
+                                color: "#12151f",
+                                padding: "5px 11px",
+                                borderRadius: "6px",
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                                boxShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                              }}
+                              title="Chọn model này để làm việc trên công cụ"
+                            >
+                              ⚡ Kích Hoạt
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void testCloudModel(item)}
+                              disabled={testingModelId === (item.id || item.model)}
+                              style={{
+                                background: "rgba(56, 189, 248, 0.14)",
+                                border: "1px solid rgba(56, 189, 248, 0.35)",
+                                color: "#38bdf8",
+                                padding: "5px 11px",
+                                borderRadius: "6px",
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                cursor: testingModelId === (item.id || item.model) ? "not-allowed" : "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
+                              }}
+                              title="Kiểm tra kết nối và độ trễ của Model này"
+                            >
+                              {testingModelId === (item.id || item.model) ? (
+                                <>
+                                  <ArrowRepeat size={11} className="animate-spin" /> Đang test...
+                                </>
+                              ) : (
+                                <>
+                                  🧪 Test
+                                </>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => configureBYOKForCloudModel(item)}
+                              style={{
+                                background: "rgba(255, 255, 255, 0.08)",
+                                border: "1px solid rgba(255, 255, 255, 0.18)",
+                                color: "#f8fafc",
+                                padding: "5px 11px",
+                                borderRadius: "6px",
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                              }}
+                              title="Cấu hình API Key riêng cho hãng này (BYOK)"
+                            >
+                              🔑 Nhập Key
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))
               ) : (
                 <tr>
-                  <td
-                    colSpan={6}
-                    style={{ textAlign: "center", padding: "24px", color: "#64748b" }}
-                  >
-                    Chưa có AI Provider nào. Bấm nút <strong>"+ Thêm AI Provider"</strong> để kết nối API.
+                  <td colSpan={8} style={{ textAlign: "center", padding: "28px", color: "#64748b" }}>
+                    Không tìm thấy model nào phù hợp với bộ lọc tìm kiếm.
                   </td>
                 </tr>
               )}
@@ -970,10 +1808,10 @@ export function SettingsPage({
                         }}
                       >
                         <strong style={{ fontSize: "11.5px", color: isSelected ? "#ffffff" : "#cbd5e1", display: "block" }}>
-                          {cfg.name.split(" ")[0]} {cfg.name.split(" ")[1] || ""}
+                          {cfg.name ? `${cfg.name.split(" ")[0]} ${cfg.name.split(" ")[1] || ""}` : "AI"}
                         </strong>
                         <small style={{ fontSize: "10px", color: isSelected ? "#f95738" : "#64748b" }}>
-                          {cfg.defaultModel.split("-")[0]}
+                          {cfg.defaultModel ? cfg.defaultModel.split("-")[0] : ""}
                         </small>
                       </button>
                     );
@@ -1030,7 +1868,7 @@ export function SettingsPage({
                       }
                     }}
                   >
-                    <Icon name="link" size={12} />
+                    <Link45deg size={14} />
                     <span>Đăng Nhập Lấy Key</span>
                   </button>
                 </div>
@@ -1361,7 +2199,7 @@ export function SettingsPage({
                 Hủy
               </button>
               <button type="submit" className="btn-primary">
-                <Icon name="check" size={13} /> Lưu AI Provider
+                <Check2 size={14} /> Lưu AI Provider
               </button>
             </div>
           </form>

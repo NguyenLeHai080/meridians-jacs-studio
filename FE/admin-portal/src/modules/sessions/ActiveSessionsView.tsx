@@ -7,6 +7,8 @@ import { Select } from "../../components/common/Select";
 import { Toast } from "../../components/common/Toast";
 import { Pagination } from "../../components/common/Pagination";
 import { CopyButton } from "../../components/common/CopyButton";
+import { confirmDialog } from "../../core/swal";
+
 
 interface ActiveSessionsViewProps {
   sessions: ClientSession[];
@@ -55,7 +57,21 @@ export function ActiveSessionsView({
   );
 
   async function handleTerminate(licenseId: string, name: string) {
-    if (!window.confirm(`Bạn có chắc muốn ngắt kết nối phiên làm việc của "${name}"?`)) return;
+    const confirmed = await confirmDialog({
+      title: "Ngắt kết nối phiên làm việc?",
+      html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
+        <p>Bạn có chắc muốn ngắt kết nối phiên của <b>${name}</b>?</p>
+        <p style="font-size: 12.5px; color: #64748b; margin-top: 6px;">
+          Ứng dụng trên máy khách sẽ bị đăng xuất khỏi hệ thống.
+        </p>
+      </div>`,
+      icon: "warning",
+      confirmButtonText: "Ngắt phiên",
+      cancelButtonText: "Hủy bỏ",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
+
     try {
       await onTerminateSession(licenseId);
       setMessage(`Đã ngắt phiên thiết bị của ${name}`);
@@ -63,6 +79,7 @@ export function ActiveSessionsView({
       setError(err instanceof Error ? err.message : "Lỗi ngắt phiên");
     }
   }
+
 
   const onlineCount = sessions.filter((s) => s.is_online).length;
 

@@ -7,7 +7,7 @@ const childProcess = require("node:child_process");
 const { once } = require("node:events");
 
 const MAX_UPDATE_BYTES = 4 * 1024 * 1024 * 1024;
-const VERSION_PATTERN = /^v(\d+)\.(\d+)\.(\d+)$/;
+const VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)$/i;
 
 function trustedUrl(value) {
   try {
@@ -26,7 +26,9 @@ function versionParts(value) {
 function compareVersions(left, right) {
   const a = versionParts(left);
   const b = versionParts(right);
-  if (!a || !b) return 0;
+  if (!a && !b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
   for (let index = 0; index < 3; index += 1) {
     if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
   }
@@ -35,9 +37,12 @@ function compareVersions(left, right) {
 
 function validateRelease(release, platform, currentVersion) {
   if (!release || typeof release !== "object") throw new Error("Manifest cập nhật trống");
-  if (release.platform !== platform) throw new Error("Bản cập nhật không dành cho hệ điều hành này");
-  if (!versionParts(release.version) || compareVersions(release.version, currentVersion) <= 0) throw new Error("Phiên bản cập nhật không hợp lệ hoặc đã cũ");
-  if (!trustedUrl(release.download_url)) throw new Error("URL cập nhật không được tin cậy");
+  if (release.platform && platform && release.platform !== platform) throw new Error("Bản cập nhật không dành cho hệ điều hành này");
+  if (!versionParts(release.version) || compareVersions(release.version, currentVersion) <= 0) {
+    throw new Error("Phiên bản cập nhật không hợp lệ hoặc đã cũ");
+  }
+  const downloadUrl = release.download_url || release.url;
+  if (!trustedUrl(downloadUrl)) throw new Error("URL cập nhật không được tin cậy");
   if (!/^[a-f0-9]{128}$/i.test(String(release.sha512 || ""))) throw new Error("Manifest thiếu SHA-512 hợp lệ");
   return release;
 }
@@ -68,18 +73,19 @@ function safeFileName(url, version, platform) {
 
 async function downloadRelease({ release, platform, currentVersion, tempDirectory, signal, onProgress, fetchImpl = fetch }) {
   validateRelease(release, platform, currentVersion);
+  const downloadUrl = release.download_url || release.url;
   const directory = path.join(tempDirectory || os.tmpdir(), "jacs-studio-updates", release.version);
-  await fsp.mkdir(directory, { recursive: true, mode: 0o700 });
-  const targetPath = path.join(directory, safeFileName(release.download_url, release.version, platform));
+  await fsp.mkdir(directory, { recursive: true, mode: 0o755 });
+  const targetPath = path.join(directory, safeFileName(downloadUrl, release.version, platform));
   const partialPath = `${targetPath}.part`;
   await fsp.rm(partialPath, { force: true });
-  const response = await fetchImpl(release.download_url, { redirect: "follow", signal, headers: { Accept: "application/octet-stream" } });
-  const finalUrl = response.url || release.download_url;
+  const response = await fetchImpl(downloadUrl, { redirect: "follow", signal, headers: { Accept: "application/octet-stream" } });
+  const finalUrl = response.url || downloadUrl;
   if (!trustedUrl(finalUrl)) throw new Error("Máy chủ chuyển hướng tới URL không được tin cậy");
   if (!response.ok || !response.body) throw new Error(`Không tải được bản cập nhật (HTTP ${response.status})`);
   const contentLength = Number(response.headers?.get?.("content-length") || 0);
   if (contentLength > MAX_UPDATE_BYTES) throw new Error("Bản cập nhật vượt quá dung lượng cho phép");
-  const output = fs.createWriteStream(partialPath, { mode: 0o600 });
+  const output = fs.createWriteStream(partialPath, { mode: 0o755 });
   const reader = response.body.getReader();
   let downloaded = 0;
   try {
@@ -98,6 +104,7 @@ async function downloadRelease({ release, platform, currentVersion, tempDirector
     const digest = await sha512File(partialPath);
     if (digest.toLowerCase() !== String(release.sha512).toLowerCase()) throw new Error("SHA-512 không khớp; bản cập nhật bị từ chối");
     await fsp.rename(partialPath, targetPath);
+    await fsp.chmod(targetPath, 0o755).catch(() => undefined);
     return { filePath: targetPath, bytes: downloaded, sha512: digest, kind: releaseKind(targetPath, platform) };
   } catch (error) {
     output.destroy();
@@ -149,22 +156,32 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
   if (!fs.existsSync(filePath)) throw new Error("Không tìm thấy file cập nhật đã tải");
   if (platform === "windows") {
     if (kind === "windows-installer") {
+      const targetDir = path.dirname(execPath);
+      const targetExe = execPath;
+      const targetPid = process.pid;
       try {
-        const child = childProcess.spawn("cmd.exe", ["/c", "start", "", filePath], {
-          detached: true,
-          stdio: "ignore",
-          windowsHide: true,
-        });
-        child.unref();
+        fs.chmodSync(filePath, 0o755);
+      } catch {}
+      try {
+        if (appModule.shell?.openPath) {
+          void appModule.shell.openPath(filePath);
+        } else {
+          childProcess.exec(`start "" "${filePath}"`);
+        }
       } catch {
         try {
-          childProcess.exec(`start "" "${filePath}"`);
+          const child = childProcess.spawn("cmd.exe", ["/c", "start", "", filePath], {
+            detached: true,
+            stdio: "ignore",
+            windowsHide: false,
+          });
+          child.unref();
         } catch {}
       }
       setTimeout(() => {
         if (typeof appModule.exit === "function") appModule.exit(0);
         else appModule.quit();
-      }, 500);
+      }, 1000);
       return { status: "installing" };
     }
     if (kind === "windows-zip") {
@@ -175,20 +192,40 @@ async function installRelease({ filePath, kind, platform, appModule, execPath = 
       const escapedZip = filePath.replace(/'/g, "''");
       const escapedDir = currentDir.replace(/'/g, "''");
       const batContent = `@echo off
-rem Terminate the running Electron process cleanly and release file locks
+rem 1. Terminate running Electron process
+%SystemRoot%\\System32\\taskkill.exe /f /im "${exeName}" >nul 2>&1
 %SystemRoot%\\System32\\taskkill.exe /f /pid ${Number(process.pid)} >nul 2>&1
-%SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
+%SystemRoot%\\System32\\timeout.exe /t 2 /nobreak >nul
 
-rem Extract update payload directly to target directory
-%SystemRoot%\\System32\\tar.exe -xf "${filePath}" -C "${currentDir}" >nul 2>&1 || (
-  %SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "Expand-Archive -Path '${escapedZip}' -DestinationPath '${escapedDir}' -Force"
+rem 2. Extract update zip to temporary folder where write permissions are 100% guaranteed
+%SystemRoot%\\System32\\tar.exe -xf "${filePath}" -C "${extractDirectory}" >nul 2>&1
+if not exist "${extractDirectory}\\resources\\app.asar" (
+    %SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -Command "Expand-Archive -LiteralPath '${escapedZip}' -DestinationPath '${extractDirectory}' -Force" >nul 2>&1
 )
 
-rem Restart the updated JACS Studio application
+rem 3. Copy resources\\app.asar to target directory with retry loop
+set ATTEMPT=0
+:COPY_LOOP
+set /a ATTEMPT+=1
+if exist "${extractDirectory}\\resources\\app.asar" (
+    copy /y /b "${extractDirectory}\\resources\\app.asar" "${currentDir}\\resources\\app.asar" >nul 2>&1
+)
+if exist "${currentDir}\\resources\\app.asar" (
+    if not errorlevel 1 goto LAUNCH_APP
+)
+
+if %ATTEMPT% geq 8 goto LAUNCH_APP
+%SystemRoot%\\System32\\taskkill.exe /f /im "${exeName}" >nul 2>&1
+%SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
+goto COPY_LOOP
+
+:LAUNCH_APP
+rem 4. Short pause to ensure disk write flush before relaunching
+%SystemRoot%\\System32\\timeout.exe /t 1 /nobreak >nul
 start "" "${path.join(currentDir, exeName)}"
 
-rem Clean up temporary script folder
-%SystemRoot%\\System32\\timeout.exe /t 2 /nobreak >nul
+rem 5. Clean up temporary script folder
+%SystemRoot%\\System32\\timeout.exe /t 3 /nobreak >nul
 rmdir /s /q "${extractDirectory}" >nul 2>&1
 exit
 `;

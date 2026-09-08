@@ -1,6 +1,7 @@
 /**
  * Audio playback utility using Web Audio API (AudioContext) with HTML5 Audio fallback.
  * Decodes raw audio buffers directly to speaker output without URL or codec issues.
+ * Supports dynamic playback rate (speed multiplier) without pitch distortion.
  */
 
 let activeAudioContext: AudioContext | null = null;
@@ -33,14 +34,17 @@ export function stopGlobalAudio(): void {
 export async function playAudioStream(
   audioDataOrUrl: string,
   onEnded?: () => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  playbackRate: number = 1.0
 ): Promise<() => void> {
   stopGlobalAudio();
 
-  if (!audioDataOrUrl) {
+  if (!audioDataOrUrl || typeof audioDataOrUrl !== "string") {
     onEnded?.();
     return () => {};
   }
+
+  const safeRate = Math.max(0.5, Math.min(2.5, Number(playbackRate) || 1.0));
 
   // Method 1: Web Audio API (AudioContext) with in-memory decoding
   try {
@@ -72,6 +76,10 @@ export async function playAudioStream(
     const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
     const source = ctx.createBufferSource();
     source.buffer = decodedBuffer;
+    
+    // Apply dynamic playback rate
+    source.playbackRate.value = safeRate;
+
     source.connect(ctx.destination);
     activeSourceNode = source;
 
@@ -112,6 +120,8 @@ export async function playAudioStream(
       const audio = new Audio();
       audio.src = finalUrl;
       audio.preload = "auto";
+      audio.playbackRate = safeRate;
+      audio.defaultPlaybackRate = safeRate;
       activeHtmlAudio = audio;
 
       audio.onended = () => {
@@ -127,6 +137,7 @@ export async function playAudioStream(
       };
 
       audio.load();
+      audio.playbackRate = safeRate;
       await audio.play();
 
       return () => {

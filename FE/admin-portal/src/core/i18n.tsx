@@ -40,8 +40,8 @@ export const baseTranslations: Record<Language, TranslationDictionary> = {
     operationSection: "VẬN HÀNH",
 
     menuOverview: "Tổng quan",
-    menuLicenses: "Quản lý người dùng",
-    menuSessions: "Máy khách Online",
+    menuLicenses: "Bản quyền & License",
+    menuSessions: "Quản lý máy người dùng",
     menuBilling: "Ví & dòng tiền",
     menuBankConfig: "Ngân hàng & QR",
     menuPlans: "Cấu hình Credit",
@@ -114,8 +114,8 @@ export const baseTranslations: Record<Language, TranslationDictionary> = {
     operationSection: "OPERATIONS",
 
     menuOverview: "Overview",
-    menuLicenses: "User Management",
-    menuSessions: "Online Clients",
+    menuLicenses: "License Keys",
+    menuSessions: "User & Device Management",
     menuBilling: "Wallet & Cashflow",
     menuBankConfig: "Bank & QR",
     menuPlans: "Credit Plans",

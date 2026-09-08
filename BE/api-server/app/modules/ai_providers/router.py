@@ -85,8 +85,15 @@ async def test_provider(provider_id: UUID, _: dict = Depends(require_auth)):
     if not provider:
         raise AppError("PROVIDER_NOT_FOUND", "Không tìm thấy provider", 404)
     secret = secret_store.get(provider.get("secret_ref", ""))
-    if not secret:
-        raise AppError("PROVIDER_SECRET_MISSING", "Provider chưa có API key", 422)
+    if not secret or secret.startswith("secret://"):
+        return {"data": {
+            "provider_id": str(provider["id"]),
+            "status": "missing_api_key",
+            "http_status": 400,
+            "latency_ms": 0,
+            "detail": "Chưa có API Key thực tế (Bấm 'Sửa' để nhập API Key của bạn)",
+            "capabilities": provider.get("capabilities", [])
+        }}
     result = await asyncio.to_thread(
         test_connection,
         str(provider["provider_type"]),
@@ -95,4 +102,353 @@ async def test_provider(provider_id: UUID, _: dict = Depends(require_auth)):
         secret,
         get_settings().provider_timeout_seconds,
     )
+    # Record test connection to ai_gateway_logs
+    try:
+        from datetime import UTC, datetime
+        now_utc = datetime.now(UTC)
+        is_ok = result.status == "reachable"
+        store.create("ai_gateway_logs", {
+            "id": f"log-{int(now_utc.timestamp() * 1000)}",
+            "model": str(provider.get("model", "ai-model")),
+            "provider_type": str(provider.get("provider_type", "api")),
+            "latency_ms": int(result.latency_ms or 0),
+            "status_code": int(result.http_status or (200 if is_ok else 400)),
+            "status": "Oke" if is_ok else "Fail",
+            "tokens_in": 16,
+            "tokens_out": 8,
+            "total_tokens": 24,
+            "credits_deducted": 0.0,
+            "cost_vnd": 0.0,
+            "feature_name": "Test Kết Nối AI (Admin)",
+            "error_message": result.detail if not is_ok else None,
+            "license_id": "ADMIN-PANEL",
+            "license_key": "ADMIN-TEST",
+            "customer_name": "Admin Portal",
+            "timestamp": now_utc.isoformat(),
+            "created_at": now_utc,
+        })
+    except Exception:
+        pass
     return {"data": {"provider_id": str(provider["id"]), **result.__dict__, "capabilities": provider["capabilities"]}}
+
+
+
+DEFAULT_MODELS_PRICING = [
+    {
+        "id": "mp-1",
+        "model": "gemini-2.5-flash",
+        "provider_name": "Google Gemini",
+        "category": "vision",
+        "cost_input_price": 300.0,
+        "cost_output_price": 600.0,
+        "input_price": 500.0,
+        "output_price": 900.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Thị giác video 1M tokens, trích xuất cảnh & multimodal siêu tốc",
+    },
+    {
+        "id": "mp-2",
+        "model": "gemini-flash-latest",
+        "provider_name": "Google Gemini",
+        "category": "vision",
+        "cost_input_price": 300.0,
+        "cost_output_price": 600.0,
+        "input_price": 500.0,
+        "output_price": 900.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Bản Flash mới nhất luôn cập nhật từ Google AI Studio",
+    },
+    {
+        "id": "mp-3",
+        "model": "claude-3-7-sonnet",
+        "provider_name": "Anthropic Claude",
+        "category": "cinema",
+        "cost_input_price": 750.0,
+        "cost_output_price": 1200.0,
+        "input_price": 1100.0,
+        "output_price": 1800.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Biên kịch điện ảnh chuyên sâu, văn phong tự nhiên sâu sắc",
+    },
+    {
+        "id": "mp-4",
+        "model": "claude-opus-5",
+        "provider_name": "Anthropic Claude",
+        "category": "cinema",
+        "cost_input_price": 900.0,
+        "cost_output_price": 1500.0,
+        "input_price": 1350.0,
+        "output_price": 2200.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Biên kịch điện ảnh cao cấp thế hệ mới, plot twist & cao trào nghẹt thở",
+    },
+    {
+        "id": "mp-5",
+        "model": "claude-opus-4.8",
+        "provider_name": "Anthropic Claude",
+        "category": "cinema",
+        "cost_input_price": 850.0,
+        "cost_output_price": 1400.0,
+        "input_price": 1250.0,
+        "output_price": 2100.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Kịch bản điện ảnh & review phim triệu view, xây dựng cao trào",
+    },
+    {
+        "id": "mp-6",
+        "model": "gpt-5.6-sol",
+        "provider_name": "OpenAI",
+        "category": "cinema",
+        "cost_input_price": 750.0,
+        "cost_output_price": 1200.0,
+        "input_price": 1100.0,
+        "output_price": 1800.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Mô hình kịch bản đỉnh cao VIP, phân tích tâm lý nhân vật đa chiều",
+    },
+    {
+        "id": "mp-7",
+        "model": "gpt-5.5",
+        "provider_name": "OpenAI",
+        "category": "cinema",
+        "cost_input_price": 700.0,
+        "cost_output_price": 1100.0,
+        "input_price": 1050.0,
+        "output_price": 1650.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Kịch bản điện ảnh thế hệ mới, văn phong đa tầng nghĩa",
+    },
+    {
+        "id": "mp-8",
+        "model": "gpt-4o",
+        "provider_name": "OpenAI",
+        "category": "vision",
+        "cost_input_price": 650.0,
+        "cost_output_price": 1000.0,
+        "input_price": 950.0,
+        "output_price": 1500.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Thị giác nhận diện khung hình, trích xuất nhân vật & âm thanh",
+    },
+    {
+        "id": "mp-9",
+        "model": "deepseek-chat",
+        "provider_name": "DeepSeek",
+        "category": "speed",
+        "cost_input_price": 150.0,
+        "cost_output_price": 300.0,
+        "input_price": 250.0,
+        "output_price": 500.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "DeepSeek-V3 siêu tốc độ, chi phí siêu rẻ và tối ưu kịch bản",
+    },
+    {
+        "id": "mp-10",
+        "model": "deepseek-reasoner",
+        "provider_name": "DeepSeek",
+        "category": "reasoning",
+        "cost_input_price": 200.0,
+        "cost_output_price": 450.0,
+        "input_price": 350.0,
+        "output_price": 700.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Suy luận logic CoT (Chain-of-Thought) độc lập, chi phí siêu rẻ",
+    },
+    {
+        "id": "mp-11",
+        "model": "gemini-2.5-pro",
+        "provider_name": "Google Gemini",
+        "category": "vision",
+        "cost_input_price": 500.0,
+        "cost_output_price": 900.0,
+        "input_price": 800.0,
+        "output_price": 1400.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Context 2M Tokens: Xử lý toàn bộ video phim 2 tiếng liền mạch",
+    },
+    {
+        "id": "mp-12",
+        "model": "llama-3.3-70b-versatile",
+        "provider_name": "Groq",
+        "category": "speed",
+        "cost_input_price": 150.0,
+        "cost_output_price": 300.0,
+        "input_price": 280.0,
+        "output_price": 500.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Phản hồi kịch bản thời gian thực dưới 200ms trên chip LPU",
+    },
+    {
+        "id": "mp-13",
+        "model": "eleven_multilingual_v2",
+        "provider_name": "ElevenLabs",
+        "category": "tts",
+        "cost_input_price": 800.0,
+        "cost_output_price": 1200.0,
+        "input_price": 1200.0,
+        "output_price": 1800.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Lồng tiếng AI đa cảm xúc phòng thu điện ảnh",
+    },
+    {
+        "id": "mp-14",
+        "model": "vi-manhdung",
+        "provider_name": "Vbee",
+        "category": "tts",
+        "cost_input_price": 400.0,
+        "cost_output_price": 700.0,
+        "input_price": 650.0,
+        "output_price": 1100.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Giọng đọc Review Phim YouTube quốc dân Việt Nam",
+    },
+    {
+        "id": "mp-15",
+        "model": "whisper-large-v3",
+        "provider_name": "Whisper",
+        "category": "transcription",
+        "cost_input_price": 350.0,
+        "cost_output_price": 500.0,
+        "input_price": 550.0,
+        "output_price": 850.0,
+        "is_selling": True,
+        "status": "selling",
+        "purpose": "Bóc tách audio phim thành phụ đề chuẩn xác từng mili-giây",
+    },
+]
+
+
+def _infer_provider_type(provider_name: str, model: str) -> str:
+    p = str(provider_name or "").lower()
+    m = str(model or "").lower()
+    if "gemini" in p or "google" in p or "gemini" in m:
+        return "gemini"
+    if "claude" in p or "anthropic" in p or "claude" in m or "opus" in m or "sonnet" in m:
+        return "anthropic"
+    if "deepseek" in p or "deepseek" in m:
+        return "deepseek"
+    if "groq" in p or "llama" in m:
+        return "groq"
+    if "eleven" in p or "eleven" in m:
+        return "elevenlabs"
+    if "whisper" in p or "whisper" in m:
+        return "whisper"
+    if "vbee" in p:
+        return "tts"
+    return "openai"
+
+
+def _get_or_seed_models_pricing() -> list[dict]:
+    existing = store.list("models_pricing")
+    if not existing:
+        for item in DEFAULT_MODELS_PRICING:
+            store.create("models_pricing", item.copy())
+        existing = store.list("models_pricing")
+    return existing
+
+
+@router.get("/models-pricing")
+async def get_models_pricing(_: dict = Depends(require_auth)):
+    items = _get_or_seed_models_pricing()
+    return {"data": items}
+
+
+@router.put("/models-pricing")
+async def save_models_pricing(payload: dict, user: dict = Depends(require_auth)):
+    items = payload.get("items", [])
+    # Clear existing and write new
+    existing = store.list("models_pricing")
+    for e in existing:
+        store.delete("models_pricing", e["id"])
+    
+    saved = []
+    for idx, item in enumerate(items):
+        clean_item = {
+            "id": item.get("id") or f"mp-{idx+1}",
+            "model": item.get("model", "custom-model"),
+            "provider_name": item.get("provider_name", "API"),
+            "category": item.get("category", "analysis"),
+            "cost_input_price": float(item.get("cost_input_price", 0.0) or 0.0),
+            "cost_output_price": float(item.get("cost_output_price", 0.0) or 0.0),
+            "input_price": float(item.get("input_price", 0.0) or 0.0),
+            "output_price": float(item.get("output_price", 0.0) or 0.0),
+            "cache_discount_pct": float(item.get("cache_discount_pct", 20.0) or 20.0),
+            "price_per_request": float(item.get("price_per_request", 0.0) or 0.0),
+            "is_selling": bool(item.get("is_selling", False)),
+            "status": "selling" if item.get("is_selling") else "need_pricing",
+            "purpose": item.get("purpose", ""),
+        }
+        rec = store.create("models_pricing", clean_item)
+        saved.append(rec)
+    
+    store.create("audit", {
+        "action": "ai_providers.models_pricing_updated",
+        "count": len(saved),
+        "actor": user["email"],
+    })
+    return {"data": saved, "message": "Đã lưu toàn bộ bảng giá model thành công"}
+
+
+@router.post("/models-sync")
+async def sync_provider_models(user: dict = Depends(require_auth)):
+    providers = store.list("providers")
+    current_pricing = _get_or_seed_models_pricing()
+    existing_models = {p.get("model") for p in current_pricing}
+
+    added = 0
+    for p in providers:
+        m = p.get("model")
+        if m and m not in existing_models:
+            p_name = p.get("provider_type", "API").capitalize()
+            store.create("models_pricing", {
+                "id": f"mp-{len(current_pricing) + added + 1}",
+                "model": m,
+                "provider_name": p_name,
+                "category": "analysis",
+                "cost_input_price": 500.0,
+                "cost_output_price": 800.0,
+                "input_price": 800.0,
+                "output_price": 1250.0,
+                "is_selling": True,
+                "status": "selling",
+                "purpose": p.get("purpose", "Xử lý tác vụ AI"),
+            })
+            existing_models.add(m)
+            added += 1
+
+    return {"data": store.list("models_pricing"), "message": f"Đã đồng bộ thành công ({added} model mới được thêm)"}
+
+
+@router.get("/models-available")
+async def get_available_models():
+    """Public/Client endpoint: Return only models currently licensed/selling for Desktop Tool."""
+    all_pricing = _get_or_seed_models_pricing()
+    # Filter only is_selling and enrich with name and provider_type
+    active_models = []
+    for m in all_pricing:
+        if m.get("is_selling", False):
+            p_name = m.get("provider_name", "AI Provider")
+            model_id = m.get("model", "")
+            p_type = _infer_provider_type(p_name, model_id)
+            active_models.append({
+                **m,
+                "name": f"{p_name} ({model_id})" if not m.get("name") else m["name"],
+                "provider_type": m.get("provider_type") or p_type,
+            })
+    return {"data": active_models}
+
+

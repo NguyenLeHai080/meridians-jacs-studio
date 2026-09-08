@@ -53,21 +53,33 @@ function overlapScore(left, right) {
   return common / Math.max(1, Math.sqrt(a.size * b.size));
 }
 
+function resolveSeconds(value, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const str = String(value || "").trim();
+  if (!str) return fallback;
+  if (/^\d+(?:\.\d+)?$/.test(str)) return Number(str);
+  const parts = str.split(":").map(Number);
+  if (!parts.length || parts.some((p) => !Number.isFinite(p))) return fallback;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || fallback;
+}
+
 function splitNarrationByScene(text, scenes) {
   const source = String(text || "").replace(/\s+/g, " ").trim();
   if (!source || !scenes.length) return [];
   const sentences = source.match(/[^.!?…。！？]+[.!?…。！？]?/gu)?.map((item) => item.trim()).filter(Boolean) || [source];
   const totalDuration = Math.max(0.25, scenes.reduce((sum, scene) => {
-    const start = Number(scene.sourceStart ?? parseTimestamp(scene.start));
-    const end = Number(scene.sourceEnd ?? parseTimestamp(scene.end, start + 0.25));
+    const start = resolveSeconds(scene.sourceTimeStart ?? scene.sourceStart ?? scene.start, 0);
+    const end = resolveSeconds(scene.sourceTimeEnd ?? scene.sourceEnd ?? scene.end, start + 0.25);
     return sum + Math.max(0.25, end - start);
   }, 0));
   const result = [];
   let sentenceIndex = 0;
   let elapsed = 0;
   scenes.forEach((scene, index) => {
-    const start = Number(scene.sourceStart ?? parseTimestamp(scene.start));
-    const end = Number(scene.sourceEnd ?? parseTimestamp(scene.end, start + 0.25));
+    const start = resolveSeconds(scene.sourceTimeStart ?? scene.sourceStart ?? scene.start, 0);
+    const end = resolveSeconds(scene.sourceTimeEnd ?? scene.sourceEnd ?? scene.end, start + 0.25);
     const duration = Math.max(0.25, end - start);
     elapsed += duration;
     const remainingScenes = scenes.length - index - 1;
@@ -117,8 +129,8 @@ function buildSceneMatches(scenes = [], suppliedVoiceSegments = []) {
     const voiceStart = Number(voiceCursor.toFixed(3));
     const voiceEnd = Number((voiceCursor + duration).toFixed(3));
     voiceCursor = voiceEnd;
-    const sourceStart = Number(scene.sourceStart ?? parseTimestamp(scene.start));
-    const sourceEnd = Number(scene.sourceEnd ?? parseTimestamp(scene.end));
+    const sourceStart = resolveSeconds(scene.sourceTimeStart ?? scene.sourceStart ?? scene.start, 0);
+    const sourceEnd = resolveSeconds(scene.sourceTimeEnd ?? scene.sourceEnd ?? scene.end, sourceStart + 0.25);
     const voiceId = suppliedVoiceSegments[index]?.id || `voice-${index + 1}`;
     const supplied = suppliedVoiceSegments[index];
     voiceSegments.push({ id: voiceId, sceneId, text, start: voiceStart, end: voiceEnd, audioStart: Number.isFinite(Number(supplied?.audioStart)) ? Number(supplied.audioStart) : voiceStart, audioEnd: Number.isFinite(Number(supplied?.audioEnd)) ? Number(supplied.audioEnd) : voiceEnd, words: Array.isArray(supplied?.words) ? supplied.words : undefined, status: supplied?.status || "ready" });
@@ -129,12 +141,21 @@ function buildSceneMatches(scenes = [], suppliedVoiceSegments = []) {
       return { candidate, candidateIndex, score: Math.min(1, lexical * 0.75 + temporal) };
     }).sort((left, right) => right.score - left.score);
     const best = ranked[0] || { candidate: scene, candidateIndex: index, score: 0 };
-    const candidateStart = Number(best.candidate.sourceStart ?? parseTimestamp(best.candidate.start));
-    const candidateEnd = Number(best.candidate.sourceEnd ?? parseTimestamp(best.candidate.end, candidateStart + 0.25));
+    const candidateStart = resolveSeconds(best.candidate.sourceTimeStart ?? best.candidate.sourceStart ?? best.candidate.start, 0);
+    const candidateEnd = resolveSeconds(best.candidate.sourceTimeEnd ?? best.candidate.sourceEnd ?? best.candidate.end, candidateStart + 0.25);
     const score = Math.max(0.35, Number(best.score.toFixed(3)));
     const sameScene = best.candidateIndex === index;
     const reason = sameScene ? "Từ khóa và mốc thời gian khớp với scene nguồn" : "Khớp từ khóa/ngữ nghĩa với scene nguồn khác thứ tự";
-    const sourceClips = ranked.slice(0, 2).filter((item) => item.score >= Math.max(0.35, best.score - 0.12)).map((item) => ({ sceneId: String(item.candidate.id || `scene-${item.candidateIndex + 1}`), sourceStart: Number(item.candidate.sourceStart ?? parseTimestamp(item.candidate.start)), sourceEnd: Number(item.candidate.sourceEnd ?? parseTimestamp(item.candidate.end, Number(item.candidate.sourceStart ?? parseTimestamp(item.candidate.start)) + 0.25)), score: Number(Math.max(0, Math.min(1, item.score)).toFixed(3)) }));
+    const sourceClips = ranked.slice(0, 2).filter((item) => item.score >= Math.max(0.35, best.score - 0.12)).map((item) => {
+      const cStart = resolveSeconds(item.candidate.sourceTimeStart ?? item.candidate.sourceStart ?? item.candidate.start, 0);
+      const cEnd = resolveSeconds(item.candidate.sourceTimeEnd ?? item.candidate.sourceEnd ?? item.candidate.end, cStart + 0.25);
+      return {
+        sceneId: String(item.candidate.id || `scene-${item.candidateIndex + 1}`),
+        sourceStart: cStart,
+        sourceEnd: cEnd,
+        score: Number(Math.max(0, Math.min(1, item.score)).toFixed(3))
+      };
+    });
     sceneMatches.push({ voiceSegmentId: voiceId, sceneId: String(best.candidate.id || `scene-${best.candidateIndex + 1}`), sourceStart: candidateStart, sourceEnd: Math.max(candidateStart + 0.25, candidateEnd), sourceClips, voiceStart, voiceEnd, matchScore: score, reason, fallbackReason: score < 0.6 ? "Không đủ tín hiệu từ khóa; cần người dùng duyệt cảnh" : undefined, needsReview: score < 0.6 || !sameScene });
   });
   return { voiceSegments, sceneMatches };

@@ -2,18 +2,21 @@ import React from "react";
 import {
   Activity,
   Users,
-  KeyRound,
   ShieldCheck,
   Wallet,
   Building2,
   CreditCard,
   ArrowDownLeft,
-  Laptop,
   Settings,
   Rocket,
   FileText,
   ScrollText,
   X,
+  Coins,
+  Cpu,
+  BarChart3,
+  Layers,
+  KeyRound,
 } from "lucide-react";
 import { useI18n } from "../../core/i18n";
 
@@ -27,6 +30,10 @@ export type MenuKey =
   | "plans"
   | "renewals"
   | "providers"
+  | "model_pricing"
+  | "ai_key_grants"
+  | "ai_request_logs"
+  | "api_operations"
   | "telemetry"
   | "logs"
   | "releases"
@@ -112,35 +119,14 @@ export function Sidebar({
           <div className="menu-heading">KHÁCH HÀNG & BẢN QUYỀN</div>
           <button
             type="button"
-            className={`menu-item ${activeMenu === "clients" ? "active" : ""}`}
-            onClick={() => handleNav("clients")}
+            className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
+            onClick={() => handleNav("sessions")}
           >
             <span className="menu-icon">
               <Users size={17} />
             </span>
-            <span className="menu-label">Danh bạ khách hàng</span>
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "licenses" ? "active" : ""}`}
-            onClick={() => handleNav("licenses")}
-          >
-            <span className="menu-icon">
-              <KeyRound size={17} />
-            </span>
-            <span className="menu-label">{t("menuLicenses", "Bản quyền & License")}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "providers" ? "active" : ""}`}
-            onClick={() => handleNav("providers")}
-          >
-            <span className="menu-icon">
-              <KeyRound size={17} />
-            </span>
-            <span className="menu-label">{t("menuProviders", "API Keys & gói dịch vụ")}</span>
+            <span className="menu-label">{t("menuSessions", "Quản lý máy người dùng")}</span>
+            <span className="menu-badge badge-primary">{onlineCount}</span>
           </button>
 
           <button
@@ -151,7 +137,74 @@ export function Sidebar({
             <span className="menu-icon">
               <ShieldCheck size={17} />
             </span>
-            <span className="menu-label">{t("menuTerms", "Phân quyền")}</span>
+            <span className="menu-label">{t("menuTerms", "Phân quyền & Pháp lý")}</span>
+          </button>
+
+          <div className="menu-heading">DỊCH VỤ & MÔ HÌNH AI</div>
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "providers" ? "active" : ""}`}
+            onClick={() => handleNav("providers")}
+          >
+            <span className="menu-icon">
+              <Cpu size={17} />
+            </span>
+            <span className="menu-label">Cấu hình dịch vụ</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "plans" || (activeMenu as any) === "credit_packages" ? "active" : ""}`}
+            onClick={() => handleNav("plans")}
+          >
+            <span className="menu-icon">
+              <Coins size={17} />
+            </span>
+            <span className="menu-label">Cấu hình gói credit</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "model_pricing" ? "active" : ""}`}
+            onClick={() => handleNav("model_pricing")}
+          >
+            <span className="menu-icon">
+              <Layers size={17} />
+            </span>
+            <span className="menu-label">Cấu hình gói model</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "ai_key_grants" ? "active" : ""}`}
+            onClick={() => handleNav("ai_key_grants")}
+          >
+            <span className="menu-icon">
+              <KeyRound size={17} />
+            </span>
+            <span className="menu-label">Cấp Quyền & Credit Key Tool</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "ai_request_logs" ? "active" : ""}`}
+            onClick={() => handleNav("ai_request_logs")}
+          >
+            <span className="menu-icon">
+              <Activity size={17} />
+            </span>
+            <span className="menu-label">Nhật ký Requests AI</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "api_operations" ? "active" : ""}`}
+            onClick={() => handleNav("api_operations")}
+          >
+            <span className="menu-icon">
+              <BarChart3 size={17} />
+            </span>
+            <span className="menu-label">Báo cáo vận hành API</span>
           </button>
 
           <div className="menu-heading">CREDIT & THANH TOÁN</div>
@@ -179,17 +232,6 @@ export function Sidebar({
 
           <button
             type="button"
-            className={`menu-item ${activeMenu === "plans" ? "active" : ""}`}
-            onClick={() => handleNav("plans")}
-          >
-            <span className="menu-icon">
-              <CreditCard size={17} />
-            </span>
-            <span className="menu-label">{t("menuPlans", "Cấu hình Credit")}</span>
-          </button>
-
-          <button
-            type="button"
             className={`menu-item ${activeMenu === "renewals" ? "active" : ""}`}
             onClick={() => handleNav("renewals")}
           >
@@ -200,18 +242,6 @@ export function Sidebar({
           </button>
 
           <div className="menu-heading">CẤU HÌNH & HỆ THỐNG</div>
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
-            onClick={() => handleNav("sessions")}
-          >
-            <span className="menu-icon">
-              <Laptop size={17} />
-            </span>
-            <span className="menu-label">{t("menuSessions", "Máy khách đang Online")}</span>
-            <span className="menu-badge badge-primary">{onlineCount}</span>
-          </button>
-
           <button
             type="button"
             className={`menu-item ${activeMenu === "tool_branding" ? "active" : ""}`}

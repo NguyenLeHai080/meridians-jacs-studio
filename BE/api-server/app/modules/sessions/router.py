@@ -9,6 +9,8 @@ from app.core.security import require_auth
 from app.core.store import store
 
 router = APIRouter(prefix="/api/v1/clients", tags=["client-sessions"])
+sessions_direct_router = APIRouter(prefix="/api/v1/sessions", tags=["sessions-direct"])
+direct_sessions_router = sessions_direct_router
 
 
 class ClientSessionResponse(BaseModel):
@@ -26,7 +28,10 @@ class ClientSessionResponse(BaseModel):
 
 
 @router.get("/sessions", response_model=list[ClientSessionResponse])
+@sessions_direct_router.get("", response_model=list[ClientSessionResponse])
+@sessions_direct_router.get("/", response_model=list[ClientSessionResponse])
 async def list_active_sessions(_: dict = Depends(require_auth)):
+
     licenses = store.list("licenses")
     now = datetime.now(UTC)
     threshold = now - timedelta(minutes=5)
@@ -62,6 +67,7 @@ async def list_active_sessions(_: dict = Depends(require_auth)):
 
 
 @router.delete("/sessions/{license_id}")
+@sessions_direct_router.delete("/{license_id}")
 async def terminate_session(license_id: UUID, user: dict = Depends(require_auth)):
     lic = store.get("licenses", UUID(str(license_id)))
     if not lic:
@@ -77,3 +83,4 @@ async def terminate_session(license_id: UUID, user: dict = Depends(require_auth)
         },
     )
     return {"data": {"success": True, "message": "Đã ngắt phiên thiết bị thành công"}}
+

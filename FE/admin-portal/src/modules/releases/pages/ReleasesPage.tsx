@@ -4,7 +4,9 @@ import type { Release } from "../services/releaseService";
 import { useReleases } from "../hooks/useReleases";
 import { CreateReleaseModal } from "./modal/CreateReleaseModal";
 import { releaseService } from "../services/releaseService";
+import { confirmDialog } from "../../../core/swal";
 import { useI18n } from "../../../core/i18n";
+
 import "../lang"; // Auto-registers releases translation
 
 interface ReleasesPageProps {
@@ -63,7 +65,21 @@ export const ReleasesPage: React.FC<ReleasesPageProps> = ({
   };
 
   const handleDelete = async (r: Release) => {
-    if (!confirm(`Bạn có chắc muốn xóa bản phát hành v${r.version}?`)) return;
+    const confirmed = await confirmDialog({
+      title: "Xác nhận xóa bản phát hành?",
+      html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
+        <p>Bạn có chắc muốn xóa bản phát hành <b>v${r.version}</b> (${r.platform})?</p>
+        <p style="font-size: 12.5px; color: #64748b; margin-top: 6px;">
+          Kênh: <b>${r.channel}</b> | Dung lượng: <b>${(r.file_size_bytes / (1024 * 1024)).toFixed(1)} MB</b>
+        </p>
+      </div>`,
+      icon: "warning",
+      confirmButtonText: "Xóa bản phát hành",
+      cancelButtonText: "Hủy bỏ",
+      isDestructive: true,
+    });
+    if (!confirmed) return;
+
     try {
       await releaseService.deleteRelease(r.id);
       notify(`Đã xóa bản phát hành v${r.version}`, "success");
@@ -72,6 +88,7 @@ export const ReleasesPage: React.FC<ReleasesPageProps> = ({
       notify(err instanceof Error ? err.message : "Lỗi khi xóa bản phát hành", "error");
     }
   };
+
 
   return (
     <div className="mf-card-panel">

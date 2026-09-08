@@ -80,7 +80,14 @@ export const licenseService = {
     }, getToken() || undefined);
   },
 
+  async regenerateKey(id: string): Promise<License & { key: string }> {
+    return apiRequest<License & { key: string }>(`/api/v1/licenses/${id}/regenerate-key`, {
+      method: "POST",
+    }, getToken() || undefined);
+  },
+
   async delete(id: string): Promise<void> {
     return apiRequest<void>(`/api/v1/licenses/${id}`, { method: "DELETE" }, getToken() || undefined);
   },
 };
+

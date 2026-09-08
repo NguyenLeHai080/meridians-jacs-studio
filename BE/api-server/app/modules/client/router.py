@@ -162,27 +162,32 @@ class SpeechSynthesisPayload(BaseModel):
 
 @router.post("/synthesize-speech")
 async def client_synthesize_speech(payload: SpeechSynthesisPayload):
+    import asyncio
     import hashlib
     import json
+    import logging
     import os
+    import pathlib
+    import urllib.error
     import urllib.request
 
     import edge_tts
     from fastapi import Response
+
+    logger = logging.getLogger(__name__)
 
     clean_text = str(payload.text or "").strip()
     voice_key = str(payload.voice or "").strip().lower()
     provider_key = str(payload.provider or "").strip().lower()
     api_key = payload.api_key or os.getenv("ELEVENLABS_API_KEY") or ""
 
-    cache_dir = "/tmp/tts_cache"
-    os.makedirs(cache_dir, exist_ok=True)
+    cache_dir = pathlib.Path("/tmp/tts_cache")
+    cache_dir.mkdir(parents=True, exist_ok=True)
     cache_key = hashlib.sha256(f"{voice_key}:{clean_text}:{api_key[:8]}".encode()).hexdigest()
-    cache_file = os.path.join(cache_dir, f"{cache_key}.mp3")
+    cache_file = cache_dir / f"{cache_key}.mp3"
 
-    if os.path.exists(cache_file) and os.path.getsize(cache_file) > 100:
-        with open(cache_file, "rb") as f:
-            cached_data = f.read()
+    if cache_file.exists() and cache_file.stat().st_size > 100:
+        cached_data = await asyncio.to_thread(cache_file.read_bytes)
         return Response(content=cached_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(cached_data)), "X-Cache": "HIT"})
 
     # 1. ELEVENLABS AI VOICE (Top 1 World for Human Rhythm, Emotion, Breath Pauses)
@@ -218,40 +223,43 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
                     "User-Agent": "JACS-Studio/1.0",
                 },
             )
-            with urllib.request.urlopen(req, timeout=25) as response:
-                content = response.read()
-                if len(content) > 200:
-                    with open(cache_file, "wb") as f:
-                        f.write(content)
-                    return Response(content=content, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(content)), "X-Cache": "MISS", "X-Engine": "ElevenLabs"})
-        except Exception as err:
-            print("ElevenLabs Error:", err)
+
+            def _fetch_elevenlabs():
+                with urllib.request.urlopen(req, timeout=25) as response:
+                    return response.read()
+
+            content = await asyncio.to_thread(_fetch_elevenlabs)
+            if len(content) > 200:
+                await asyncio.to_thread(cache_file.write_bytes, content)
+                return Response(content=content, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(content)), "X-Cache": "MISS", "X-Engine": "ElevenLabs"})
+        except (urllib.error.URLError, TimeoutError, OSError) as err:
+            logger.warning("ElevenLabs Error: %s", err)
 
     # 2. MICROSOFT NEURAL PROSODY ENGINE (High-Speed Authentic Prosody Profiles)
     voice_profiles = {
-        "vi-adam-review": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
-        "vi-namminh": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "-2Hz"},
-        "vi-mystery-deep": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-6Hz"},
-        "vi-hoaimy-review": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+1Hz"},
+        "vi-adam-review": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "+0Hz"},
+        "vi-namminh": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "+0Hz"},
+        "vi-mystery-deep": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-2Hz"},
+        "vi-hoaimy-review": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+0Hz"},
         "vi-hoaimy": {"voice": "vi-VN-HoaiMyNeural", "rate": "+4%", "pitch": "+0Hz"},
-        "vi-baolong": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+2Hz"},
-        "vi-thihuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "-2Hz"},
-        "vbee-manhdung": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
-        "vbee-minhhoang": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+2Hz"},
-        "vbee-maiphuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+1Hz"},
-        "vbee-ngochoang": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "-2Hz"},
-        "eleven-adam": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
-        "eleven-charlie": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-6Hz"},
-        "eleven-george": {"voice": "vi-VN-NamMinhNeural", "rate": "+8%", "pitch": "-3Hz"},
-        "eleven-rachel": {"voice": "vi-VN-HoaiMyNeural", "rate": "+10%", "pitch": "+1Hz"},
-        "vi-male": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "-2Hz"},
+        "vi-baolong": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+0Hz"},
+        "vi-thihuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "+0Hz"},
+        "vbee-manhdung": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "+0Hz"},
+        "vbee-minhhoang": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+0Hz"},
+        "vbee-maiphuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+0Hz"},
+        "vbee-ngochoang": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "+0Hz"},
+        "eleven-adam": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "+0Hz"},
+        "eleven-charlie": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-2Hz"},
+        "eleven-george": {"voice": "vi-VN-NamMinhNeural", "rate": "+8%", "pitch": "+0Hz"},
+        "eleven-rachel": {"voice": "vi-VN-HoaiMyNeural", "rate": "+10%", "pitch": "+0Hz"},
+        "vi-male": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "+0Hz"},
         "vi-female": {"voice": "vi-VN-HoaiMyNeural", "rate": "+5%", "pitch": "+0Hz"},
-        "en-adam": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
-        "en-guy": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
+        "en-adam": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "en-guy": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "+0Hz"},
         "en-brian": {"voice": "en-US-BrianNeural", "rate": "+0%", "pitch": "+0Hz"},
         "en-jenny": {"voice": "en-US-JennyNeural", "rate": "+0%", "pitch": "+0Hz"},
-        "en-aria": {"voice": "en-US-AriaNeural", "rate": "+5%", "pitch": "+1Hz"},
-        "en-male": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
+        "en-aria": {"voice": "en-US-AriaNeural", "rate": "+5%", "pitch": "+0Hz"},
+        "en-male": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "+0Hz"},
         "en-female": {"voice": "en-US-JennyNeural", "rate": "+0%", "pitch": "+0Hz"},
         "ja-male": {"voice": "ja-JP-KeitaNeural", "rate": "+0%", "pitch": "+0Hz"},
         "ja-female": {"voice": "ja-JP-NanamiNeural", "rate": "+0%", "pitch": "+0Hz"},
@@ -282,17 +290,35 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
             if chunk.get("type") == "audio" and "data" in chunk:
                 audio_chunks.append(chunk["data"])
 
+        if not audio_chunks:
+            # Fallback with default rate/pitch
+            communicate = edge_tts.Communicate(clean_text, voice_name, rate="+0%", pitch="+0Hz")
+            async for chunk in communicate.stream():
+                if chunk.get("type") == "audio" and "data" in chunk:
+                    audio_chunks.append(chunk["data"])
+
         if audio_chunks:
             audio_data = b"".join(audio_chunks)
             if len(audio_data) > 100:
                 try:
-                    with open(cache_file, "wb") as f:
-                        f.write(audio_data)
-                except Exception:
-                    pass
+                    await asyncio.to_thread(cache_file.write_bytes, audio_data)
+                except OSError as write_err:
+                    logger.debug("Failed to write TTS cache: %s", write_err)
                 return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralProsody"})
     except Exception as e:
-        print("TTS Stream Error:", e)
+        logger.warning("TTS Stream Error: %s", e)
+        try:
+            fallback_voice = "vi-VN-NamMinhNeural" if payload.gender == "male" else "vi-VN-HoaiMyNeural"
+            communicate = edge_tts.Communicate(clean_text, fallback_voice, rate="+0%", pitch="+0Hz")
+            audio_chunks = []
+            async for chunk in communicate.stream():
+                if chunk.get("type") == "audio" and "data" in chunk:
+                    audio_chunks.append(chunk["data"])
+            if audio_chunks:
+                audio_data = b"".join(audio_chunks)
+                return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralFallback"})
+        except Exception as retry_err:
+            logger.error("TTS Ultimate Fallback Error: %s", retry_err)
 
     return Response(content=b"", media_type="audio/mpeg", status_code=500)
 

@@ -48,14 +48,29 @@ export async function getBankConfig(): Promise<BankConfigPublic> {
   return request<BankConfigPublic>("/api/v1/billing/bank-config");
 }
 
+export interface LicenseValidationResult {
+  valid: boolean;
+  license_id: string;
+  customer_name?: string | null;
+  logo_url?: string | null;
+  premium_ai: boolean;
+  expires_at: string | null;
+  max_jobs_per_day?: number;
+  credit_balance?: number;
+  allowed_models?: string[] | null;
+  ai_gateway_enabled?: boolean;
+  app_version?: string;
+  platform?: string;
+}
+
 export async function validateLicense(key: string, hwid: string) {
-  return request<{ valid: boolean; license_id: string; customer_name?: string | null; logo_url?: string | null; premium_ai: boolean; expires_at: string | null; max_jobs_per_day?: number }>("/api/v1/licenses/validate", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid) }) });
+  return request<LicenseValidationResult>("/api/v1/licenses/validate", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid) }) });
 }
 
 export const activateLicense = validateLicense;
 
 export async function heartbeatLicense(key: string, hwid: string, appVersion: string, platform: string) {
-  return request<{ valid: boolean; license_id: string; customer_name?: string | null; logo_url?: string | null; premium_ai: boolean; expires_at: string | null; max_jobs_per_day?: number }>("/api/v1/licenses/heartbeat", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid), app_version: appVersion, platform }) });
+  return request<LicenseValidationResult>("/api/v1/licenses/heartbeat", { method: "POST", body: JSON.stringify({ key: normalizeLicenseKey(key), hwid: normalizeDeviceId(hwid), app_version: appVersion, platform }) });
 }
 
 export async function createClientJob(key: string, deviceId: string, job: { id: string; name: string; source: string; mode: string; providerId?: string; ttsProviderId?: string; sourceType?: "file" | "url"; durationSeconds?: number; tokensUsed?: number; creditsUsed?: number; narratorEnabled?: boolean; narratorVoice?: string; narratorGender?: "male" | "female"; languages?: string[]; keepOriginalAudio?: boolean; emphasizeHook?: boolean; highlightOnly?: boolean; highlightMaxSeconds?: number; backgroundMusic?: boolean; backgroundMusicVolume?: number; subtitlesEnabled?: boolean; subtitleStyle?: "bottom" | "center" | "top"; subtitleText?: string; logoPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right"; logoOpacity?: number; parentJobId?: string; sceneId?: string; splitScenes?: boolean; analysisOnly?: boolean; clipStartSeconds?: number; clipEndSeconds?: number; outputFileName?: string; timelineClips?: TimelineClip[] }) {
@@ -129,4 +144,86 @@ export async function getClientBillingHistory(licenseKey: string) {
     `/api/v1/billing/client-history?license_key=${encodeURIComponent(normalizeLicenseKey(licenseKey))}`
   );
 }
+
+export type CreditPackagePublic = {
+  id: string;
+  name: string;
+  price: number;
+  base_credits: number;
+  bonus_percent: number;
+  total_credits: number;
+  badge?: string | null;
+  description?: string | null;
+  sort_order?: number;
+  is_active: boolean;
+};
+
+export async function getCreditPackages(): Promise<CreditPackagePublic[]> {
+  return request<CreditPackagePublic[]>("/api/v1/billing/credit-packages");
+}
+
+export type CreditTopupOrderResult = {
+  order_id: string;
+  license_key: string;
+  hwid?: string | null;
+  customer_name?: string | null;
+  package_id?: string | null;
+  package_name: string;
+  amount: number;
+  credits_expected: number;
+  bonus_percent: number;
+  transfer_content: string;
+  bank_name: string;
+  bank_bin: string;
+  account_number: string;
+  account_name: string;
+  qr_url: string;
+  status: string;
+  created_at?: string;
+};
+
+export async function createCreditTopupOrder(payload: {
+  license_key: string;
+  hwid?: string;
+  package_id?: string;
+  package_name?: string;
+  amount: number;
+  customer_name?: string;
+  notes?: string;
+}): Promise<CreditTopupOrderResult> {
+  return request<CreditTopupOrderResult>("/api/v1/billing/credit-topup/create", {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      license_key: normalizeLicenseKey(payload.license_key),
+      hwid: payload.hwid ? normalizeDeviceId(payload.hwid) : undefined,
+    }),
+  });
+}
+
+export async function checkCreditTopupStatus(orderId?: string, licenseKey?: string): Promise<{
+  data: {
+    found: boolean;
+    order_id?: string;
+    status: string;
+    credits_granted: number;
+    credit_balance: number;
+    approved_at?: string;
+  };
+}> {
+  const params = new URLSearchParams();
+  if (orderId) params.set("order_id", orderId);
+  if (licenseKey) params.set("license_key", normalizeLicenseKey(licenseKey));
+  return request<{
+    data: {
+      found: boolean;
+      order_id?: string;
+      status: string;
+      credits_granted: number;
+      credit_balance: number;
+      approved_at?: string;
+    };
+  }>(`/api/v1/billing/credit-topup/check-status?${params.toString()}`);
+}
+
 

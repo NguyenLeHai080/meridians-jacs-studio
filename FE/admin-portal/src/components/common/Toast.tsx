@@ -1,30 +1,27 @@
-import React from "react";
+import { useEffect } from "react";
+import { showToast } from "../../core/swal";
+
+export interface ToastProps {
+  type?: "success" | "error" | "info" | "warning";
+  message: string;
+  onClose?: () => void;
+}
 
 export function Toast({
   type = "info",
   message,
   onClose,
-}: {
-  type?: "success" | "error" | "info" | "warning";
-  message: string;
-  onClose?: () => void;
-}) {
-  if (!message) return null;
+}: ToastProps) {
+  useEffect(() => {
+    if (message) {
+      showToast(message, type);
+      if (onClose) {
+        onClose();
+      }
+    }
+  }, [message, type, onClose]);
 
-  return (
-    <div className={`toast-banner toast-${type} animate-fade-in`}>
-      <span className="toast-icon">
-        {type === "success" && "✓"}
-        {type === "error" && "✕"}
-        {type === "warning" && "⚠"}
-        {type === "info" && "ℹ"}
-      </span>
-      <span className="toast-text">{message}</span>
-      {onClose && (
-        <button type="button" className="toast-close" onClick={onClose}>
-          ✕
-        </button>
-      )}
-    </div>
-  );
+  return null;
 }
+
+export default Toast;

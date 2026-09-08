@@ -47,7 +47,7 @@ async function resolveYouTubeVideoUrl(parsed, signal) {
 
   // 1. Primary: Query YouTube Innertube ANDROID_VR API for direct MP4 stream
   const apiUrl = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-  const payload = {
+  const vrPayload = {
     videoId,
     context: {
       client: {
@@ -68,7 +68,7 @@ async function resolveYouTubeVideoUrl(parsed, signal) {
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(vrPayload),
       signal
     });
 
@@ -77,7 +77,6 @@ async function resolveYouTubeVideoUrl(parsed, signal) {
       const formats = data?.streamingData?.formats || [];
       const progressive = formats.filter((f) => f.url && String(f.mimeType || "").includes("video/mp4"));
       if (progressive.length) {
-        // Pick highest resolution progressive MP4
         progressive.sort((a, b) => Number(b.height || 0) - Number(a.height || 0));
         const chosen = progressive[0];
         const streamRes = await fetch(chosen.url, {
@@ -96,91 +95,108 @@ async function resolveYouTubeVideoUrl(parsed, signal) {
     if (signal?.aborted) throw err;
   }
 
-  // 2. Secondary: Fallback via Piped instances
-  const pipedInstances = [
+  // 2. Secondary: Fallback via Invidious / Piped instances
+  const mirrorEndpoints = [
+    `https://inv.nadeko.net/api/v1/videos/${videoId}`,
+    `https://invidious.nerdvpn.de/api/v1/videos/${videoId}`,
+    `https://invidious.protokolla.fi/api/v1/videos/${videoId}`,
     `https://api.piped.private.coffee/streams/${videoId}`,
-    `https://pipedapi.tokhmi.xyz/streams/${videoId}`,
-    `https://pipedapi.leptons.xyz/streams/{videoId}`
+    `https://pipedapi.tokhmi.xyz/streams/${videoId}`
   ];
 
-  for (const endpoint of pipedInstances) {
+  for (const endpoint of mirrorEndpoints) {
     try {
       const pRes = await fetch(endpoint, {
-        headers: { "User-Agent": "Mozilla/5.0" },
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
         signal
       });
       if (pRes.ok) {
         const data = await pRes.json().catch(() => ({}));
-        const streams = data?.videoStreams || [];
-        const mp4Streams = streams.filter((s) => s.url && (s.mimeType?.includes("mp4") || s.format === "mp4"));
+        const streams = data?.formatStreams || data?.videoStreams || [];
+        const mp4Streams = streams.filter((s) => s.url && (s.mimeType?.includes("mp4") || s.format === "mp4" || s.container === "mp4"));
         if (mp4Streams.length) {
-          mp4Streams.sort((a, b) => (b.height || 0) - (a.height || 0));
+          mp4Streams.sort((a, b) => (Number(b.height || 0) || (b.quality ? parseInt(b.quality, 10) : 0)) - (Number(a.height || 0) || (a.quality ? parseInt(a.quality, 10) : 0)));
           const chosen = mp4Streams[0];
           const streamRes = await fetch(chosen.url, { signal, headers: { "User-Agent": "Mozilla/5.0" } });
           if (streamRes.ok) return { response: streamRes, url: chosen.url };
         }
       }
     } catch {
-      // try next
+      // try next mirror
     }
   }
 
-  throw new Error("Không thể giải mã luồng video YouTube. Vui lòng thử tải file video về máy và tải lên trực tiếp.");
+  throw new Error("YouTube đang chặn tải tự động đối với video này (yêu cầu xác minh Bot). Vui lòng dùng nút 'Chọn file từ máy' để chọn file video đã tải về máy tính.");
 }
 
 function extractTikTokVideoUrls(html) {
   const candidates = [];
   const patterns = [
     /["'](?:playAddr|downloadAddr)["']\s*:\s*["']([^"']+)["']/gi,
-    /(?:playAddr|downloadAddr)\\?":\\?"([^"]+)/gi,
+    /(?:playAddr|downloadAddr)\\?":\\?"([^"\\]+)/gi,
   ];
   for (const pattern of patterns) {
     for (const match of String(html || "").matchAll(pattern)) {
       const candidate = decodeEmbeddedUrl(match[1]);
-      if (/^https?:\/\//i.test(candidate)) candidates.push(candidate);
+      if (/^https?:\/\//i.test(candidate) && !candidates.includes(candidate)) {
+        candidates.push(candidate);
+      }
     }
   }
-  return [...new Set(candidates)];
-}
-
-function extractResolverVideoUrls(payload) {
-  const data = payload && typeof payload === "object" ? payload.data || payload : {};
-  const candidates = [data.hdplay, data.play, data.download, data.downloadAddr, data.wmplay]
-    .map(decodeEmbeddedUrl)
-    .filter((value) => /^https?:\/\//i.test(value));
-  return [...new Set(candidates)];
+  return candidates;
 }
 
 function extractPageVideoUrls(html) {
-  const source = String(html || "");
   const candidates = [];
-  for (const tag of source.matchAll(/<meta\b[^>]*>/gi)) {
-    const attributes = {};
-    for (const match of tag[0].matchAll(/([\w:-]+)\s*=\s*["']([^"']*)["']/gi)) attributes[match[1].toLowerCase()] = match[2];
-    const property = String(attributes.property || attributes.name || "").toLowerCase();
-    if (!/^(?:og:video(?::secure_url)?|twitter:player:stream)$/.test(property)) continue;
-    const candidate = decodeEmbeddedUrl(attributes.content || "");
-    if (/^https?:\/\//i.test(candidate)) candidates.push(candidate);
+  const patterns = [
+    /<meta\s+[^>]*property=["']og:video(?::secure_url|:url)?["'][^>]*content=["']([^"']+)["']/gi,
+    /<meta\s+[^>]*content=["']([^"']+)["'][^>]*property=["']og:video(?::secure_url|:url)?["']/gi,
+    /<meta\s+[^>]*name=["']twitter:player:stream["'][^>]*content=["']([^"']+)["']/gi,
+    /<meta\s+[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:player:stream["']/gi,
+    /<source\s+[^>]*src=["']([^"']+)["']/gi,
+    /<video\s+[^>]*src=["']([^"']+)["']/gi,
+    /["'](?:contentUrl|videoUrl|downloadUrl)["']\s*:\s*["']([^"']+)["']/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of String(html || "").matchAll(pattern)) {
+      const candidate = decodeEmbeddedUrl(match[1]);
+      if (/^https?:\/\//i.test(candidate) && !candidates.includes(candidate)) {
+        candidates.push(candidate);
+      }
+    }
   }
-  for (const match of source.matchAll(/<source\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi)) {
-    const candidate = decodeEmbeddedUrl(match[1]);
-    if (/^https?:\/\//i.test(candidate)) candidates.push(candidate);
+  return candidates;
+}
+
+function extractResolverVideoUrls(payload) {
+  const candidates = [];
+  const append = (value) => {
+    const candidate = decodeEmbeddedUrl(value);
+    if (/^https?:\/\//i.test(candidate) && !candidates.includes(candidate)) {
+      candidates.push(candidate);
+    }
+  };
+  const data = payload && typeof payload === "object" ? payload.data || payload : null;
+  if (!data || typeof data !== "object") return candidates;
+  for (const field of ["hdplay", "play", "wmplay", "url", "video_url"]) {
+    if (typeof data[field] === "string") append(data[field]);
   }
-  for (const match of source.matchAll(/["'](?:contentUrl|videoUrl|video_url|playAddr|downloadAddr|play_url|download_url|browser_native_hd_url|browser_native_sd_url|playable_url_quality_hd|playable_url)["']\s*:\s*["']([^"']+)["']/gi)) {
-    const candidate = decodeEmbeddedUrl(match[1]);
-    if (/^https?:\/\//i.test(candidate)) candidates.push(candidate);
+  if (Array.isArray(data.images)) {
+    for (const image of data.images) {
+      if (typeof image === "string") append(image);
+    }
   }
-  return [...new Set(candidates)];
+  return candidates;
 }
 
 module.exports = {
   decodeEmbeddedUrl,
-  normalizeVideoUrl,
-  extractTikTokVideoUrls,
-  extractResolverVideoUrls,
   extractPageVideoUrls,
+  extractResolverVideoUrls,
+  extractTikTokVideoUrls,
   isTikTokHost,
   isYouTubeHost,
+  normalizeVideoUrl,
   extractYouTubeVideoId,
-  resolveYouTubeVideoUrl
+  resolveYouTubeVideoUrl,
 };

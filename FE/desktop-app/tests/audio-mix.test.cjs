@@ -23,7 +23,7 @@ test("supports narration and music without the original track", () => {
 
 test("adds a bounded atempo chain when narration must fit a scene", () => {
   const filter = buildAudioFilter({ hasOriginalAudio: false, narrationInputIndex: 1, narrationTempo: 3.2, keepOriginalAudio: false });
-  assert.match(filter, /\[1:a\]volume=1,atempo=2\.0,atempo=1\.6000\[a0\]/);
+  assert.match(filter, /\[1:a\]atempo=2\.0,atempo=1\.6000\[aout\]/);
 });
 
 test("returns no graph when all audio is disabled", () => {

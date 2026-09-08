@@ -8,14 +8,26 @@ function atempoChain(value) {
   return filters.join(",");
 }
 
-function buildAudioFilter({ hasOriginalAudio, narrationInputIndex, musicInputIndex, keepOriginalAudio = true, musicVolume = 20, narrationTempo = 1, duckOriginalAudio = false }) {
+function buildAudioFilter({ hasOriginalAudio, audioInputLabel = "[0:a]", narrationInputIndex, musicInputIndex, keepOriginalAudio = true, musicVolume = 20, narrationTempo = 1, duckOriginalAudio = false }) {
   const inputs = [];
-  if (keepOriginalAudio && hasOriginalAudio) inputs.push({ label: "[0:a]", volume: duckOriginalAudio && Number.isInteger(narrationInputIndex) ? 0.2 : 1 });
+  const srcAudio = String(audioInputLabel || "[0:a]").startsWith("[") ? String(audioInputLabel || "[0:a]") : `[${audioInputLabel}]`;
+  if (keepOriginalAudio && hasOriginalAudio) inputs.push({ label: srcAudio, volume: duckOriginalAudio && Number.isInteger(narrationInputIndex) ? 0.2 : 1 });
   if (Number.isInteger(narrationInputIndex)) inputs.push({ label: `[${narrationInputIndex}:a]`, volume: 1 });
   if (Number.isInteger(musicInputIndex)) inputs.push({ label: `[${musicInputIndex}:a]`, volume: Math.max(0, Math.min(1, Number(musicVolume) / 100)) });
   if (!inputs.length) return null;
   // Avoid an unnecessary filter graph when the original stream is used as-is.
-  if (inputs.length === 1 && inputs[0].label === "[0:a]" && inputs[0].volume === 1) return null;
+  if (inputs.length === 1) {
+    const input = inputs[0];
+    if ((input.label === "[0:a]" || input.label === "0:a") && input.volume === 1) {
+      return null;
+    }
+    const tempo = Number.isInteger(narrationInputIndex) && input.label === `[${narrationInputIndex}:a]` ? atempoChain(narrationTempo) : "";
+    const filterParts = [];
+    if (input.volume !== 1) filterParts.push(`volume=${input.volume}`);
+    if (tempo) filterParts.push(tempo);
+    const filterStr = filterParts.length ? filterParts.join(",") : "anull";
+    return `${input.label}${filterStr}[aout]`;
+  }
   const normalized = inputs.map((input, index) => {
     const tempo = Number.isInteger(narrationInputIndex) && input.label === `[${narrationInputIndex}:a]` ? atempoChain(narrationTempo) : "";
     return `${input.label}volume=${input.volume}${tempo ? `,${tempo}` : ""}[a${index}]`;

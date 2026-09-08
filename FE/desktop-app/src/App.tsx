@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   DEFAULT_PREFERENCES,
   NAV_ITEMS,
@@ -36,8 +36,8 @@ import {
 } from "./core/job-engine";
 
 // Layout & Common Components
-import { Sidebar, Navbar, LicenseWarningBanner, AdminConfigSyncBanner, OtaUpdateBanner } from "./components/layout";
-import { Toast, Modal } from "./components/common";
+import { Navbar, BottomDock, LicenseWarningBanner, AdminConfigSyncBanner, OtaUpdateBanner } from "./components/layout";
+import { Toast, Modal, ErrorBoundary } from "./components/common";
 
 // Modules & Pages
 import { ActivationGate, ActivationPage } from "./modules/activation";
@@ -52,6 +52,7 @@ import { BrandPage } from "./modules/brand";
 import { SourcesPage } from "./modules/sources";
 import { BillingHistoryPage } from "./modules/billing";
 import { SystemLogsPage } from "./modules/logs";
+import { CreditsUsagePage, CreditTopupModal } from "./modules/credits";
 import { LicenseRenewalModal } from "./modules/renewal";
 import { LegalTermsModal } from "./modules/legal";
 
@@ -72,20 +73,27 @@ export type PageProps = {
   onPreferencesChanged: (value: ToolPreferences) => void;
   onAnalyzeSource: (job: Job) => void;
   analysisSource?: Job;
+  onOpenRenewal?: () => void;
+  onOpenTopup?: () => void;
+  creditBalance?: number;
+  allowedModels?: string[] | null;
+  onSyncAdminGrant?: () => void;
 };
 
 const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
-  overview: ({ jobs, metrics, navigate }) => (
-    <OverviewPage jobs={jobs} metrics={metrics} onNavigate={navigate} />
+  overview: ({ jobs, metrics, navigate, preferences }) => (
+    <OverviewPage jobs={jobs} metrics={metrics} onNavigate={navigate} preferences={preferences} />
   ),
-  sources: ({ jobs, navigate, addJob, updateJob, onAnalyzeSource, deleteSources }) => (
-    <SourcesPage
+  sources: ({ jobs, addJob, updateJob, analysisSource, navigate, onOpenTimeline, deleteJobs, deleteSources }) => (
+    <VideoAnalysisPage
       jobs={jobs}
-      onNavigate={navigate}
       onAddJob={addJob}
-      onAnalyze={onAnalyzeSource}
       onUpdateJob={updateJob}
+      onDeleteJobs={deleteJobs}
       onDeleteSources={deleteSources}
+      onOpenTimeline={onOpenTimeline}
+      initialSource={analysisSource}
+      onNavigate={navigate}
     />
   ),
   batch: ({ jobs, addJob, cancelJob, retryJob, deleteJobs, onOpenTimeline }) => (
@@ -138,6 +146,18 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
   render: ({ jobs, navigate }) => (
     <RenderPage jobs={jobs} onNavigate={navigate} />
   ),
+  usage: ({ jobs, navigate, onOpenTimeline, onOpenRenewal, onOpenTopup, creditBalance, allowedModels, onSyncAdminGrant }) => (
+    <CreditsUsagePage
+      jobs={jobs}
+      onNavigate={navigate}
+      onOpenTimeline={onOpenTimeline}
+      onOpenRenewal={onOpenRenewal}
+      onOpenTopup={onOpenTopup}
+      creditBalance={creditBalance}
+      allowedModels={allowedModels}
+      onSyncAdminGrant={onSyncAdminGrant}
+    />
+  ),
   billing: () => <BillingHistoryPage />,
   logs: ({ jobs, navigate, updateJob }) => (
     <SystemLogsPage
@@ -164,10 +184,12 @@ export function App() {
   const [analysisSourceId, setAnalysisSourceId] = useState<string | undefined>();
   const [timelineSourceId, setTimelineSourceId] = useState<string | undefined>();
   const [showRenewalModal, setShowRenewalModal] = useState(false);
+  const [showCreditTopupModal, setShowCreditTopupModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [machineInfo, setMachineInfo] = useState<MachineInfo | null>(null);
   const [licenseExpiresAt, setLicenseExpiresAt] = useState<string | null>(null);
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+  const [licensePlanName, setLicensePlanName] = useState<string | null>(null);
 
   const [toolConfig, setToolConfig] = useState<{
     studio_brand_name?: string;
@@ -186,18 +208,105 @@ export function App() {
   const [hasAdminConfigUpdate, setHasAdminConfigUpdate] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
 
+  // Credit & AI Grant states from Cloud Admin
+  const [creditBalance, setCreditBalance] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem("jacs_credit_balance") || 0);
+    } catch {
+      return 0;
+    }
+  });
+  const [allowedModels, setAllowedModels] = useState<string[] | null>(() => {
+    try {
+      const saved = localStorage.getItem("jacs_allowed_models");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [aiGatewayEnabled, setAiGatewayEnabled] = useState<boolean>(true);
+  const [adminGrantNotification, setAdminGrantNotification] = useState<{
+    message: string;
+    creditAmount?: number;
+    newBalance?: number;
+  } | null>(null);
+
   const processingJob = useRef("");
   const syncingJobs = useRef(new Set<string>());
 
-  // Fetch remote tool branding & menu lock configuration
+  // Sync AI Grant & Credit directly from server (optimized to avoid unnecessary re-renders)
+  const syncAdminGrant = useCallback(async (showToast = false) => {
+    try {
+      const runtime = getRuntime();
+      const machine = await runtime.getMachineInfo();
+      const key = await runtime.readLicense();
+      if (!key || !machine?.machineId) return;
+
+      const beat = await heartbeatLicense(key, machine.machineId, machine.appVersion, machine.platform);
+      if (beat?.valid) {
+        setActivated(true);
+        if (beat.customer_name) {
+          const cust = beat.customer_name;
+          setLicensePlanName((prev) => (prev !== cust ? cust : prev));
+        }
+        if (beat.expires_at) {
+          const exp = beat.expires_at;
+          setLicenseExpiresAt((prev) => (prev !== exp ? exp : prev));
+          const remaining = Math.ceil(
+            (new Date(exp).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+          );
+          setDaysRemaining((prev) => (prev !== remaining ? remaining : prev));
+        }
+
+        const newCredit = Number(beat.credit_balance || 0);
+        const prevCredit = Number(localStorage.getItem("jacs_credit_balance") || 0);
+
+        setCreditBalance((prev) => (prev !== newCredit ? newCredit : prev));
+        localStorage.setItem("jacs_credit_balance", String(newCredit));
+
+        if (beat.allowed_models !== undefined) {
+          const currentModelsJson = localStorage.getItem("jacs_allowed_models");
+          const newModelsJson = JSON.stringify(beat.allowed_models);
+          if (currentModelsJson !== newModelsJson) {
+            setAllowedModels(beat.allowed_models);
+            localStorage.setItem("jacs_allowed_models", newModelsJson);
+          }
+        }
+
+        if (typeof beat.ai_gateway_enabled === "boolean") {
+          const gwEnabled = beat.ai_gateway_enabled;
+          setAiGatewayEnabled((prev) => (prev !== gwEnabled ? gwEnabled : prev));
+        }
+
+        // Trigger notification only if credit was significantly increased by admin
+        if (newCredit > prevCredit && prevCredit >= 0) {
+          const added = newCredit - prevCredit;
+          if (added > 0) {
+            setAdminGrantNotification({
+              message: `🎉 Admin vừa cấp thêm +${added.toLocaleString("vi-VN")} Credits cho máy của bạn!`,
+              creditAmount: added,
+              newBalance: newCredit,
+            });
+          }
+        } else if (showToast) {
+          setSyncToast(`✓ Đã nạp thành công: ${newCredit.toLocaleString("vi-VN")} Credits & Danh sách Model AI từ Admin!`);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Fetch remote tool branding & menu lock configuration (every 60s)
   useEffect(() => {
     const fetchConfig = async () => {
+      if (active === "usage") return;
       try {
         const res = await fetch("https://jacs-studio.nexoratech.com.vn/api/v1/client/config");
         if (res.ok) {
           const body = await res.json();
           if (body?.data) {
-            setToolConfig(body.data);
+            setToolConfig((prev) => (JSON.stringify(prev) !== JSON.stringify(body.data) ? body.data : prev));
           }
         }
       } catch {
@@ -205,38 +314,90 @@ export function App() {
       }
     };
     fetchConfig();
-    const interval = setInterval(fetchConfig, 30000);
+    const interval = setInterval(fetchConfig, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [active]);
 
-  // Fetch machine info and initial heartbeat
+  // Fetch machine info and periodic heartbeat (every 60 seconds)
   useEffect(() => {
     const initRuntimeInfo = async () => {
       try {
         const runtime = getRuntime();
         const machine = await runtime.getMachineInfo();
         setMachineInfo(machine);
-
-        const key = await runtime.readLicense();
-        if (key) {
-          const beat = await heartbeatLicense(key, machine.machineId, machine.appVersion, machine.platform);
-          if (beat?.valid) {
-            setActivated(true);
-            if (beat.expires_at) {
-              setLicenseExpiresAt(beat.expires_at);
-              const remaining = Math.ceil(
-                (new Date(beat.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-              );
-              setDaysRemaining(remaining);
-            }
-          }
-        }
+        await syncAdminGrant(false);
       } catch {
         // ignore
       }
     };
     initRuntimeInfo();
-  }, []);
+    const interval = setInterval(() => {
+      // Khi đang xem màn hình Credits ("usage"), tắt hoàn toàn tự động gọi API ngầm, chỉ làm mới khi người dùng bấm nút
+      if (active === "usage") return;
+      void syncAdminGrant(false);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [active, syncAdminGrant]);
+
+  // Automatic Background OTA Update Check & Progress Listener
+  useEffect(() => {
+    const runtime = getRuntime();
+
+    const checkUpdate = async () => {
+      if (active === "usage") return;
+      try {
+        if (runtime.checkForUpdate) {
+          const res = await runtime.checkForUpdate("stable");
+          if (res?.update_available && res.release) {
+            let appVer = machineInfo?.appVersion;
+            if (!appVer && runtime.getMachineInfo) {
+              const info = await runtime.getMachineInfo();
+              appVer = info?.appVersion;
+            }
+            const currentVer = (appVer || "0.0.0").replace(/^v/, "").trim();
+            const targetVer = (res.release.version || "").replace(/^v/, "").trim();
+            
+            // Compare version parts
+            const curParts = currentVer.split(".").map((n) => parseInt(n, 10) || 0);
+            const targetParts = targetVer.split(".").map((n) => parseInt(n, 10) || 0);
+            let isNewer = false;
+            for (let i = 0; i < Math.max(curParts.length, targetParts.length, 3); i++) {
+              const c = curParts[i] || 0;
+              const t = targetParts[i] || 0;
+              if (t > c) { isNewer = true; break; }
+              if (t < c) { isNewer = false; break; }
+            }
+
+            if (isNewer || (currentVer && targetVer && currentVer !== targetVer && currentVer !== "0.0.0")) {
+              setAvailableUpdate(res.release);
+            } else if (res.update_available && !currentVer) {
+              setAvailableUpdate(res.release);
+            } else {
+              setAvailableUpdate(null);
+            }
+          } else {
+            setAvailableUpdate(null);
+          }
+        }
+      } catch {
+        // ignore network glitches
+      }
+    };
+
+    checkUpdate();
+    const interval = setInterval(checkUpdate, 60000);
+
+    const unsub = runtime.onUpdateProgress?.((p) => {
+      if (typeof p?.progress === "number") {
+        setUpdateProgress(p.progress);
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsub?.();
+    };
+  }, [active, machineInfo?.appVersion]);
 
   const persistJobs = (value: Job[]) => {
     void getRuntime().saveJobs?.(value);
@@ -340,27 +501,29 @@ export function App() {
 
         replaceJob(nextJob.id, { stage: "rendering", progress: 8 });
         const narrationText = nextJob.narratorEnabled
-          ? (nextJob.subtitleText || nextJob.analysis?.voiceScript || nextJob.analysis?.scenes?.map((s) => s.voiceover || s.translation).filter(Boolean).join(" "))
+          ? (nextJob.subtitleText || nextJob.analysis?.voiceScript || nextJob.analysis?.scenes?.map((s) => s.voiceover || s.translation || (s as any).subtitle || (s as any).text || (s as any).detail).filter(Boolean).join(" "))
           : undefined;
 
-        const subtitleSegments = subtitleSegmentsForClip(
-          nextJob,
-          nextJob.analysis,
-          { startSeconds: nextJob.clipStartSeconds, endSeconds: nextJob.clipEndSeconds },
-          nextJob.subtitleText || nextJob.analysis?.voiceScript,
-          nextJob.durationSeconds || 0
-        );
+        const subtitleSegments = (Array.isArray((nextJob as any).subtitleSegments) && (nextJob as any).subtitleSegments.length > 0)
+          ? (nextJob as any).subtitleSegments
+          : subtitleSegmentsForClip(
+              nextJob,
+              nextJob.analysis,
+              { startSeconds: nextJob.clipStartSeconds, endSeconds: nextJob.clipEndSeconds },
+              nextJob.subtitleText || nextJob.analysis?.voiceScript,
+              nextJob.durationSeconds || 0
+            );
 
         const result = await runtime.renderVideo?.(
           videoFilePath,
           nextJob.outputFolder || preferences.outputPath,
           {
-            mode: nextJob.mode,
+            mode: preferences.preferredEngine === "cpu" ? "local-cpu" : "local-gpu",
             startSeconds: nextJob.clipStartSeconds,
             endSeconds: nextJob.clipEndSeconds,
             outputFileName: nextJob.outputFileName,
             aspectRatio: nextJob.aspectRatio,
-            preferredEngine: preferences.preferredEngine,
+            preferredEngine: preferences.preferredEngine || "auto",
             keepOriginalAudio: nextJob.keepOriginalAudio,
             backgroundMusic: nextJob.backgroundMusic,
             backgroundMusicVolume: nextJob.backgroundMusicVolume,
@@ -379,6 +542,9 @@ export function App() {
             logoOpacity: nextJob.logoOpacity,
             providerId: nextJob.providerId,
             ttsProviderId: nextJob.ttsProviderId,
+            scenes: nextJob.analysis?.scenes,
+            cutClips: (nextJob as any).cutClips || nextJob.timelineClips,
+            timelineClips: nextJob.timelineClips,
           },
           nextJob.id
         );
@@ -496,10 +662,22 @@ export function App() {
     setActive("analysis");
   };
 
-  const openTimeline = (sourceId?: string) => {
+  const openTimeline = useCallback((sourceId?: string) => {
     if (sourceId) setTimelineSourceId(sourceId);
     setActive("timeline");
-  };
+  }, []);
+
+  const handleOpenRenewalModal = useCallback(() => {
+    setShowRenewalModal(true);
+  }, []);
+
+  const handleOpenCreditTopupModal = useCallback(() => {
+    setShowCreditTopupModal(true);
+  }, []);
+
+  const handleSyncAdminGrantFromPage = useCallback(() => {
+    void syncAdminGrant(true);
+  }, [syncAdminGrant]);
 
   const analysisSource = useMemo(() => {
     return analysisSourceId ? jobs.find((j) => j.id === analysisSourceId) : undefined;
@@ -537,6 +715,9 @@ export function App() {
       <ActivationGate
         onActivated={(customLogo, customerName) => {
           setActivated(true);
+          if (customerName) {
+            setLicensePlanName(customerName);
+          }
           if (customLogo) {
             setToolConfig((prev) => ({ ...prev, custom_logo_url: customLogo, studio_brand_name: customerName || prev.studio_brand_name }));
           }
@@ -546,68 +727,137 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
-        {/* Main Sidebar */}
-        <Sidebar
+    <div className="app-shell full-width-shell">
+      {/* Content Viewport (Full Screen Width) */}
+      <div className="app-main-viewport">
+        {/* Top Navbar with Integrated Brand & Controls */}
+        <Navbar
           active={active}
           onNavigate={navigate}
-          jobs={jobs}
+          machineInfo={machineInfo}
           toolConfig={toolConfig}
+          activated={activated}
+          daysRemaining={daysRemaining}
           licenseExpiresAt={licenseExpiresAt}
+          planName={licensePlanName || toolConfig?.studio_brand_name}
+          creditBalance={creditBalance}
+          allowedModels={allowedModels}
+          onSyncAdminGrant={() => void syncAdminGrant(true)}
+          onRefresh={() => {
+            getRuntime().readJobs?.().then((j) => j && setJobs(j));
+            void syncAdminGrant(true);
+          }}
           onOpenRenewal={() => setShowRenewalModal(true)}
+          onOpenTopup={handleOpenCreditTopupModal}
           onOpenTerms={() => setShowTermsModal(true)}
+          onOpenSettings={() => setActive("settings")}
+          onOpenActivation={() => setActive("activation")}
         />
 
-        {/* Content Viewport */}
-        <div className="app-main-viewport">
-          {/* Top Navbar */}
-          <Navbar
-            active={active}
-            onNavigate={navigate}
-            machineInfo={machineInfo}
-            onRefresh={() => {
-              getRuntime().readJobs?.().then((j) => j && setJobs(j));
+        {/* Admin Credit / Model Grant Notification Popup Banner */}
+        {adminGrantNotification && (
+          <div
+            style={{
+              background: "linear-gradient(135deg, #1e293b, #0f172a)",
+              border: "1px solid #f59e0b",
+              borderRadius: "10px",
+              padding: "10px 18px",
+              margin: "10px 20px 0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              boxShadow: "0 4px 14px rgba(245, 158, 11, 0.25)",
+              animation: "fadeIn 0.3s ease",
             }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "20px" }}>💎</span>
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: 800, color: "#fbbf24" }}>
+                  {adminGrantNotification.message}
+                </div>
+                <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                  Số dư ví: <strong style={{ color: "#f59e0b" }}>{adminGrantNotification.newBalance?.toLocaleString("vi-VN")} Credits</strong> • Đã nạp thành công vào hệ thống.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminGrantNotification(null);
+                  setActive("settings");
+                }}
+                style={{
+                  background: "#f59e0b",
+                  border: "none",
+                  padding: "5px 12px",
+                  borderRadius: "6px",
+                  color: "#0f172a",
+                  fontSize: "11.5px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Xem Cài Đặt AI ➔
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminGrantNotification(null)}
+                style={{
+                  background: "rgba(255, 255, 255, 0.1)",
+                  border: "none",
+                  padding: "5px 10px",
+                  borderRadius: "6px",
+                  color: "#94a3b8",
+                  fontSize: "11.5px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* License Expiry Warning Marquee */}
+        {daysRemaining !== null && daysRemaining <= 7 && licenseExpiresAt && (
+          <LicenseWarningBanner
+            daysRemaining={daysRemaining}
+            licenseExpiresAt={licenseExpiresAt}
             onOpenRenewal={() => setShowRenewalModal(true)}
-            onOpenSettings={() => setActive("settings")}
           />
+        )}
 
-          {/* License Expiry Warning Marquee */}
-          {daysRemaining !== null && daysRemaining <= 7 && licenseExpiresAt && (
-            <LicenseWarningBanner
-              daysRemaining={daysRemaining}
-              licenseExpiresAt={licenseExpiresAt}
-              onOpenRenewal={() => setShowRenewalModal(true)}
-            />
-          )}
+        {/* Admin Config Sync Notification */}
+        {hasAdminConfigUpdate && (
+          <AdminConfigSyncBanner onSync={handleSyncAdminConfig} />
+        )}
 
-          {/* Admin Config Sync Notification */}
-          {hasAdminConfigUpdate && (
-            <AdminConfigSyncBanner onSync={handleSyncAdminConfig} />
-          )}
+        {/* Sync Toast */}
+        {syncToast && (
+          <Toast
+            message={syncToast}
+            type="success"
+            onClose={() => setSyncToast(null)}
+          />
+        )}
 
-          {/* Sync Toast */}
-          {syncToast && (
-            <Toast
-              message={syncToast}
-              type="success"
-              onClose={() => setSyncToast(null)}
-            />
-          )}
+        {/* In-Place OTA Update Notification Banner */}
+        {availableUpdate && dismissedVersion !== availableUpdate.version && (
+          <OtaUpdateBanner
+            update={availableUpdate}
+            isUpdating={isUpdating}
+            updateProgress={updateProgress}
+            onApplyUpdate={() => void handleApplyUpdate()}
+            onDismiss={() => setDismissedVersion(availableUpdate.version)}
+          />
+        )}
 
-          {/* In-Place OTA Update Notification Banner */}
-          {availableUpdate && dismissedVersion !== availableUpdate.version && (
-            <OtaUpdateBanner
-              update={availableUpdate}
-              isUpdating={isUpdating}
-              updateProgress={updateProgress}
-              onApplyUpdate={() => void handleApplyUpdate()}
-              onDismiss={() => setDismissedVersion(availableUpdate.version)}
-            />
-          )}
-
-          {/* Active Module Page Body */}
-          <main className="app-content-body">
+        {/* Active Module Page Body */}
+        <main className={`app-content-body ${active === "timeline" ? "page-content-fullscreen-studio" : ""}`}>
+          <ErrorBoundary key={active} fallbackTitle={`Đã xảy ra lỗi khi mở màn hình "${NAV_ITEMS.find((i) => i.key === active)?.label || active}"`} onReset={() => setActive("overview")}>
             <Page
               jobs={jobs}
               metrics={metrics}
@@ -625,9 +875,23 @@ export function App() {
               onPreferencesChanged={setPreferences}
               onAnalyzeSource={onAnalyzeSource}
               analysisSource={analysisSource}
+              onOpenRenewal={handleOpenRenewalModal}
+              onOpenTopup={handleOpenCreditTopupModal}
+              creditBalance={creditBalance}
+              allowedModels={allowedModels}
+              onSyncAdminGrant={handleSyncAdminGrantFromPage}
             />
-          </main>
-        </div>
+          </ErrorBoundary>
+        </main>
+
+        {/* Global Bottom Navigation Dock */}
+        <BottomDock
+          active={active}
+          onNavigate={navigate}
+          jobs={jobs}
+          toolConfig={toolConfig}
+        />
+      </div>
 
         {/* Global Modals */}
         <LicenseRenewalModal
@@ -643,6 +907,14 @@ export function App() {
               }
             })();
           }}
+        />
+
+        <CreditTopupModal
+          isOpen={showCreditTopupModal}
+          onClose={() => setShowCreditTopupModal(false)}
+          onSyncAdminGrant={() => void syncAdminGrant(true)}
+          currentKey={licensePlanName || "JACS-PRO-KEY"}
+          currentBalance={creditBalance}
         />
 
         <LegalTermsModal
