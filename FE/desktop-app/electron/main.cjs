@@ -2719,6 +2719,47 @@ function logoOverlayPosition(position) {
   return { "top-left": "24:24", "top-right": "main_w-overlay_w-24", "bottom-left": "24:main_h-overlay_h-24", "bottom-right": "main_w-overlay_w-24:main_h-overlay_h-24" }[position] || "main_w-overlay_w-24:main_h-overlay_h-24";
 }
 
+async function extractIsolatedVocalStem(videoOrAudioPath, operationId, event) {
+  const absolutePath = path.resolve(videoOrAudioPath);
+  if (!fs.existsSync(absolutePath)) return null;
+
+  const stemDir = path.join(os.tmpdir(), "jacs-audio-stems");
+  fs.mkdirSync(stemDir, { recursive: true });
+  const hash = crypto.createHash("md5").update(absolutePath + fs.statSync(absolutePath).size).digest("hex");
+  const outWav = path.join(stemDir, `vocals_${hash}.wav`);
+
+  if (fs.existsSync(outWav) && fs.statSync(outWav).size > 10000) {
+    return outWav;
+  }
+
+  const ffmpeg = findExecutable("ffmpeg");
+  if (!ffmpeg) return null;
+
+  const rawWav = path.join(stemDir, `raw_${hash}.wav`);
+  try {
+    if (event) {
+      event.sender.send("runtime:render-progress", { progress: 2, stage: "AI Vocal Remover: Đang bóc tách 100% nhạc nền gốc...", operationId });
+    }
+    // 1. Extract raw stereo wav
+    await runProcess(ffmpeg, ["-y", "-i", absolutePath, "-vn", "-ac", "2", "-ar", "44100", rawWav], undefined, operationId);
+
+    // 2. Invoke stem separation via voice_worker
+    const invocation = voiceWorkerInvocation();
+    if (invocation) {
+      const args = [...invocation.prefix, "separate-stem", "--input", rawWav, "--output", outWav];
+      await runProcess(invocation.command, args, undefined, operationId);
+      if (fs.existsSync(outWav) && fs.statSync(outWav).size > 10000) {
+        try { fs.unlinkSync(rawWav); } catch {}
+        return outWav;
+      }
+    }
+  } catch (err) {
+    console.warn("Stem separation warning:", err);
+  }
+
+  return rawWav;
+}
+
 async function renderVideoFile(event, filePath, folder, options = {}, operationId) {
   let localVideoPath = filePath;
   if (/^https?:\/\//i.test(String(filePath || ""))) {
@@ -2913,6 +2954,13 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
 
   let concatManifestPath = null;
   let tempCutDir = null;
+
+  const shouldIsolateVocals = Boolean(options.removeOriginalBgm || options.isolateVocals);
+  let isolatedStemPath = null;
+  if (shouldIsolateVocals) {
+    isolatedStemPath = await extractIsolatedVocalStem(localVideoPath, operationId, event);
+  }
+
   if (hasCuts) {
     tempCutDir = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-timeline-cuts-"));
     const clipPaths = [];
@@ -2922,13 +2970,16 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
       const sStart = Math.max(0, parseTimeSeconds(c.sourceStart, 0));
       const sDur = Math.max(0.25, parseTimeSeconds(c.duration, 0) || (parseTimeSeconds(c.sourceEnd, sStart + 5) - sStart));
       const clipFile = path.join(tempCutDir, `clip_${String(i).padStart(4, "0")}.mp4`);
+      const clipAudioSource = (isolatedStemPath && fs.existsSync(isolatedStemPath)) ? isolatedStemPath : path.resolve(localVideoPath);
       const sliceArgs = [
         "-y",
         "-ss", sStart.toFixed(3),
         "-i", path.resolve(localVideoPath),
+        "-ss", sStart.toFixed(3),
+        "-i", path.resolve(clipAudioSource),
         "-t", sDur.toFixed(3),
         "-map", "0:v:0",
-        "-map", "0:a:0?",
+        "-map", "1:a:0?",
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-c:a", "aac",
@@ -3830,6 +3881,14 @@ Return ONLY valid JSON with no markdown wrapping. Mảng 'scenes' phải có đ�
     const state = beginOperation(operationId);
     try { return await renderVideoFile(event, filePath, folder, options, operationId); }
     finally { if (state) endOperation(operationId); }
+  });
+  ipcMain.handle("runtime:isolate-vocals", async (event, filePath, operationId) => {
+    try {
+      const stem = await extractIsolatedVocalStem(filePath, operationId, event);
+      return { ok: Boolean(stem), path: stem };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
   });
   ipcMain.handle("runtime:merge-videos", async (event, filePaths, operationId) => mergeVideoFiles(event, filePaths, operationId));
   ipcMain.handle("runtime:cancel-operation", (_event, operationId) => {
