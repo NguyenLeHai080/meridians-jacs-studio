@@ -1323,7 +1323,6 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
   const isGroq = record.providerType === "groq" || /(^|\.)groq\.com$/i.test(parsedHost);
   const isDeepSeek = record.providerType === "deepseek" || /(^|\.)deepseek\.com$/i.test(parsedHost);
   const isAnthropic = record.providerType === "anthropic" && /(^|\.)api\.anthropic\.com$/i.test(parsedHost);
-  const isGemini = record.providerType === "gemini";
 
   let effectiveModel = record.model;
   if (isGroq) {
