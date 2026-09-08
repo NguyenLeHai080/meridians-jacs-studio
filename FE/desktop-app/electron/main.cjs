@@ -1866,7 +1866,8 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
   const safeTargetCount = Math.max(3, Number(targetCount) || 10);
   const total = Math.max(30, Number(totalDuration) || 300);
 
-  if (Array.isArray(scenes) && scenes.length >= Math.max(3, Math.round(safeTargetCount * 0.8))) {
+  if (Array.isArray(scenes) && scenes.length >= 3) {
+    // If we already have at least 3 valid narrative scenes from AI, preserve them directly
     return scenes;
   }
 
@@ -1897,7 +1898,6 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
   const result = [];
   const sourceClipDur = Math.max(8, Math.round(total / safeTargetCount));
   const sourceStep = Math.max(4, (total - sourceClipDur) / Math.max(1, safeTargetCount - 1));
-  const safeSegments = Array.isArray(transcriptSegments) ? transcriptSegments : [];
 
   for (let i = 0; i < safeTargetCount; i++) {
     const srcStart = Math.min(total - sourceClipDur, Math.max(0, Math.round(i * sourceStep)));
@@ -1905,17 +1905,11 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
     const existing = scenes?.[i];
     const fallbackSc = fallbackScenes?.[i % (fallbackScenes?.length || 1)];
 
-    // Check if there are matching transcript segments from the raw video
-    const matchingSegs = safeSegments.filter((s) => s.start >= srcStart - 8 && s.end <= srcEnd + 8);
-    const segmentDialogue = matchingSegs.map((s) => s.text).join(" ").replace(/\s+/g, " ").trim();
-
     let voice = "";
     if (i < rawTextPool.length && rawTextPool[i]) {
       voice = rawTextPool[i];
     } else if (existing?.voiceover) {
       voice = existing.voiceover;
-    } else if (segmentDialogue && segmentDialogue.length > 20) {
-      voice = `Tại thời điểm này của video, ${segmentDialogue.slice(0, 200)}. Diễn biến tiếp tục được đẩy lên kịch tính theo đúng mạch câu chuyện.`;
     } else if (fallbackSc?.voiceover) {
       voice = fallbackSc.voiceover;
     } else {
@@ -3634,7 +3628,7 @@ function resolveTargetDurationFromRules(durationSeconds, durationRules, fallback
         : `Act as a professional 3rd-person narrator and master storyteller, analyzing the full video narrative arc of "${cleanVideoTitle}" (${endStamp}) and extracting key highlight cut scenes with an engaging 3-Act structure and viral 10s hook.`);
 
       const languageRule = isVietnamese
-        ? "TẤT CẢ NỘI DUNG (summary, title, detail, translation, voiceover, voice_script) BẮT BUỘC VIẾT 100% BẰNG TIẾNG VIỆT."
+        ? "TẤT CẢ NỘI DUNG (summary, title, detail, translation, voiceover, voice_script) BẮT BUỘC PHẢI VIẾT 100% BẰNG TIẾNG VIỆT THUẦN TÚY. Dù video gốc có lời thoại tiếng Anh hay bất kỳ ngôn ngữ nào, toàn bộ lời thoại và kịch bản voiceover BẮT BUỘC PHẢI ĐƯỢC BIÊN KỊCH VÀ DỊCH SANG TIẾNG VIỆT 100%. TUYỆT ĐỐI KHÔNG để nguyên câu tiếng Anh hoặc chèn nửa Anh nửa Việt vào lời thoại voiceover hay tóm tắt."
         : `CRITICAL LANGUAGE DIRECTIVE: The user requested target language: "${outputLanguage}" (Language Code: ${languageCode}). ALL fields ("summary", "title", "detail", "translation", "voiceover", and "voice_script") MUST BE WRITTEN 100% AND EXCLUSIVELY IN ${outputLanguage}. Under no circumstances should Vietnamese or any other language be returned.`;
 
       const sampleScenesArray = isVietnamese
@@ -3776,7 +3770,8 @@ Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${clean
    - Phân cảnh đầu tiên BẮT BUỘC là Hook 10s đầu ([00:00 - 00:10]).
    - Mỗi phân cảnh có lời thoại "voiceover" dài ${Math.max(30, wordsPerScene - 20)}-${wordsPerScene + 25} từ tiếng Việt mượt mà, kết nối thành một câu chuyện liền mạch.
    - NHẶT ĐÚNG CẢNH TRONG VIDEO GỐC: "source_start" và "source_end" của mỗi phân cảnh BẮT BUỘC phải chỉ chính xác mốc thời gian trong video gốc có hình ảnh, hành động hoặc nét mặt minh họa trực tiếp cho câu kể voiceover. Khi phân tích xong, Timeline sẽ tự động cắt các đoạn video này và ráp vào khớp từng giây với lời kể.
-   - TUYỆT ĐỐI KHÔNG CHÈN MỐC THỜI GIAN VÀO LỜI ĐỌC: Không ghi các cụm từ như "tại mốc 00:00", "lúc 02:10", "từ phút...", "(15:09)" vào nội dung câu chữ của voiceover hay voice_script. Đây là lời thoại để phát thanh viên AI đọc thành tiếng cho người xem nghe, phải là văn phong kể chuyện tự nhiên, liền mạch 100%.`;
+   - TUYỆT ĐỐI KHÔNG CHÈN MỐC THỜI GIAN VÀO LỜI ĐỌC: Không ghi các cụm từ như "tại mốc 00:00", "lúc 02:10", "từ phút...", "(15:09)" vào nội dung câu chữ của voiceover hay voice_script. Đây là lời thoại để phát thanh viên AI đọc thành tiếng cho người xem nghe, phải là văn phong kể chuyện tự nhiên, liền mạch 100%.
+   - TUYỆT ĐỐI KHÔNG TRỘN LẪN TIẾNG ANH VÀ TIẾNG VIỆT (NO MIXED LANGUAGES): Toàn bộ lời thoại và kịch bản voiceover phải được biên kịch và dịch 100% sang tiếng Việt trau chuốt, tự nhiên, lôi cuốn theo mạch diễn biến của video.`;
 
       const prompt = `Role: Senior Master Film Narrator & Screenplay Review Specialist.
 Target Output Language: ${outputLanguage} (${languageCode}).

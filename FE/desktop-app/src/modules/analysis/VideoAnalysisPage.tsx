@@ -1420,16 +1420,30 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
     const job = sourceCandidates.find((j) => j.id === jobId);
     if (!job || !job.analysis) return;
 
-    const nextScenes = [...(job.analysis.scenes || [])];
-    nextScenes[sceneIdx] = updatedScene;
+    const cleanVoice = String(updatedScene.voiceover || updatedScene.translation || updatedScene.detail || "").trim();
+    const syncedScene: AnalysisScene = {
+      ...updatedScene,
+      voiceover: cleanVoice,
+      translation: cleanVoice,
+      ...(updatedScene as any),
+    };
 
+    const nextScenes = [...(job.analysis.scenes || [])];
+    nextScenes[sceneIdx] = syncedScene;
+
+    const fullScript = nextScenes.map((s) => s.voiceover || s.translation || "").filter(Boolean).join(" ");
     const nextAnalysis: AnalysisResult = {
       ...job.analysis,
       scenes: nextScenes,
+      voiceScript: fullScript,
     };
 
     if (onUpdateJob) {
-      onUpdateJob(job.id, { analysis: nextAnalysis });
+      onUpdateJob(job.id, {
+        analysis: nextAnalysis,
+        narrationText: fullScript,
+        subtitleText: fullScript,
+      });
     }
 
     setEditingSceneInfo(null);
