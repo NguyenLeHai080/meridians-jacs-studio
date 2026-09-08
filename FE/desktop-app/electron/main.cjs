@@ -1138,7 +1138,7 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
   const targetDurMinutes = Number(options?.targetDurationMinutes) || (duration > 300 ? 5 : Math.max(1, Math.ceil(duration / 60)));
   const targetDurSeconds = Math.round(targetDurMinutes * 60);
 
-  const targetCount = Math.max(3, Math.min(14, Math.round(targetDurSeconds / 22)));
+  const targetCount = targetDurMinutes <= 1 ? 4 : targetDurMinutes <= 3 ? 8 : targetDurMinutes <= 5 ? 14 : targetDurMinutes <= 10 ? 24 : targetDurMinutes <= 15 ? 35 : Math.max(4, Math.round(targetDurMinutes * 2.4));
   const targetClipDuration = Math.max(8, Math.round(targetDurSeconds / targetCount));
   const sourceStep = Math.max(4, (duration - targetClipDuration) / Math.max(1, targetCount - 1));
 
@@ -1150,79 +1150,6 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
 
   const safeSegments = Array.isArray(transcriptSegments) && transcriptSegments.length ? transcriptSegments : [];
 
-  const narrativeBeats = [
-    {
-      title: "[00:00 - 00:10] Hook Mở Màn & Điểm Nhấn Đắt Giá",
-      narrative: "Mở đầu câu chuyện, một tình huống bất ngờ và kịch tính lập tức thu hút sự chú ý ngay từ những giây đầu tiên.",
-      visual: "Khoảnh khắc gay cấn và ấn tượng nhất mở đầu câu chuyện.",
-    },
-    {
-      title: "[Hồi 1] Khởi Đầu & Bối Cảnh Ban Đầu",
-      narrative: "Không gian ban đầu dần hé mở, giới thiệu các nhân vật chủ chốt và bối cảnh khởi nguồn sự việc.",
-      visual: "Toàn cảnh không gian và chân dung các nhân vật xuất hiện.",
-    },
-    {
-      title: "[Hồi 1] Dấu Hiệu Bất Thường & Chi Tiết Phát Sinh",
-      narrative: "Những chi tiết đầu tiên bắt đầu phát sinh, hé lộ động cơ cùng mối quan hệ phức tạp giữa các bên liên quan.",
-      visual: "Góc quay ghi nhận diễn biến đầu tiên và các cử chỉ, phản ứng ban đầu.",
-    },
-    {
-      title: "[Hồi 1] Chuyển Biến Tình Thế & Mâu Thuẫn Ngầm",
-      narrative: "Tình thế có sự chuyển biến rõ nét khi các nhân vật bắt đầu bước vào chuỗi sự việc trọng tâm.",
-      visual: "Khung cảnh tương tác trực tiếp và sự xuất hiện của yếu tố mới.",
-    },
-    {
-      title: "[Hồi 2] Cuộc Đối Thoại Căng Thẳng & Nghi Vấn Lộ Diện",
-      narrative: "Cuộc đối thoại trực tiếp hé lộ nhiều ẩn khuất và những toan tính chưa từng được công khai trước đó.",
-      visual: "Cận cảnh cuộc đối thoại căng thẳng giữa các nhân vật.",
-    },
-    {
-      title: "[Hồi 2] Mạch Sự Việc Đẩy Lên Cao Trào",
-      narrative: "Mạch sự việc được đẩy lên cao khi sự bất thường bắt đầu lộ rõ, buộc các bên phải đối mặt trực diện.",
-      visual: "Cận cảnh tình huống tranh luận và hành động đáng ngờ đang diễn ra.",
-    },
-    {
-      title: "[Hồi 2] Bước Ngoặt Bất Ngờ & Tình Huống Kịch Tính",
-      narrative: "Tình huống trở nên căng thẳng vượt bậc với những hành vi và tình tiết vượt ngoài dự đoán của mọi người.",
-      visual: "Góc quay tập trung vào khoảnh khắc đối chất kịch tính và cảm xúc dâng trào.",
-    },
-    {
-      title: "[Hồi 2] Manh Mối Phơi Bày & Sự Thật Dần Sáng Tỏ",
-      narrative: "Những bằng chứng xác thực và lời nói mâu thuẫn bắt đầu phơi bày rõ ràng toàn bộ sự việc.",
-      visual: "Hình ảnh ghi nhận bằng chứng cụ thể và nét mặt ngỡ ngàng của những người trong cuộc.",
-    },
-    {
-      title: "[Hồi 2] Đỉnh Điểm Đấu Trí & Giằng Co Quyết Liệt",
-      narrative: "Cuộc giằng co bước vào giai đoạn quyết định khi một bên không còn đường thoái lui.",
-      visual: "Cảnh quay đặc tả biểu cảm nghẹt thở và phản ứng quyết liệt của các nhân vật.",
-    },
-    {
-      title: "[Hồi 2] Diễn Biến Nghẹt Thở & Rượt Đuổi Cao Độ",
-      narrative: "Diễn biến diễn ra dồn dập với những pha xử lý nhanh chóng và áp lực thời gian đè nặng lên từng nhân vật.",
-      visual: "Nhịp quay dồn dập đặc tả hành động quyết liệt và phản ứng chớp nhoáng.",
-    },
-    {
-      title: "[Hồi 2] Sự Can Thiệp Dứt Khoát & Chuyển Sang Thế Chủ Động",
-      narrative: "Diễn biến chuyển sang thế chủ động khi sự việc được làm sáng tỏ và các biện pháp xử lý kịp thời được kích hoạt.",
-      visual: "Hành động dứt khoát của bên nắm giữ thế chủ động và sự bối rối của đối phương.",
-    },
-    {
-      title: "[Hồi 3] Khống Chế Tình Hình & Trật Tự Tái Lập",
-      narrative: "Mọi hành vi sai lệch lập tức bị chặn đứng, hiện trường được kiểm soát hoàn toàn trong sự chứng kiến của mọi người.",
-      visual: "Toàn cảnh hiện trường được kiểm soát và các bên tuân thủ yêu cầu xử lý.",
-    },
-    {
-      title: "[Hồi 3] Hồi Kết Phân Xử & Sự Thật Sáng Tỏ",
-      narrative: "Toàn bộ mâu thuẫn được giải quyết thỏa đáng, mọi hành vi sai lệch đều phải chịu trách nhiệm tương xứng.",
-      visual: "Toàn cảnh sự việc đi vào hồi kết và kết luận chính thức cho các bên.",
-    },
-    {
-      title: "[Hồi 3] Bài Học Đắt Giá & Giá Trị Đọng Lại",
-      narrative: "Khép lại toàn bộ câu chuyện, để lại lời cảnh tỉnh sâu sắc và giá trị nhân văn đáng nhớ cho người xem.",
-      visual: "Khung hình kết thúc đọng lại suy ngẫm cùng thông điệp cốt lõi của tác phẩm.",
-    },
-  ];
-
   for (let i = 0; i < targetCount; i++) {
     const srcStartSec = Math.min(duration - targetClipDuration, Math.max(0, Math.round(i * sourceStep)));
     const srcEndSec = Math.min(duration, srcStartSec + targetClipDuration);
@@ -1231,20 +1158,59 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
     const tEnd = recapCursor + clipDur;
     recapCursor = tEnd;
 
-    let beatIdx = 0;
+    const fraction = targetCount <= 1 ? 0 : i / (targetCount - 1);
+
+    let stageTitle = `Phân cảnh #${i + 1}`;
+    let narrative = "";
+    let actionVisual = `Trích đoạn video gốc ${formatTime(srcStartSec)} - ${formatTime(srcEndSec)}`;
+
     if (i === 0) {
-      beatIdx = 0;
-    } else if (i === targetCount - 1) {
-      beatIdx = narrativeBeats.length - 1;
+      stageTitle = `[00:00 - 00:10] Hook Mở Màn & Cú Hích Cao Trào`;
+      narrative = `Mở đầu video "${cleanTitle}", một tình huống bất ngờ và đầy kịch tính lập tức thu hút sự chú ý của người xem ngay từ những giây đầu tiên. Mọi diễn biến then chốt đặt nền móng cho câu chuyện bắt đầu lộ diện.`;
+      actionVisual = `Khoảnh khắc gay cấn và ấn tượng nhất mở đầu video "${cleanTitle}".`;
+    } else if (fraction <= 0.20) {
+      stageTitle = `[Hồi 1] Bối Cảnh & Khởi Nguồn Tình Huống (Phần ${i})`;
+      narrative = `Không gian ban đầu dần hé mở, giới thiệu các nhân vật chủ chốt và bối cảnh khởi nguồn sự việc trong "${cleanTitle}". Những chi tiết đầu tiên bắt đầu phát sinh, hé lộ động cơ cùng mối quan hệ ban đầu giữa các bên liên quan, tạo tiền đề cho những biến cố tiếp theo.`;
+      actionVisual = `Toàn cảnh không gian và chân dung các nhân vật xuất hiện ở giai đoạn đầu.`;
+    } else if (fraction <= 0.40) {
+      stageTitle = `[Hồi 1] Chuyển Biến Tình Thế & Manh Mối Ban Đầu (Phần ${i})`;
+      narrative = `Tình thế có sự chuyển biến rõ nét khi các nhân vật bắt đầu bước vào chuỗi sự việc trọng tâm. Những dấu hiệu bất thường bắt đầu xuất hiện ngày một dày đặc hơn, kéo theo những nghi vấn chưa có lời giải đáp và đẩy câu chuyện sang giai đoạn mới.`;
+      actionVisual = `Khung cảnh tương tác trực tiếp và sự xuất hiện của những manh mối đáng ngờ.`;
+    } else if (fraction <= 0.60) {
+      stageTitle = `[Hồi 2] Cuộc Đối Thoại Căng Thẳng & Nút Thắt Kịch Tính (Phần ${i})`;
+      narrative = `Mạch sự việc được đẩy lên cao trào khi sự thật dần hé lộ qua từng cuộc đối thoại căng thẳng và những toan tính ngầm. Các mâu thuẫn bắt đầu bùng nổ, buộc những người trong cuộc phải đối mặt trực diện với tình huống bất ngờ không lường trước.`;
+      actionVisual = `Cận cảnh cuộc đối thoại căng thẳng và phản ứng dồn dập của các nhân vật.`;
+    } else if (fraction <= 0.75) {
+      stageTitle = `[Hồi 2] Bước Ngoặt Bất Ngờ & Diễn Biến Dồn Dập (Phần ${i})`;
+      narrative = `Tình huống trở nên căng thẳng vượt bậc với những bước ngoặt và tình tiết vượt ngoài dự đoán của mọi người. Áp lực thời gian đè nặng lên từng nhân vật khi các bằng chứng xác thực và những lời nói mâu thuẫn bắt đầu phơi bày rõ ràng toàn bộ sự việc.`;
+      actionVisual = `Góc quay tập trung vào khoảnh khắc đối chất kịch tính và cảm xúc dâng trào.`;
+    } else if (fraction <= 0.88) {
+      stageTitle = `[Hồi 2 - Đỉnh Điểm] Đấu Trí Cao Độ & Quyết Định Then Chốt (Phần ${i})`;
+      narrative = `Cuộc giằng co bước vào giai đoạn quyết định nghẹt thở khi các bên không còn đường thoái lui. Mọi hành động diễn ra chớp nhoáng với tính chất quyết liệt, đưa toàn bộ xung đột lên đỉnh điểm cao trào nhất của câu chuyện.`;
+      actionVisual = `Cảnh quay đặc tả biểu cảm nghẹt thở và phản ứng quyết liệt của các nhân vật.`;
+    } else if (fraction < 1.0) {
+      stageTitle = `[Hồi 3] Khống Chế Tình Hình & Trật Tự Tái Lập (Phần ${i})`;
+      narrative = `Sự việc chuyển sang thế chủ động khi toàn bộ diễn biến được làm sáng tỏ và các biện pháp xử lý dứt khoát được thực thi. Hiện trường được kiểm soát hoàn toàn, trả lại trật tự vốn có trong sự chứng kiến của mọi người.`;
+      actionVisual = `Toàn cảnh hiện trường được kiểm soát và các bên tuân thủ quy trình xử lý.`;
     } else {
-      const fraction = i / (targetCount - 1);
-      beatIdx = Math.min(narrativeBeats.length - 2, Math.max(1, Math.round(fraction * (narrativeBeats.length - 1))));
+      stageTitle = `[Hồi 3] Hồi Kết Hoàn Chỉnh & Bài Học Đắt Giá`;
+      narrative = `Khép lại toàn bộ diễn biến của "${cleanTitle}", mọi mâu thuẫn được giải quyết thỏa đáng và những hành vi sai lệch đều phải chịu trách nhiệm tương xứng. Câu chuyện để lại lời cảnh tỉnh sâu sắc và giá trị nhân văn đáng nhớ cho người xem.`;
+      actionVisual = `Khung hình kết thúc đọng lại suy ngẫm cùng thông điệp cốt lõi của tác phẩm.`;
     }
 
-    const beat = narrativeBeats[beatIdx] || narrativeBeats[0];
-    const stageTitle = beat.title;
-    const narrative = beat.narrative;
-    const actionVisual = beat.visual;
+    // Enrich with relevant transcript segments if present for this timeframe
+    if (safeSegments.length > 0) {
+      const matchingSegs = safeSegments.filter((seg) => {
+        const s = Number(seg.start || 0);
+        return s >= srcStartSec && s < srcEndSec;
+      });
+      if (matchingSegs.length > 0) {
+        const segText = matchingSegs.map((s) => s.text).join(" ").trim();
+        if (segText && segText.length > 15 && i > 0) {
+          narrative = `${narrative} Cụ thể tại diễn biến này, lời thoại ghi nhận: "${segText.slice(0, 140)}"`;
+        }
+      }
+    }
 
     scenes.push({
       id: `scene-${i + 1}`,
@@ -1275,7 +1241,7 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
     videoTitle: suggestedTitles[0],
     suggestedTitles,
     hookTitle: "Hook Mở Màn & Giữ Chân Người Xem 10s Đầu",
-    summary: `Kịch bản phân tích và tóm tắt toàn diện (${targetDurMinutes} phút): Bóc tách toàn bộ cốt truyện và các điểm nhấn nổi bật của "${cleanTitle}" từ mở đầu đến hồi kết.`,
+    summary: `Kịch bản phân tích và tóm tắt toàn diện (${targetDurMinutes} phút - ${targetCount} phân cảnh): Bóc tách toàn bộ cốt truyện và các điểm nhấn nổi bật của "${cleanTitle}" từ mở đầu đến hồi kết.`,
     scenes,
     score: 95,
     tokensUsed: 0,
@@ -1344,7 +1310,8 @@ async function reportAiRequestTelemetry(logData) {
 function providerRequest(record, prompt, images = [], operationId, attempt = 0) {
   const reqStart = Date.now();
   const headers = { Accept: "application/json", "Content-Type": "application/json" };
-  const maxOutputTokens = 8192;
+  const isGemini = record.providerType === "gemini";
+  const maxOutputTokens = isGemini ? 16384 : 8192;
   let url = record.baseUrl;
   const endpoint = (base, suffix) => base.endsWith(suffix) ? base : `${base}/${suffix}`;
   let body;
@@ -1876,23 +1843,23 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
   const safeTargetCount = Math.max(3, Number(targetCount) || 10);
   const total = Math.max(30, Number(totalDuration) || 300);
 
-  if (Array.isArray(scenes) && scenes.length >= 3) {
-    // If we already have at least 3 valid narrative scenes from AI, preserve them directly
-    return scenes;
+  const cleanRawScenes = Array.isArray(scenes) ? scenes.filter((s) => s && (s.title || s.voiceover || s.detail || s.translation)) : [];
+
+  // If we already have enough scenes from AI, preserve them directly
+  if (cleanRawScenes.length >= safeTargetCount) {
+    return cleanRawScenes;
   }
 
   // Extract all available text lines/sentences from real AI response
   const rawTextPool = [];
-  if (Array.isArray(scenes)) {
-    for (const sc of scenes) {
-      const txt = String(sc.voiceover || sc.translation || sc.detail || "").trim();
-      if (txt) {
-        const subParts = txt.split(/(?<=[.!?。;\n])\s+/).map((s) => s.trim()).filter((s) => s.length > 10);
-        if (subParts.length > 1) {
-          rawTextPool.push(...subParts);
-        } else {
-          rawTextPool.push(txt);
-        }
+  for (const sc of cleanRawScenes) {
+    const txt = String(sc.voiceover || sc.translation || sc.detail || "").trim();
+    if (txt) {
+      const subParts = txt.split(/(?<=[.!?。;\n])\s+/).map((s) => s.trim()).filter((s) => s.length > 10);
+      if (subParts.length > 1) {
+        rawTextPool.push(...subParts);
+      } else {
+        rawTextPool.push(txt);
       }
     }
   }
@@ -1912,14 +1879,14 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
   for (let i = 0; i < safeTargetCount; i++) {
     const srcStart = Math.min(total - sourceClipDur, Math.max(0, Math.round(i * sourceStep)));
     const srcEnd = Math.min(total, srcStart + sourceClipDur);
-    const existing = scenes?.[i];
-    const fallbackSc = fallbackScenes?.[i % (fallbackScenes?.length || 1)];
+    const existing = cleanRawScenes[i];
+    const fallbackSc = fallbackScenes?.[i] || fallbackScenes?.[fallbackScenes.length - 1];
 
     let voice = "";
-    if (i < rawTextPool.length && rawTextPool[i]) {
-      voice = rawTextPool[i];
-    } else if (existing?.voiceover) {
+    if (existing?.voiceover && existing.voiceover.length > 15) {
       voice = existing.voiceover;
+    } else if (i < rawTextPool.length && rawTextPool[i] && rawTextPool[i].length > 15) {
+      voice = rawTextPool[i];
     } else if (fallbackSc?.voiceover) {
       voice = fallbackSc.voiceover;
     } else {
@@ -1971,7 +1938,7 @@ function parseAnalysis(text, probe, usage, customPrompt, options = {}, transcrip
     const rawVoiceScript = String(unwrapped?.voice_script || unwrapped?.voicescript || unwrapped?.script || unwrapped?.summary || "").trim();
 
     const targetDurMins = Number(options?.targetDurationMinutes) || (probe.durationSeconds > 300 ? 5.0 : Math.ceil(probe.durationSeconds / 60));
-    const targetSceneCount = Math.max(3, Math.round(targetDurMins * 3.0));
+    const targetSceneCount = targetDurMins <= 1 ? 4 : targetDurMins <= 3 ? 8 : targetDurMins <= 5 ? 14 : targetDurMins <= 10 ? 24 : targetDurMins <= 15 ? 35 : Math.max(4, Math.round(targetDurMins * 2.4));
 
     const cleanRawScenes = Array.isArray(rawScenes) ? rawScenes.filter((s) => s && (s.title || s.voiceover || s.detail || s.translation)) : [];
 
@@ -3595,12 +3562,12 @@ function resolveTargetDurationFromRules(durationSeconds, durationRules, fallback
         targetDurationMins = resolveTargetDurationFromRules(probe.durationSeconds, options.durationRules, targetDurationMins);
       }
       const targetSceneCount = isStoryRecap
-        ? Math.max(3, Math.round(targetDurationMins * 3.0))
-        : Math.max(3, Math.ceil(probe.durationSeconds / 20));
+        ? (targetDurationMins <= 1 ? 4 : targetDurationMins <= 3 ? 8 : targetDurationMins <= 5 ? 14 : targetDurationMins <= 10 ? 24 : targetDurationMins <= 15 ? 35 : Math.max(4, Math.round(targetDurationMins * 2.4)))
+        : Math.max(4, Math.ceil(probe.durationSeconds / 20));
 
       const targetWordsMin = Math.round(targetDurationMins * 220);
-      const targetWordsMax = Math.round(targetDurationMins * 280);
-      const wordsPerScene = Math.max(35, Math.round(targetWordsMax / targetSceneCount));
+      const targetWordsMax = Math.round(targetDurationMins * 260);
+      const wordsPerScene = Math.max(45, Math.round(targetWordsMax / targetSceneCount));
 
       const rawFileName = path.basename(localFilePath, path.extname(localFilePath));
       let cleanVideoTitle = rawFileName
