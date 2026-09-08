@@ -39,6 +39,9 @@ export type Job = {
   narratorGender?: "male" | "female";
   languages?: string[];
   keepOriginalAudio?: boolean;
+  interweaveAudio?: boolean;
+  originalAudioVolume?: number;
+  autoDucking?: boolean;
   emphasizeHook?: boolean;
   highlightOnly?: boolean;
   highlightMaxSeconds?: number;
@@ -256,8 +259,8 @@ export type DesktopRuntime = {
   pickImage?: () => Promise<string | null>;
   downloadVideo?: (url: string, operationId?: string) => Promise<string>;
   probeVideo?: (path: string) => Promise<VideoProbe>;
-  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId" | "customPrompt"> & { targetDurationMinutes?: number; durationMode?: "rules" | "fixed"; durationRules?: DurationMappingRule[]; providerPool?: ProviderPoolItem[]; analysisMode?: string; scriptStylePreset?: string }) => Promise<AnalysisResult>;
-  renderVideo?: (path: string, outputFolder?: string, options?: { mode?: string; startSeconds?: number; endSeconds?: number; outputFileName?: string; aspectRatio?: Job["aspectRatio"]; preferredEngine?: ToolPreferences["preferredEngine"]; subjectTracking?: boolean; keepOriginalAudio?: boolean; backgroundMusic?: boolean; backgroundMusicVolume?: number; backgroundMusicPath?: string; narrationText?: string; narratorEnabled?: boolean; narratorVoice?: string; narratorGender?: "male" | "female"; language?: string; providerId?: string; ttsProviderId?: string; subtitlesEnabled?: boolean; subtitleStyle?: Job["subtitleStyle"]; subtitleText?: string; subtitleSegments?: Array<{ start: number; end: number; text: string }>; logoPath?: string; logoPosition?: Job["logoPosition"]; logoOpacity?: number; scenes?: any[]; cutClips?: any[]; timelineClips?: any[] }, operationId?: string) => Promise<RenderResult>;
+  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "interweaveAudio" | "originalAudioVolume" | "autoDucking" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId" | "customPrompt"> & { targetDurationMinutes?: number; durationMode?: "rules" | "fixed"; durationRules?: DurationMappingRule[]; providerPool?: ProviderPoolItem[]; analysisMode?: string; scriptStylePreset?: string }) => Promise<AnalysisResult>;
+  renderVideo?: (path: string, outputFolder?: string, options?: { mode?: string; startSeconds?: number; endSeconds?: number; outputFileName?: string; aspectRatio?: Job["aspectRatio"]; preferredEngine?: ToolPreferences["preferredEngine"]; subjectTracking?: boolean; keepOriginalAudio?: boolean; interweaveAudio?: boolean; originalAudioVolume?: number; autoDucking?: boolean; emphasizeHook?: boolean; backgroundMusic?: boolean; backgroundMusicVolume?: number; backgroundMusicPath?: string; narrationText?: string; narratorEnabled?: boolean; narratorVoice?: string; narratorGender?: "male" | "female"; language?: string; providerId?: string; ttsProviderId?: string; subtitlesEnabled?: boolean; subtitleStyle?: Job["subtitleStyle"]; subtitleText?: string; subtitleSegments?: Array<{ start: number; end: number; text: string }>; logoPath?: string; logoPosition?: Job["logoPosition"]; logoOpacity?: number; scenes?: any[]; cutClips?: any[]; timelineClips?: any[] }, operationId?: string) => Promise<RenderResult>;
   mergeVideos?: (paths: string[], operationId?: string) => Promise<string>;
   onDownloadProgress?: (listener: (value: RuntimeProgress) => void) => () => void;
   onAnalysisProgress?: (listener: (value: RuntimeProgress) => void) => () => void;

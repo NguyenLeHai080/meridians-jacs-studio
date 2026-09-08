@@ -492,6 +492,32 @@ export function VideoAnalysisPage({
     return val >= 1 && val <= 10 ? val : 3;
   });
 
+  // Audio & Hook Mix Controls
+  const [interweaveAudio, setInterweaveAudio] = useState<boolean>(() => {
+    return localStorage.getItem("jacs_interweave_audio") !== "false";
+  });
+  const [emphasizeHook, setEmphasizeHook] = useState<boolean>(() => {
+    return localStorage.getItem("jacs_emphasize_hook") !== "false";
+  });
+  const [autoDucking, setAutoDucking] = useState<boolean>(() => {
+    return localStorage.getItem("jacs_auto_ducking") !== "false";
+  });
+
+  const updateInterweaveAudio = (val: boolean) => {
+    setInterweaveAudio(val);
+    try { localStorage.setItem("jacs_interweave_audio", String(val)); } catch {}
+  };
+
+  const updateEmphasizeHook = (val: boolean) => {
+    setEmphasizeHook(val);
+    try { localStorage.setItem("jacs_emphasize_hook", String(val)); } catch {}
+  };
+
+  const updateAutoDucking = (val: boolean) => {
+    setAutoDucking(val);
+    try { localStorage.setItem("jacs_auto_ducking", String(val)); } catch {}
+  };
+
   const updateDurationMode = (mode: "rules" | "fixed") => {
     setDurationMode(mode);
     try { localStorage.setItem("jacs_duration_mode", mode); } catch {}
@@ -578,6 +604,12 @@ export function VideoAnalysisPage({
       finalPrompt += `\n\n# YÊU CẦU TỰ ĐỘNG CẮT GHÉP VIDEO KHỚP LỜI KỂ KỊCH TÍNH (BẮT BUỘC):
 Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời gian "source_start" và "source_end" từ video gốc có hình ảnh/hành động kịch tính tương ứng với lời kể voice-over. Hệ thống sẽ tự động cắt các đoạn video này và ráp lên timeline khớp chuẩn xác với giọng đọc.`;
     }
+
+    if (emphasizeHook) {
+      finalPrompt += `\n\n# 🚨 ĐẶC BIỆT - PHÂN CẢNH 1 (HOOK CAO TRÀO 5-10S ĐẦU):
+Hãy nhặt đúng khoảnh khắc giật gân, nghẹt thở và kịch tính nhất của video (tiếng còi hú, tiếng súng, tiếng rượt đuổi hoặc câu thoại đắt giá của nhân vật/cảnh sát). Viết câu kể ngắn gọn, đanh thép để tạo điểm nhấn giật hook giữ chân người xem ngay trong 5-10 giây đầu tiên.`;
+    }
+
     return finalPrompt;
   }
 
@@ -1145,6 +1177,11 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
         narratorEnabled: true,
         narratorGender: "male",
         narratorVoice: voice,
+        keepOriginalAudio: interweaveAudio,
+        interweaveAudio: interweaveAudio,
+        originalAudioVolume: interweaveAudio ? 20 : 0,
+        autoDucking: autoDucking,
+        emphasizeHook: emphasizeHook,
         customPrompt: effectivePrompt.trim() || undefined,
         targetDurationMinutes: targetMins,
         durationMode: durationMode,
@@ -1163,8 +1200,14 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
           stage: "completed",
           progress: 100,
           analysis,
+          narratorEnabled: true,
           narratorVoice: voice,
           languages: [lang],
+          keepOriginalAudio: interweaveAudio,
+          interweaveAudio: interweaveAudio,
+          originalAudioVolume: interweaveAudio ? 20 : 0,
+          autoDucking: autoDucking,
+          emphasizeHook: emphasizeHook,
           customPrompt: prompt,
         });
       }
@@ -1284,7 +1327,14 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
     }));
 
     if (onUpdateJob) {
-      onUpdateJob(job.id, { timelineClips: clips });
+      onUpdateJob(job.id, {
+        timelineClips: clips,
+        keepOriginalAudio: job.keepOriginalAudio ?? interweaveAudio,
+        interweaveAudio: job.interweaveAudio ?? interweaveAudio,
+        originalAudioVolume: job.originalAudioVolume ?? (interweaveAudio ? 20 : 0),
+        autoDucking: job.autoDucking ?? autoDucking,
+        emphasizeHook: job.emphasizeHook ?? emphasizeHook,
+      });
     }
 
     if (onOpenTimeline) {
@@ -3157,10 +3207,114 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
                   </div>
                 </div>
 
-                {/* SECTION 4: Language Selection */}
+                {/* SECTION 4: Audio & Hook Mix Controls */}
+                <div style={{ background: "rgba(18, 23, 35, 0.75)", border: "1px solid rgba(255, 255, 255, 0.09)", borderRadius: "12px", padding: "13px 16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "13px", fontWeight: 800, color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <VolumeUpFill size={15} color="#fbbf24" /> 4. Tùy Chọn Âm Thanh & Hook Cao Trào
+                    </span>
+                    <span style={{ fontSize: "10.5px", color: "#34d399", fontWeight: 700 }}>
+                      ✓ Chuẩn Review Phim / Bodycam
+                    </span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px" }}>
+                    {/* Option 1: Đan tiếng gốc */}
+                    <label
+                      style={{
+                        background: interweaveAudio ? "rgba(245, 158, 11, 0.12)" : "rgba(255,255,255,0.03)",
+                        border: interweaveAudio ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "8px",
+                        padding: "8px 12px",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "10px",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={interweaveAudio}
+                        onChange={(e) => updateInterweaveAudio(e.target.checked)}
+                        style={{ accentColor: "#f59e0b", width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
+                      />
+                      <div>
+                        <strong style={{ fontSize: "12px", color: interweaveAudio ? "#fbbf24" : "#f8fafc", display: "block" }}>
+                          🎧 Đan tiếng gốc (~20% nền)
+                        </strong>
+                        <span style={{ fontSize: "10.5px", color: "#94a3b8", display: "block", marginTop: "2px" }}>
+                          Giữ âm thanh hiện trường, còi hú, tiếng súng/động cơ dưới nền voice review.
+                        </span>
+                      </div>
+                    </label>
+
+                    {/* Option 2: Hook cao trào */}
+                    <label
+                      style={{
+                        background: emphasizeHook ? "rgba(239, 68, 68, 0.12)" : "rgba(255,255,255,0.03)",
+                        border: emphasizeHook ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "8px",
+                        padding: "8px 12px",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "10px",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={emphasizeHook}
+                        onChange={(e) => updateEmphasizeHook(e.target.checked)}
+                        style={{ accentColor: "#ef4444", width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
+                      />
+                      <div>
+                        <strong style={{ fontSize: "12px", color: emphasizeHook ? "#fca5a5" : "#f8fafc", display: "block" }}>
+                          🚨 Hook: Cao trào mở màn
+                        </strong>
+                        <span style={{ fontSize: "10.5px", color: "#94a3b8", display: "block", marginTop: "2px" }}>
+                          Cảnh 1 giữ 100% tiếng gốc & kịch tính để hút người xem ngay 5-10s đầu.
+                        </span>
+                      </div>
+                    </label>
+
+                    {/* Option 3: Auto-Ducking Nhạc nền */}
+                    <label
+                      style={{
+                        background: autoDucking ? "rgba(16, 185, 129, 0.12)" : "rgba(255,255,255,0.03)",
+                        border: autoDucking ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "8px",
+                        padding: "8px 12px",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "10px",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={autoDucking}
+                        onChange={(e) => updateAutoDucking(e.target.checked)}
+                        style={{ accentColor: "#10b981", width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
+                      />
+                      <div>
+                        <strong style={{ fontSize: "12px", color: autoDucking ? "#6ee7b7" : "#f8fafc", display: "block" }}>
+                          🎵 Nhạc nền tự né (Ducking)
+                        </strong>
+                        <span style={{ fontSize: "10.5px", color: "#94a3b8", display: "block", marginTop: "2px" }}>
+                          Tự hạ âm lượng nhạc nền/tiếng video khi có Voice AI và nâng lên khi ngắt câu.
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* SECTION 5: Language Selection */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(18, 23, 35, 0.75)", border: "1px solid rgba(255, 255, 255, 0.09)", borderRadius: "12px", padding: "11px 16px", gap: "12px" }}>
                   <span style={{ fontSize: "12px", fontWeight: 700, color: "#cbd5e1", whiteSpace: "nowrap" }}>
-                    🌐 4. Ngôn ngữ kịch bản đầu ra:
+                    🌐 5. Ngôn ngữ kịch bản đầu ra:
                   </span>
                   <select
                     value={defaultLanguage}
