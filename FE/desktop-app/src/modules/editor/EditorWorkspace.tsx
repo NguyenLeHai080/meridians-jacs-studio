@@ -251,14 +251,26 @@ export function EditorWorkspace({
     }
   }, [sourceJob?.id, sourceJob?.narratorVoice, sourceJob?.narratorGender]);
 
+  const [removeOriginalBgm, setRemoveOriginalBgm] = useState<boolean>(() => {
+    return Boolean(sourceJob?.removeOriginalBgm || sourceJob?.isolateVocals);
+  });
+
+  useEffect(() => {
+    if (sourceJob) {
+      setRemoveOriginalBgm(Boolean(sourceJob.removeOriginalBgm || sourceJob.isolateVocals));
+    }
+  }, [sourceJob?.id, sourceJob?.removeOriginalBgm, sourceJob?.isolateVocals]);
+
   useEffect(() => {
     if (sourceJob) {
       if (sourceJob.keepOriginalAudio === false) {
         setTrackMutes((prev) => ({ ...prev, originalAudio: true }));
         setOriginalAudioVolume(0);
       } else {
-        const vol = typeof sourceJob.originalAudioVolume === "number" ? sourceJob.originalAudioVolume : 20;
-        setTrackMutes((prev) => ({ ...prev, originalAudio: false }));
+        const isNarratorOff = sourceJob.narratorEnabled === false;
+        const defaultVol = isNarratorOff ? 100 : 20;
+        const vol = typeof sourceJob.originalAudioVolume === "number" ? sourceJob.originalAudioVolume : defaultVol;
+        setTrackMutes((prev) => ({ ...prev, originalAudio: false, voice: isNarratorOff }));
         setOriginalAudioVolume(vol);
       }
     }
@@ -408,6 +420,7 @@ export function EditorWorkspace({
       return;
     }
 
+    const isNarratorOff = sourceJob.narratorEnabled === false;
     let cursorTime = 0;
     const initial: EditorScene[] = sourceJob.analysis.scenes.map((s, idx) => {
       const sub =
@@ -417,15 +430,26 @@ export function EditorWorkspace({
         s.detail ||
         "";
 
-      const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
-      const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-      const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
-      const sceneDur = voiceEstSec;
-
       let srcStartSec = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
       if (!Number.isFinite(srcStartSec) || srcStartSec < 0) {
         srcStartSec = Math.max(0, idx * 15);
       }
+
+      let sceneDur = 5.0;
+      if (isNarratorOff) {
+        const rawSrcEnd = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
+        if (Number.isFinite(rawSrcEnd) && rawSrcEnd > srcStartSec) {
+          sceneDur = Math.max(1.0, Math.round((rawSrcEnd - srcStartSec) * 10) / 10);
+        } else {
+          sceneDur = 5.0;
+        }
+      } else {
+        const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
+        const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
+        const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
+        sceneDur = voiceEstSec;
+      }
+
       const srcEndSec = srcStartSec + sceneDur;
 
       const tStart = cursorTime;
@@ -1368,7 +1392,9 @@ export function EditorWorkspace({
       interweaveAudio: !isOriginalAudioMuted && originalAudioVolume < 90,
       originalAudioVolume: isOriginalAudioMuted ? 0 : originalAudioVolume,
       autoDucking: true,
-      narratorEnabled: !isVoiceMuted && hasAnyNarration,
+      removeOriginalBgm: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
+      isolateVocals: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
+      narratorEnabled: sourceJob.narratorEnabled === false ? false : (!isVoiceMuted && hasAnyNarration),
       narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
       narratorVoice: effectiveVoice,
       subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
@@ -1426,7 +1452,9 @@ export function EditorWorkspace({
         interweaveAudio: !isOriginalAudioMuted && originalAudioVolume < 90,
         originalAudioVolume: isOriginalAudioMuted ? 0 : originalAudioVolume,
         autoDucking: true,
-        narratorEnabled: !isVoiceMuted && Boolean(sceneText),
+        removeOriginalBgm: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
+        isolateVocals: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
+        narratorEnabled: sourceJob.narratorEnabled === false ? false : (!isVoiceMuted && Boolean(sceneText)),
         narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
         narratorVoice: effectiveVoice,
         subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
@@ -2445,6 +2473,30 @@ export function EditorWorkspace({
                   }}
                   style={{ width: "100%", accentColor: "#f59e0b" }}
                 />
+              </div>
+
+              <div className="ts-audio-slider-block" style={{ marginTop: "6px", padding: "8px 10px", borderRadius: "8px", background: removeOriginalBgm ? "rgba(168, 85, 247, 0.12)" : "rgba(255,255,255,0.03)", border: removeOriginalBgm ? "1px solid rgba(168, 85, 247, 0.4)" : "1px solid rgba(255,255,255,0.06)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", userSelect: "none" }}>
+                  <input
+                    type="checkbox"
+                    checked={removeOriginalBgm}
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setRemoveOriginalBgm(val);
+                      setProjectMessage(val ? "🎼 Đã bật lọc bỏ nhạc nền gốc (giữ tiếng nói & SFX)" : "🎼 Đã tắt lọc bỏ nhạc nền gốc");
+                      setTimeout(() => setProjectMessage(""), 2000);
+                    }}
+                    style={{ accentColor: "#a855f7", width: "16px", height: "16px", cursor: "pointer" }}
+                  />
+                  <div>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: removeOriginalBgm ? "#c084fc" : "#e2e8f0", display: "block" }}>
+                      🎼 Lọc bỏ nhạc nền gốc (Vocal & SFX Isolation)
+                    </span>
+                    <span style={{ fontSize: "10px", color: "#94a3b8", display: "block" }}>
+                      Tách & khử nhạc phim/BGM có bản quyền, bảo toàn tiếng đối thoại, còi xe & âm thanh hiện trường
+                    </span>
+                  </div>
+                </label>
               </div>
 
               <div className="ts-audio-slider-block">

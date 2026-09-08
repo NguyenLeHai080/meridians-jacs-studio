@@ -3015,11 +3015,13 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
       musicInputIndex,
       keepOriginalAudio: options.keepOriginalAudio !== false,
       interweaveAudio: options.interweaveAudio !== false,
-      originalAudioVolume: typeof options.originalAudioVolume === "number" ? options.originalAudioVolume : (options.interweaveAudio !== false ? 20 : 0),
+      originalAudioVolume: typeof options.originalAudioVolume === "number" ? options.originalAudioVolume : (options.narratorEnabled === false ? 100 : (options.interweaveAudio !== false ? 20 : 0)),
       musicVolume: options.backgroundMusicVolume ?? 20,
       narrationTempo,
       duckOriginalAudio: validNarration,
       autoDucking: options.autoDucking !== false,
+      removeOriginalBgm: Boolean(options.removeOriginalBgm || options.isolateVocals),
+      isolateVocals: Boolean(options.isolateVocals),
     });
     if (audioFilter) {
       graph.push(audioFilter);

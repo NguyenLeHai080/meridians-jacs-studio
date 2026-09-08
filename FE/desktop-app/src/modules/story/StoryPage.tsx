@@ -266,12 +266,14 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
           : undefined,
       },
       durationSeconds: timelineCursor,
-      narratorEnabled: true,
+      narratorEnabled: selected.narratorEnabled ?? true,
       narratorGender: activeVoiceProfile?.gender || "male",
       narratorVoice: voiceId,
       languages: [voiceLanguage],
       requiresScriptApproval: true,
-      keepOriginalAudio: false,
+      keepOriginalAudio: selected.keepOriginalAudio ?? (selected.narratorEnabled === false ? true : false),
+      removeOriginalBgm: selected.removeOriginalBgm,
+      isolateVocals: selected.isolateVocals,
     });
     setSaved(true);
     showToast("✓ Đã lưu bản thảo kịch bản & cấu hình phòng thu giọng đọc!");
@@ -344,18 +346,20 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
         },
       },
       durationSeconds: timelineCursor,
-      narratorEnabled: true,
+      narratorEnabled: selected.narratorEnabled ?? true,
       narratorGender: activeVoiceProfile?.gender || "male",
       narratorVoice: voiceId,
       languages: [voiceLanguage],
       requiresScriptApproval: false,
       sourceOnly: false,
-      keepOriginalAudio: false,
+      keepOriginalAudio: selected.keepOriginalAudio ?? (selected.narratorEnabled === false ? true : false),
+      removeOriginalBgm: selected.removeOriginalBgm,
+      isolateVocals: selected.isolateVocals,
       status: "completed",
     });
 
     setSaved(true);
-    showToast("✓ Đã duyệt kịch bản thành công! Đã tắt âm thanh gốc để tập trung vào Voice thuyết minh.");
+    showToast(selected.narratorEnabled === false ? "✓ Đã duyệt kịch bản & phân cảnh thành công!" : "✓ Đã duyệt kịch bản thành công! Đã cấu hình Voice thuyết minh.");
 
     if (onOpenTimeline) {
       onOpenTimeline(selected.id);
