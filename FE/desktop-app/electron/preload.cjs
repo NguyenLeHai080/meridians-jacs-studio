@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   readJobs: () => ipcRenderer.invoke("runtime:read-jobs"),
   saveJobs: (value) => ipcRenderer.invoke("runtime:save-jobs", value),
   synthesizeSpeech: (text, language, gender, voice, rate) => ipcRenderer.invoke("runtime:synthesize-speech", text, language, gender, voice, rate),
+  isolateVocals: (value, operationId) => ipcRenderer.invoke("runtime:isolate-vocals", value, operationId),
   resolveVideoUrl: (url) => ipcRenderer.invoke("runtime:resolve-video-url", url),
   onDownloadProgress: (listener) => {
     const handler = (_event, payload) => listener(payload);

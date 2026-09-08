@@ -271,6 +271,7 @@ export type DesktopRuntime = {
   readJobs?: () => Promise<Job[]>;
   saveJobs?: (jobs: Job[]) => Promise<void>;
   synthesizeSpeech?: (text: string, language?: string, gender?: "male" | "female", voice?: string, rate?: number) => Promise<string | null>;
+  isolateVocals?: (path: string, operationId?: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
   revealPath: (value: string) => Promise<void>;
   copyText: (value: string) => Promise<void>;
 };
