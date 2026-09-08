@@ -1190,10 +1190,10 @@ export function EditorWorkspace({
     }
     let cursor = 0;
     const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-    const nextScenes = editorScenes.map((s, idx) => {
-      const rawText = stripSceneMetadata(s.subtitle || s.detail || "");
+    const nextScenes = editorScenes.map((s) => {
+      const rawText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "");
       const words = rawText.split(/\s+/).filter(Boolean).length;
-      const sceneDur = Math.max(4, Math.round(words / (2.8 * speed)));
+      const sceneDur = Math.max(3.5, Math.round((words / (2.8 * speed)) * 10) / 10);
       const startSec = cursor;
       const endSec = cursor + sceneDur;
       cursor = endSec;
@@ -1207,18 +1207,37 @@ export function EditorWorkspace({
         end: formatSeconds(endSec),
         timeStart: startSec,
         timeEnd: endSec,
-        voiceStart: formatSeconds(startSec),
-        voiceEnd: formatSeconds(endSec),
-        captionStart: formatSeconds(startSec),
-        captionEnd: formatSeconds(endSec),
+        voiceStart: formatSeconds(startSec, true),
+        voiceEnd: formatSeconds(endSec, true),
+        captionStart: formatSeconds(startSec, true),
+        captionEnd: formatSeconds(endSec, true),
         sourceStart: formatSeconds(srcStartSec),
         sourceEnd: formatSeconds(srcEndSec),
         sourceTimeStart: srcStartSec,
         sourceTimeEnd: srcEndSec,
+        subtitle: rawText,
+        voiceover: rawText,
+        translation: rawText,
       };
     });
 
     setScenesWithHistory(nextScenes);
+    if (onUpdateJob && sourceJob?.id) {
+      onUpdateJob(sourceJob.id, {
+        analysis: {
+          ...(sourceJob.analysis || {}),
+          summary: sourceJob.analysis?.summary || `Kịch bản phân cảnh (${nextScenes.length} cảnh)`,
+          score: sourceJob.analysis?.score ?? 9.5,
+          tokensUsed: sourceJob.analysis?.tokensUsed ?? 0,
+          creditsUsed: sourceJob.analysis?.creditsUsed ?? 0,
+          scenes: nextScenes.map((sc) => ({
+            ...sc,
+            voiceover: sc.subtitle || sc.voiceover,
+            translation: sc.subtitle || sc.translation,
+          })) as any,
+        },
+      });
+    }
     setProjectMessage(`🎯 Đã tự động căn khớp 100% thời lượng Voice, Hình ảnh và Phụ đề (${formatSeconds(cursor)})!`);
     setTimeout(() => setProjectMessage(""), 3500);
   };
@@ -3057,8 +3076,39 @@ export function EditorWorkspace({
                   rows={4}
                   value={activeScene.subtitle || ""}
                   onChange={(e) => {
-                    const nextScenes = editorScenes.map((s) => (s.id === activeSceneId ? { ...s, subtitle: e.target.value } : s));
+                    const newText = e.target.value;
+                    const wordCount = newText.split(/\s+/).filter(Boolean).length;
+                    const voiceEstSec = Math.max(2.5, Math.round((wordCount / 2.75) * 10) / 10);
+                    const nextScenes = editorScenes.map((s) => {
+                      if (s.id !== activeSceneId) return s;
+                      const vStart = toSeconds(s.voiceStart || s.start);
+                      const vEnd = vStart + voiceEstSec;
+                      return {
+                        ...s,
+                        subtitle: newText,
+                        voiceover: newText,
+                        translation: newText,
+                        voiceEnd: formatSeconds(vEnd, true),
+                        captionEnd: formatSeconds(vEnd, true),
+                      };
+                    });
                     setScenesWithHistory(nextScenes);
+                    if (onUpdateJob && sourceJob?.id) {
+                      onUpdateJob(sourceJob.id, {
+                        analysis: {
+                          ...(sourceJob.analysis || {}),
+                          summary: sourceJob.analysis?.summary || `Kịch bản phân cảnh (${nextScenes.length} cảnh)`,
+                          score: sourceJob.analysis?.score ?? 9.5,
+                          tokensUsed: sourceJob.analysis?.tokensUsed ?? 0,
+                          creditsUsed: sourceJob.analysis?.creditsUsed ?? 0,
+                          scenes: nextScenes.map((sc) => ({
+                            ...sc,
+                            voiceover: sc.subtitle || sc.voiceover,
+                            translation: sc.subtitle || sc.translation,
+                          })) as any,
+                        },
+                      });
+                    }
                   }}
                   placeholder="Nhập lời thoại AI lồng tiếng cho phân cảnh này..."
                   className="ts-scene-script-input"
@@ -3071,8 +3121,38 @@ export function EditorWorkspace({
                     className="ts-refine-hook-btn"
                     onClick={() => {
                       const polished = `Khám phá ngay: ${activeScene.subtitle || "Điểm nhấn không thể bỏ qua!"}`;
-                      const updated = editorScenes.map((s) => (s.id === activeSceneId ? { ...s, subtitle: polished } : s));
+                      const wordCount = polished.split(/\s+/).filter(Boolean).length;
+                      const voiceEstSec = Math.max(2.5, Math.round((wordCount / 2.75) * 10) / 10);
+                      const updated = editorScenes.map((s) => {
+                        if (s.id !== activeSceneId) return s;
+                        const vStart = toSeconds(s.voiceStart || s.start);
+                        const vEnd = vStart + voiceEstSec;
+                        return {
+                          ...s,
+                          subtitle: polished,
+                          voiceover: polished,
+                          translation: polished,
+                          voiceEnd: formatSeconds(vEnd, true),
+                          captionEnd: formatSeconds(vEnd, true),
+                        };
+                      });
                       setScenesWithHistory(updated);
+                      if (onUpdateJob && sourceJob?.id) {
+                        onUpdateJob(sourceJob.id, {
+                          analysis: {
+                            ...(sourceJob.analysis || {}),
+                            summary: sourceJob.analysis?.summary || `Kịch bản phân cảnh (${updated.length} cảnh)`,
+                            score: sourceJob.analysis?.score ?? 9.5,
+                            tokensUsed: sourceJob.analysis?.tokensUsed ?? 0,
+                            creditsUsed: sourceJob.analysis?.creditsUsed ?? 0,
+                            scenes: updated.map((sc) => ({
+                              ...sc,
+                              voiceover: sc.subtitle || sc.voiceover,
+                              translation: sc.subtitle || sc.translation,
+                            })) as any,
+                          },
+                        });
+                      }
                       setProjectMessage("✨ AI đã tối ưu câu thoại của cảnh này!");
                       setTimeout(() => setProjectMessage(""), 2000);
                     }}
