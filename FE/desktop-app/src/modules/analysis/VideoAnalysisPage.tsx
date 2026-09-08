@@ -1472,11 +1472,27 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
   }
 
   function handlePreviewVoice(_jobId: string, _sceneId: string, text?: string) {
-    if (!text?.trim()) return;
+    const rawClean = String(text || "")
+      .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part|Hồi)\s*\d+[^\]]*\]/gi, "")
+      .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part|Hồi)\s*\d+[:\-\.]\s*/gi, " ")
+      .replace(/\[\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\]/g, "")
+      .replace(/\(\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\)/g, "")
+      .replace(/(?:tại|ở|từ)\s+mốc\s+\d{1,2}[:.]\d{2}(?:\s*đến\s+\d{1,2}[:.]\d{2})?,?\s*/gi, "")
+      .replace(/(?:vào\s+)?lúc\s+\d{1,2}[:.]\d{2},?\s*/gi, "")
+      .replace(/\(\d{1,2}[:.]\d{2}\)/g, "")
+      .replace(/\[[^\]]{1,60}\]/g, "")
+      .replace(/#\d+\b/g, "")
+      .replace(/["'“”«»‘’`\\{}[\]^~*#_<>]/g, "")
+      .replace(/\.{2,}/g, ".")
+      .replace(/,{2,}/g, ",")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!rawClean) return;
     try {
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
+        const utterance = new SpeechSynthesisUtterance(rawClean);
         utterance.lang = "vi-VN";
         utterance.rate = 1.0;
         window.speechSynthesis.speak(utterance);
