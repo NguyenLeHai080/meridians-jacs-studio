@@ -1116,7 +1116,7 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
   const targetDurMinutes = Number(options?.targetDurationMinutes) || (duration > 300 ? 5 : Math.max(1, Math.ceil(duration / 60)));
   const targetDurSeconds = Math.round(targetDurMinutes * 60);
 
-  const targetCount = Math.max(3, Math.round(targetDurSeconds / 22));
+  const targetCount = Math.max(3, Math.min(16, Math.round(targetDurSeconds / 22)));
   const targetClipDuration = Math.max(8, Math.round(targetDurSeconds / targetCount));
   const sourceStep = Math.max(4, (duration - targetClipDuration) / Math.max(1, targetCount - 1));
 
@@ -1126,9 +1126,10 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
   const rawTitle = options?.videoTitle || probe?.filename || "Video";
   let cleanTitle = String(rawTitle)
     .replace(/\.[^/.]+$/, "")
-    .replace(/^(?:ytdown(?:loader)?(?:\.com)?|youtube|media|video|download|jacs|yt)[_.-]*/gi, "")
+    .replace(/^(?:save(?:from)?|ytdown(?:loader)?(?:\.com)?|youtube|media|video|download|jacs|yt|new)[_.\s-]*/gi, "")
     .replace(/[-_.]+/g, " ")
-    .replace(/\b(?:1080p|720p|480p|4k|hd|mp4|mkv|avi|mov|webm)\b/gi, "")
+    .replace(/\b(?:1080p|720p|480p|4k|hd|mp4|mkv|avi|mov|webm|new|official|video)\b/gi, "")
+    .replace(/\b[a-zA-Z0-9]{8,15}\b$/g, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!cleanTitle || cleanTitle.length < 3) cleanTitle = "Tác Phẩm & Nội Dung Đặc Sắc";
