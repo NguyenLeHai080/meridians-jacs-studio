@@ -52,7 +52,7 @@ import { BrandPage } from "./modules/brand";
 import { SourcesPage } from "./modules/sources";
 import { BillingHistoryPage } from "./modules/billing";
 import { SystemLogsPage } from "./modules/logs";
-import { CreditsUsagePage } from "./modules/credits";
+import { CreditsUsagePage, CreditTopupModal } from "./modules/credits";
 import { LicenseRenewalModal } from "./modules/renewal";
 import { LegalTermsModal } from "./modules/legal";
 
@@ -74,6 +74,7 @@ export type PageProps = {
   onAnalyzeSource: (job: Job) => void;
   analysisSource?: Job;
   onOpenRenewal?: () => void;
+  onOpenTopup?: () => void;
   creditBalance?: number;
   allowedModels?: string[] | null;
   onSyncAdminGrant?: () => void;
@@ -145,12 +146,13 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
   render: ({ jobs, navigate }) => (
     <RenderPage jobs={jobs} onNavigate={navigate} />
   ),
-  usage: ({ jobs, navigate, onOpenTimeline, onOpenRenewal, creditBalance, allowedModels, onSyncAdminGrant }) => (
+  usage: ({ jobs, navigate, onOpenTimeline, onOpenRenewal, onOpenTopup, creditBalance, allowedModels, onSyncAdminGrant }) => (
     <CreditsUsagePage
       jobs={jobs}
       onNavigate={navigate}
       onOpenTimeline={onOpenTimeline}
       onOpenRenewal={onOpenRenewal}
+      onOpenTopup={onOpenTopup}
       creditBalance={creditBalance}
       allowedModels={allowedModels}
       onSyncAdminGrant={onSyncAdminGrant}
@@ -182,6 +184,7 @@ export function App() {
   const [analysisSourceId, setAnalysisSourceId] = useState<string | undefined>();
   const [timelineSourceId, setTimelineSourceId] = useState<string | undefined>();
   const [showRenewalModal, setShowRenewalModal] = useState(false);
+  const [showCreditTopupModal, setShowCreditTopupModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [machineInfo, setMachineInfo] = useState<MachineInfo | null>(null);
   const [licenseExpiresAt, setLicenseExpiresAt] = useState<string | null>(null);
@@ -297,6 +300,7 @@ export function App() {
   // Fetch remote tool branding & menu lock configuration (every 60s)
   useEffect(() => {
     const fetchConfig = async () => {
+      if (active === "usage") return;
       try {
         const res = await fetch("https://jacs-studio.nexoratech.com.vn/api/v1/client/config");
         if (res.ok) {
@@ -312,7 +316,7 @@ export function App() {
     fetchConfig();
     const interval = setInterval(fetchConfig, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [active]);
 
   // Fetch machine info and periodic heartbeat (every 60 seconds)
   useEffect(() => {
@@ -328,16 +332,19 @@ export function App() {
     };
     initRuntimeInfo();
     const interval = setInterval(() => {
+      // Khi đang xem màn hình Credits ("usage"), tắt hoàn toàn tự động gọi API ngầm, chỉ làm mới khi người dùng bấm nút
+      if (active === "usage") return;
       void syncAdminGrant(false);
     }, 60000);
     return () => clearInterval(interval);
-  }, [syncAdminGrant]);
+  }, [active, syncAdminGrant]);
 
   // Automatic Background OTA Update Check & Progress Listener
   useEffect(() => {
     const runtime = getRuntime();
 
     const checkUpdate = async () => {
+      if (active === "usage") return;
       try {
         if (runtime.checkForUpdate) {
           const res = await runtime.checkForUpdate("stable");
@@ -390,7 +397,7 @@ export function App() {
       clearInterval(interval);
       unsub?.();
     };
-  }, []);
+  }, [active, machineInfo?.appVersion]);
 
   const persistJobs = (value: Job[]) => {
     void getRuntime().saveJobs?.(value);
@@ -655,10 +662,22 @@ export function App() {
     setActive("analysis");
   };
 
-  const openTimeline = (sourceId?: string) => {
+  const openTimeline = useCallback((sourceId?: string) => {
     if (sourceId) setTimelineSourceId(sourceId);
     setActive("timeline");
-  };
+  }, []);
+
+  const handleOpenRenewalModal = useCallback(() => {
+    setShowRenewalModal(true);
+  }, []);
+
+  const handleOpenCreditTopupModal = useCallback(() => {
+    setShowCreditTopupModal(true);
+  }, []);
+
+  const handleSyncAdminGrantFromPage = useCallback(() => {
+    void syncAdminGrant(true);
+  }, [syncAdminGrant]);
 
   const analysisSource = useMemo(() => {
     return analysisSourceId ? jobs.find((j) => j.id === analysisSourceId) : undefined;
@@ -729,6 +748,7 @@ export function App() {
             void syncAdminGrant(true);
           }}
           onOpenRenewal={() => setShowRenewalModal(true)}
+          onOpenTopup={handleOpenCreditTopupModal}
           onOpenTerms={() => setShowTermsModal(true)}
           onOpenSettings={() => setActive("settings")}
           onOpenActivation={() => setActive("activation")}
@@ -855,10 +875,11 @@ export function App() {
               onPreferencesChanged={setPreferences}
               onAnalyzeSource={onAnalyzeSource}
               analysisSource={analysisSource}
-              onOpenRenewal={() => setShowRenewalModal(true)}
+              onOpenRenewal={handleOpenRenewalModal}
+              onOpenTopup={handleOpenCreditTopupModal}
               creditBalance={creditBalance}
               allowedModels={allowedModels}
-              onSyncAdminGrant={() => void syncAdminGrant(true)}
+              onSyncAdminGrant={handleSyncAdminGrantFromPage}
             />
           </ErrorBoundary>
         </main>
@@ -886,6 +907,14 @@ export function App() {
               }
             })();
           }}
+        />
+
+        <CreditTopupModal
+          isOpen={showCreditTopupModal}
+          onClose={() => setShowCreditTopupModal(false)}
+          onSyncAdminGrant={() => void syncAdminGrant(true)}
+          currentKey={licensePlanName || "JACS-PRO-KEY"}
+          currentBalance={creditBalance}
         />
 
         <LegalTermsModal

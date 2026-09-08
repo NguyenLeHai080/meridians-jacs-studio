@@ -22,7 +22,7 @@ export const LicenseWarningBanner: React.FC<{
             ⚠️ <strong>CẢNH BÁO BẢN QUYỀN:</strong> {msg}
           </span>
           <span className="marquee-item">
-            ⚠️ <strong>CẢNH BẢN QUYỀN:</strong> {msg}
+            ⚠️ <strong>CẢNH BÁO BẢN QUYỀN:</strong> {msg}
           </span>
         </div>
       </div>

@@ -25,8 +25,20 @@ function providerPublic(record) {
 }
 
 function effectiveCapabilities(record) {
-  const capabilities = Array.isArray(record?.capabilities) ? record.capabilities : [];
-  return [...new Set(capabilities)];
+  if (record?.providerType === "elevenlabs" || String(record?.name || "").toLowerCase().includes("elevenlabs")) {
+    return ["tts"];
+  }
+  const isWhisperOnly = record?.providerType === "whisper" || (String(record?.model || "").toLowerCase().includes("whisper") && !String(record?.model || "").toLowerCase().includes("llama"));
+  if (isWhisperOnly) {
+    return ["transcription"];
+  }
+  if (Array.isArray(record?.capabilities) && record.capabilities.length > 0) {
+    return [...new Set(record.capabilities)];
+  }
+  if (record?.providerType === "groq") {
+    return ["transcription", "analysis"];
+  }
+  return ["analysis", "vision"];
 }
 
 function validateProviderDraft(value) {
@@ -76,7 +88,28 @@ function createProviderStore({ filePath, safeStorage, fsImpl = fs, cryptoImpl = 
       const decrypted = safeStorage.decryptString(fsImpl.readFileSync(filePath));
       const records = JSON.parse(decrypted);
       if (!Array.isArray(records)) throw new Error("Invalid provider storage");
-      return records;
+      return records.map((r) => {
+        if (!r || typeof r !== "object") return r;
+        const low = `${r.name || ""} ${r.model || ""} ${r.providerType || ""}`.toLowerCase();
+        let pType = r.providerType || "openai";
+        if (low.includes("gemini") || low.includes("google")) pType = "gemini";
+        else if (low.includes("claude") || low.includes("anthropic") || low.includes("opus") || low.includes("sonnet")) pType = "anthropic";
+        else if (low.includes("deepseek")) pType = "deepseek";
+        else if (low.includes("groq") || low.includes("llama")) pType = "groq";
+        else if (low.includes("eleven")) pType = "elevenlabs";
+        else if (low.includes("whisper")) pType = "whisper";
+
+        let cleanName = String(r.name || "").trim();
+        if (!cleanName || cleanName.startsWith("(") || (r.model && cleanName === r.model)) {
+          const brand = pType === "gemini" ? "Google Gemini" : pType === "anthropic" ? "Anthropic Claude" : pType === "deepseek" ? "DeepSeek" : pType === "groq" ? "Groq Cloud" : "OpenAI";
+          cleanName = r.isManaged ? `👑 ${brand} (${r.model || "Mặc định"})` : `${brand} (${r.model || "BYOK"})`;
+        }
+        return {
+          ...r,
+          name: cleanName,
+          providerType: pType,
+        };
+      });
     } catch (error) {
       if (error instanceof SyntaxError) throw new Error("File provider đã hỏng; không thể giải mã cấu hình");
       throw error;
@@ -94,6 +127,12 @@ function createProviderStore({ filePath, safeStorage, fsImpl = fs, cryptoImpl = 
   return {
     isAvailable: encryptionAvailable,
     list() { return readRecords().map(providerPublic); },
+    listRaw() {
+      return readRecords().map((record) => ({
+        ...record,
+        capabilities: effectiveCapabilities(record),
+      }));
+    },
     find(id) {
       const record = readRecords().find((item) => item.id === String(id));
       return record ? { ...record, capabilities: effectiveCapabilities(record) } : undefined;
@@ -128,22 +167,55 @@ function createProviderStore({ filePath, safeStorage, fsImpl = fs, cryptoImpl = 
       if (!Array.isArray(managedProviders)) return;
       const records = readRecords();
       let changed = false;
+
+      function detectProviderType(item) {
+        const str = `${item.provider_type || item.providerType || ""} ${item.provider_name || ""} ${item.name || ""} ${item.model || ""}`.toLowerCase();
+        if (str.includes("gemini") || str.includes("google")) return "gemini";
+        if (str.includes("claude") || str.includes("anthropic") || str.includes("opus") || str.includes("sonnet")) return "anthropic";
+        if (str.includes("deepseek")) return "deepseek";
+        if (str.includes("groq") || str.includes("llama")) return "groq";
+        if (str.includes("eleven")) return "elevenlabs";
+        if (str.includes("whisper")) return "whisper";
+        return "openai";
+      }
+
+      function defaultBaseUrl(pType) {
+        switch (pType) {
+          case "gemini": return "https://generativelanguage.googleapis.com/v1beta";
+          case "anthropic": return "https://api.anthropic.com/v1";
+          case "deepseek": return "https://api.deepseek.com/v1";
+          case "groq": return "https://api.groq.com/openai/v1";
+          case "elevenlabs": return "https://api.elevenlabs.io/v1";
+          default: return "https://api.openai.com/v1";
+        }
+      }
+
       for (const mp of managedProviders) {
-        if (!mp || !mp.id) continue;
-        const index = records.findIndex((r) => r.id === mp.id || (r.isManaged && r.name === mp.name));
+        if (!mp || (!mp.id && !mp.model)) continue;
+        const pType = detectProviderType(mp);
+        const pModel = String(mp.model || "").trim();
+        let cleanName = String(mp.name || "").trim();
+        if (!cleanName || cleanName.startsWith("(")) {
+          const pBrand = mp.provider_name || (pType === "gemini" ? "Google Gemini" : pType === "anthropic" ? "Anthropic Claude" : pType === "deepseek" ? "DeepSeek" : pType === "groq" ? "Groq Cloud" : "OpenAI");
+          cleanName = `${pBrand} (${pModel || "Mặc định"})`;
+        }
+
+        const index = records.findIndex((r) => r.id === mp.id || (r.isManaged && (r.name === cleanName || r.model === pModel)));
         const draft = {
-          id: index >= 0 ? records[index].id : mp.id,
-          name: mp.name,
-          providerType: mp.providerType || "openai-compatible",
-          baseUrl: mp.baseUrl,
-          model: mp.model,
-          ttsModel: mp.ttsModel || "",
-          transcriptionModel: mp.transcriptionModel || "",
-          capabilities: Array.isArray(mp.capabilities) ? mp.capabilities : ["analysis", "vision"],
-          enabled: mp.enabled !== false,
-          apiKey: mp.apiKey || "MANAGED_ADMIN_KEY",
+          id: index >= 0 ? records[index].id : (mp.id || cryptoImpl.randomUUID()),
+          name: cleanName,
+          providerType: pType,
+          baseUrl: mp.baseUrl || defaultBaseUrl(pType),
+          model: pModel,
+          ttsModel: mp.ttsModel || mp.tts_model || "",
+          transcriptionModel: mp.transcriptionModel || mp.transcription_model || "",
+          capabilities: Array.isArray(mp.capabilities) && mp.capabilities.length > 0
+            ? mp.capabilities
+            : (pType === "elevenlabs" || cleanName.toLowerCase().includes("elevenlabs") ? ["tts"] : (pType === "whisper" ? ["transcription"] : ["analysis", "vision"])),
+          enabled: mp.enabled !== false && mp.is_selling !== false,
+          apiKey: mp.apiKey || (index >= 0 && records[index].apiKey) || "MANAGED_ADMIN_KEY",
           isManaged: true,
-          isOfficial: Boolean(mp.isOfficial),
+          isOfficial: Boolean(mp.isOfficial || mp.is_official),
           managedTier: mp.managedTier || "Enterprise",
           creditBalance: typeof mp.creditBalance === "number" ? mp.creditBalance : undefined,
           availableModels: Array.isArray(mp.availableModels) ? mp.availableModels : undefined,
@@ -151,7 +223,7 @@ function createProviderStore({ filePath, safeStorage, fsImpl = fs, cryptoImpl = 
         if (index >= 0) {
           records[index] = { ...records[index], ...draft };
         } else {
-          records.unshift(draft);
+          records.push(draft);
         }
         changed = true;
       }

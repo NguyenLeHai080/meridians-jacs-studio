@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "../../shared/Icon";
 import { NAV_ITEMS, type NavKey, type MachineInfo } from "../../core/types";
 import { isNativeRuntime } from "../../core/runtime";
@@ -19,6 +20,7 @@ export interface NavbarProps {
   onRefresh?: () => void;
   loading?: boolean;
   onOpenRenewal?: () => void;
+  onOpenTopup?: () => void;
   onOpenTerms?: () => void;
   onOpenSettings?: () => void;
   onOpenActivation?: () => void;
@@ -39,6 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onRefresh,
   loading = false,
   onOpenRenewal,
+  onOpenTopup,
   onOpenTerms,
   onOpenSettings,
   onOpenActivation,
@@ -305,19 +308,20 @@ export const Navbar: React.FC<NavbarProps> = ({
         )}
       </div>
 
-      {/* Credit & AI Grant Details Modal */}
-      {showCreditModal && (
+      {/* Credit & AI Grant Details Modal (Rendered in Portal to escape navbar stacking context) */}
+      {showCreditModal && typeof document !== "undefined" && createPortal(
         <div
           style={{
             position: "fixed",
             inset: 0,
             background: "rgba(0, 0, 0, 0.75)",
-            backdropFilter: "blur(6px)",
+            backdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            zIndex: 99999,
+            zIndex: 999999,
             padding: "20px",
+            animation: "fadeIn 0.2s ease",
           }}
           onClick={() => setShowCreditModal(false)}
         >
@@ -326,11 +330,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               background: "#141724",
               border: "1px solid rgba(245, 158, 11, 0.4)",
               borderRadius: "16px",
-              width: "500px",
-              maxWidth: "100%",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+              width: "520px",
+              maxWidth: "92vw",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
               overflow: "hidden",
               color: "#f8fafc",
+              position: "relative",
+              zIndex: 1000000,
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -359,7 +365,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCreditModal(false)}
-                style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "18px", cursor: "pointer" }}
+                style={{ background: "none", border: "none", color: "#94a3b8", fontSize: "20px", cursor: "pointer", padding: "4px" }}
               >
                 ✕
               </button>
@@ -373,14 +379,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   background: "rgba(245, 158, 11, 0.08)",
                   border: "1px solid rgba(245, 158, 11, 0.3)",
                   borderRadius: "12px",
-                  padding: "16px",
+                  padding: "18px",
                   textAlign: "center",
                 }}
               >
                 <div style={{ fontSize: "12px", color: "#f59e0b", fontWeight: 700, textTransform: "uppercase" }}>
                   Số Dư AI Credit Hiện Tại
                 </div>
-                <div style={{ fontSize: "32px", fontWeight: 900, color: "#fbbf24", margin: "6px 0", fontFamily: "monospace" }}>
+                <div style={{ fontSize: "34px", fontWeight: 900, color: "#fbbf24", margin: "6px 0", fontFamily: "monospace" }}>
                   {Number(creditBalance || 0).toLocaleString("vi-VN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} <span style={{ fontSize: "16px", color: "#f59e0b" }}>Credits</span>
                 </div>
                 <div style={{ fontSize: "12px", color: "#94a3b8" }}>
@@ -430,36 +436,83 @@ export const Navbar: React.FC<NavbarProps> = ({
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
+                flexWrap: "wrap",
+                gap: "10px",
               }}
             >
-              <span style={{ fontSize: "11.5px", color: "#64748b" }}>
-                💡 Khi Admin nạp tiền, bấm Đồng Bộ để nạp ngay
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreditModal(false);
+                  onNavigate("usage");
+                }}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  color: "#f8fafc",
+                  padding: "7px 14px",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                📊 Xem Chi Tiết Mức Dùng ➔
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
                   onSyncAdminGrant?.();
+                }}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  padding: "7px 12px",
+                  borderRadius: "8px",
+                  color: "#f8fafc",
+                  fontSize: "12px",
+                  fontWeight: 750,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                🔄 Đồng Bộ
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   setShowCreditModal(false);
+                  if (onOpenTopup) {
+                    onOpenTopup();
+                  } else {
+                    onNavigate("usage");
+                  }
                 }}
                 style={{
                   background: "linear-gradient(135deg, #d97706, #f59e0b)",
                   border: "none",
                   padding: "8px 16px",
                   borderRadius: "8px",
-                  color: "#12151f",
+                  color: "#0f172a",
                   fontSize: "12px",
-                  fontWeight: 850,
+                  fontWeight: 900,
                   cursor: "pointer",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "6px",
+                  boxShadow: "0 0 12px rgba(245, 158, 11, 0.35)",
                 }}
               >
-                🔄 Đồng Bộ Từ Admin Ngay
+                ⚡ Nạp Thêm Credits
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </header>
   );

@@ -237,29 +237,29 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
 
     # 2. MICROSOFT NEURAL PROSODY ENGINE (High-Speed Authentic Prosody Profiles)
     voice_profiles = {
-        "vi-adam-review": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
-        "vi-namminh": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "-2Hz"},
-        "vi-mystery-deep": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-6Hz"},
-        "vi-hoaimy-review": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+1Hz"},
+        "vi-adam-review": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "+0Hz"},
+        "vi-namminh": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "+0Hz"},
+        "vi-mystery-deep": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-2Hz"},
+        "vi-hoaimy-review": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+0Hz"},
         "vi-hoaimy": {"voice": "vi-VN-HoaiMyNeural", "rate": "+4%", "pitch": "+0Hz"},
-        "vi-baolong": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+2Hz"},
-        "vi-thihuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "-2Hz"},
-        "vbee-manhdung": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
-        "vbee-minhhoang": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+2Hz"},
-        "vbee-maiphuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+1Hz"},
-        "vbee-ngochoang": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "-2Hz"},
-        "eleven-adam": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "-2Hz"},
-        "eleven-charlie": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-6Hz"},
-        "eleven-george": {"voice": "vi-VN-NamMinhNeural", "rate": "+8%", "pitch": "-3Hz"},
-        "eleven-rachel": {"voice": "vi-VN-HoaiMyNeural", "rate": "+10%", "pitch": "+1Hz"},
-        "vi-male": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "-2Hz"},
+        "vi-baolong": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+0Hz"},
+        "vi-thihuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "+0Hz"},
+        "vbee-manhdung": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "+0Hz"},
+        "vbee-minhhoang": {"voice": "vi-VN-NamMinhNeural", "rate": "+6%", "pitch": "+0Hz"},
+        "vbee-maiphuong": {"voice": "vi-VN-HoaiMyNeural", "rate": "+14%", "pitch": "+0Hz"},
+        "vbee-ngochoang": {"voice": "vi-VN-HoaiMyNeural", "rate": "-2%", "pitch": "+0Hz"},
+        "eleven-adam": {"voice": "vi-VN-NamMinhNeural", "rate": "+12%", "pitch": "+0Hz"},
+        "eleven-charlie": {"voice": "vi-VN-NamMinhNeural", "rate": "+0%", "pitch": "-2Hz"},
+        "eleven-george": {"voice": "vi-VN-NamMinhNeural", "rate": "+8%", "pitch": "+0Hz"},
+        "eleven-rachel": {"voice": "vi-VN-HoaiMyNeural", "rate": "+10%", "pitch": "+0Hz"},
+        "vi-male": {"voice": "vi-VN-NamMinhNeural", "rate": "+10%", "pitch": "+0Hz"},
         "vi-female": {"voice": "vi-VN-HoaiMyNeural", "rate": "+5%", "pitch": "+0Hz"},
-        "en-adam": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
-        "en-guy": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
+        "en-adam": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "+0Hz"},
+        "en-guy": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "+0Hz"},
         "en-brian": {"voice": "en-US-BrianNeural", "rate": "+0%", "pitch": "+0Hz"},
         "en-jenny": {"voice": "en-US-JennyNeural", "rate": "+0%", "pitch": "+0Hz"},
-        "en-aria": {"voice": "en-US-AriaNeural", "rate": "+5%", "pitch": "+1Hz"},
-        "en-male": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "-4Hz"},
+        "en-aria": {"voice": "en-US-AriaNeural", "rate": "+5%", "pitch": "+0Hz"},
+        "en-male": {"voice": "en-US-GuyNeural", "rate": "+0%", "pitch": "+0Hz"},
         "en-female": {"voice": "en-US-JennyNeural", "rate": "+0%", "pitch": "+0Hz"},
         "ja-male": {"voice": "ja-JP-KeitaNeural", "rate": "+0%", "pitch": "+0Hz"},
         "ja-female": {"voice": "ja-JP-NanamiNeural", "rate": "+0%", "pitch": "+0Hz"},
@@ -290,6 +290,13 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
             if chunk.get("type") == "audio" and "data" in chunk:
                 audio_chunks.append(chunk["data"])
 
+        if not audio_chunks:
+            # Fallback with default rate/pitch
+            communicate = edge_tts.Communicate(clean_text, voice_name, rate="+0%", pitch="+0Hz")
+            async for chunk in communicate.stream():
+                if chunk.get("type") == "audio" and "data" in chunk:
+                    audio_chunks.append(chunk["data"])
+
         if audio_chunks:
             audio_data = b"".join(audio_chunks)
             if len(audio_data) > 100:
@@ -298,8 +305,20 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
                 except OSError as write_err:
                     logger.debug("Failed to write TTS cache: %s", write_err)
                 return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralProsody"})
-    except (OSError, RuntimeError, ValueError) as e:
+    except Exception as e:
         logger.warning("TTS Stream Error: %s", e)
+        try:
+            fallback_voice = "vi-VN-NamMinhNeural" if payload.gender == "male" else "vi-VN-HoaiMyNeural"
+            communicate = edge_tts.Communicate(clean_text, fallback_voice, rate="+0%", pitch="+0Hz")
+            audio_chunks = []
+            async for chunk in communicate.stream():
+                if chunk.get("type") == "audio" and "data" in chunk:
+                    audio_chunks.append(chunk["data"])
+            if audio_chunks:
+                audio_data = b"".join(audio_chunks)
+                return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralFallback"})
+        except Exception as retry_err:
+            logger.error("TTS Ultimate Fallback Error: %s", retry_err)
 
     return Response(content=b"", media_type="audio/mpeg", status_code=500)
 

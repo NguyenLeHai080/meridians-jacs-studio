@@ -53,20 +53,25 @@ interface ProviderModelItem {
 }
 
 const DEFAULT_MODELS_LIST: { id: string; name: string; provider: string; tag: string }[] = [
-  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Tốc độ cao & Tiết kiệm)", provider: "Google Gemini", tag: "⚡ Khuyên dùng" },
+  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Tốc độ cao & Tiết kiệm 1M context)", provider: "Google Gemini", tag: "⚡ Khuyên dùng" },
   { id: "gemini-flash-latest", name: "Gemini Flash Latest (Bản mới nhất)", provider: "Google Gemini", tag: "Mới" },
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Suy luận đỉnh cao 2M context)", provider: "Google Gemini", tag: "Pro 2M" },
   { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro (Phân tích chuyên sâu 2M context)", provider: "Google Gemini", tag: "Pro" },
-  { id: "gpt-5.6-sol", name: "GPT-5.6 Sol (Mô hình kịch bản đỉnh cao)", provider: "OpenAI", tag: "⭐ VIP" },
+  { id: "gpt-5.6-sol", name: "GPT-5.6 Sol (Mô hình kịch bản đỉnh cao VIP)", provider: "OpenAI", tag: "⭐ VIP" },
+  { id: "gpt-5.5", name: "GPT-5.5 (Điện ảnh thế hệ mới)", provider: "OpenAI", tag: "Điện ảnh" },
   { id: "gpt-4o", name: "GPT-4o (Vision & Multimodal cao cấp)", provider: "OpenAI", tag: "Flagship" },
   { id: "gpt-4o-mini", name: "GPT-4o Mini (Giá rẻ, phản hồi nhanh)", provider: "OpenAI", tag: "Tiết kiệm" },
   { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Tư duy lai & Viết văn mượt)", provider: "Anthropic", tag: "HOT" },
+  { id: "claude-opus-5", name: "Claude Opus 5 (Biên kịch điện ảnh & Plot twist cao cấp)", provider: "Anthropic", tag: "👑 Siêu cấp" },
+  { id: "claude-opus-4.8", name: "Claude Opus 4.8 (Review phim triệu view & Cao trào)", provider: "Anthropic", tag: "👑 Review Phim" },
   { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Chuyên gia kịch bản phim)", provider: "Anthropic", tag: "Cao cấp" },
   { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Siêu tốc độ)", provider: "Anthropic", tag: "Nhanh" },
   { id: "deepseek-chat", name: "DeepSeek V3 (Chi phí cực rẻ)", provider: "DeepSeek", tag: "Siêu rẻ" },
-  { id: "deepseek-reasoner", name: "DeepSeek R1 (Lập luận sâu)", provider: "DeepSeek", tag: "Lập luận" },
+  { id: "deepseek-reasoner", name: "DeepSeek R1 (Lập luận sâu Chain-of-Thought)", provider: "DeepSeek", tag: "Lập luận" },
+  { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Siêu tốc độ Groq LPU)", provider: "Groq", tag: "Siêu tốc" },
   { id: "glm-4-plus", name: "GLM-4 Plus (Đa ngôn ngữ thông minh)", provider: "Zhipu AI", tag: "Đa năng" },
   { id: "eleven_multilingual_v2", name: "ElevenLabs Voice TTS (Lồng tiếng AI)", provider: "ElevenLabs", tag: "Voice" },
-  { id: "whisper-large-v3", name: "Whisper Large V3 (Bóc băng phụ đề)", provider: "OpenAI", tag: "Audio" },
+  { id: "whisper-large-v3", name: "Whisper Large V3 (Bóc băng phụ đề)", provider: "Whisper", tag: "Audio" },
 ];
 
 export const AiKeyGrantsPage: React.FC = () => {

@@ -436,12 +436,12 @@ export const ModelPricingPage: React.FC<ModelPricingPageProps> = ({
               marginBottom: "4px",
             }}
           >
-            <span>Cấu Hình</span>
+            <span>Dịch Vụ & Mô Hình AI</span>
             <span>/</span>
-            <span style={{ color: "#334155", fontWeight: 700 }}>Định Giá Model AI</span>
+            <span style={{ color: "#334155", fontWeight: 700 }}>Cấu hình gói model</span>
           </div>
           <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "#0f172a", margin: "4px 0" }}>
-            Danh Sách Model & Định Giá Chi Tiết
+            Cấu Hình Gói Model & Định Giá Chi Tiết
           </h1>
           <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
             Quản lý cấp phép, định giá Token In/Out/Request và lợi nhuận cho từng model AI trên Tool Desktop.
