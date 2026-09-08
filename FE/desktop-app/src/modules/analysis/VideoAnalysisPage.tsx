@@ -623,8 +623,13 @@ Với từng phân cảnh trong mảng "scenes", hãy nhặt đúng mốc thời
 
     if (emphasizeHook) {
       finalPrompt += `\n\n# 🚨 ĐẶC BIỆT - PHÂN CẢNH 1 (HOOK CAO TRÀO 5-10S ĐẦU):
-Hãy nhặt đúng khoảnh khắc giật gân, nghẹt thở và kịch tính nhất của video (tiếng còi hú, tiếng súng, tiếng rượt đuổi hoặc câu thoại đắt giá của nhân vật/cảnh sát). Viết câu kể ngắn gọn, đanh thép để tạo điểm nhấn giật hook giữ chân người xem ngay trong 5-10 giây đầu tiên.`;
+1. NHẶT ĐOẠN CAO TRÀO: Hãy nhặt đúng khoảnh khắc giật gân, nghẹt thở nhất của video (tiếng còi hú cảnh sát, tiếng súng, tiếng rượt đuổi hoặc tiếng la hét/đối thoại gay cấn của nhân vật).
+2. ÂM THANH GỐC & VOICE REVIEW: Giữ nguyên 2-3 giây đầu cho âm thanh hiện trường/tiếng còi hú bùng nổ, câu kể voiceover ngắn gọn, đanh thép sẽ nối tiếp ngay sau đó để giật hook giữ chân người xem tối đa.`;
     }
+
+    finalPrompt += `\n\n# ⚡ TỐI ƯU NHỊP ĐIỆU & NGẮT NGHỈ DỒN DẬP (PACING):
+- Các câu kể voiceover phải viết dồn dập, gãy gọn, giàu tính hành động và cảm xúc.
+- Giảm thiểu tối đa khoảng lặng thừa giữa các câu (ngắt nghỉ chỉ 0.15s - 0.25s), giúp mạch dẫn chuyện liền mạch, gay cấn và cuốn hút như các kênh Review Phim triệu view.`;
 
     if (!narratorEnabled) {
       finalPrompt += `\n\n# 🎬 CHẾ ĐỘ CẮT GHÉP HIGHLIGHT THUẦN TIẾNG GỐC (KHÔNG CẦN LỒNG TIẾNG VOICE AI):

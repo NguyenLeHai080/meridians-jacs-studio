@@ -32,8 +32,8 @@ test("returns no graph when all audio is disabled", () => {
 
 test("applies deep vocal and SFX stem isolation filter when removeOriginalBgm is enabled", () => {
   const filter = buildAudioFilter({ hasOriginalAudio: true, removeOriginalBgm: true });
-  assert.match(filter, /stereotools=mlev=2\.0:slev=0\.0/);
-  assert.match(filter, /highpass=f=140/);
-  assert.match(filter, /lowpass=f=6000/);
+  assert.match(filter, /stereotools=mlev=1\.8:slev=0\.015625/);
+  assert.match(filter, /highpass=f=130/);
+  assert.match(filter, /lowpass=f=6500/);
   assert.match(filter, /dynaudnorm/);
 });

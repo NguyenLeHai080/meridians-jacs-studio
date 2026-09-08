@@ -210,6 +210,13 @@ export function EditorWorkspace({
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingPlayhead = useRef(false);
 
+  const playheadLineElRef = useRef<HTMLDivElement>(null);
+  const scrubProgressElRef = useRef<HTMLDivElement>(null);
+  const scrubThumbElRef = useRef<HTMLDivElement>(null);
+  const timecodeElRef = useRef<HTMLSpanElement>(null);
+  const playheadSecondsRef = useRef(0);
+  const lastUiUpdateRef = useRef(0);
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const hpFilterRef = useRef<BiquadFilterNode | null>(null);
   const lpFilterRef = useRef<BiquadFilterNode | null>(null);
@@ -218,6 +225,20 @@ export function EditorWorkspace({
 
   const [isolatedStemPath, setIsolatedStemPath] = useState<string | null>(null);
   const [isIsolatingStem, setIsIsolatingStem] = useState<boolean>(false);
+  const [stemProgress, setStemProgress] = useState<number>(0);
+  const [stemStage, setStemStage] = useState<string>("");
+
+  useEffect(() => {
+    const unsub = getRuntime().onIsolateVocalsProgress?.((data) => {
+      if (typeof data?.progress === "number") {
+        setStemProgress(data.progress);
+        if (data.stage) setStemStage(data.stage);
+      }
+    });
+    return () => {
+      unsub?.();
+    };
+  }, []);
 
   const sourceCandidates = useMemo(
     () => jobs.filter((job) => job.localPath || job.sourceType === "url" || job.analysis || job.source),
@@ -271,21 +292,29 @@ export function EditorWorkspace({
     }
   }, [sourceJob?.id, sourceJob?.removeOriginalBgm, sourceJob?.isolateVocals]);
 
-  // Auto trigger AI Vocal & SFX Stem Isolation in background for live preview
+  // Lazy trigger AI Vocal & SFX Stem Isolation in background (debounced, low CPU impact)
   useEffect(() => {
-    if (!removeOriginalBgm || !sourceJob?.localPath || !getRuntime().isolateVocals) {
+    const localVideo = sourceJob?.localPath;
+    if (!removeOriginalBgm || !localVideo || !getRuntime().isolateVocals) {
       return;
     }
     let isMounted = true;
-    setIsIsolatingStem(true);
-    getRuntime().isolateVocals!(sourceJob.localPath).then((res) => {
-      if (isMounted && res?.ok && res?.path) {
-        setIsolatedStemPath(res.path);
-      }
-    }).finally(() => {
-      if (isMounted) setIsIsolatingStem(false);
-    });
-    return () => { isMounted = false; };
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      setIsIsolatingStem(true);
+      getRuntime().isolateVocals!(localVideo).then((res) => {
+        if (isMounted && res?.ok && res?.path) {
+          setIsolatedStemPath(res.path);
+        }
+      }).finally(() => {
+        if (isMounted) setIsIsolatingStem(false);
+      });
+    }, 1500);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, [removeOriginalBgm, sourceJob?.localPath]);
 
   useEffect(() => {
@@ -724,7 +753,15 @@ export function EditorWorkspace({
   const seekToTimeline = useCallback(
     (targetSec: number) => {
       const clampedSec = Math.max(0, Math.min(sequenceDuration, targetSec));
+      playheadSecondsRef.current = clampedSec;
       setPlayheadSeconds(clampedSec);
+
+      // Direct DOM update for instant responsiveness without lag
+      const pct = sequenceDuration > 0 ? Math.min(100, Math.max(0, (clampedSec / sequenceDuration) * 100)) : 0;
+      if (playheadLineElRef.current) playheadLineElRef.current.style.left = `${pct}%`;
+      if (scrubProgressElRef.current) scrubProgressElRef.current.style.width = `${pct}%`;
+      if (scrubThumbElRef.current) scrubThumbElRef.current.style.left = `${pct}%`;
+      if (timecodeElRef.current) timecodeElRef.current.textContent = `${formatTimecodePrecise(clampedSec)} / ${formatTimecodePrecise(sequenceDuration)}`;
 
       if (!effectiveScenes.length) {
         if (videoRef.current) {
@@ -755,7 +792,7 @@ export function EditorWorkspace({
     [effectiveScenes, sequenceDuration]
   );
 
-  // High-Precision 60FPS Virtual Timeline Playhead Engine (Mượt mà 60 FPS, chạy êm ái, chuyển cảnh chuẩn xác)
+  // High-Precision 60FPS Virtual Timeline Playhead Engine (Mượt mà 60 FPS, chạy êm ái, tối ưu tài nguyên CPU)
   useEffect(() => {
     let animId: number;
     let lastTime = performance.now();
@@ -768,60 +805,76 @@ export function EditorWorkspace({
       lastTime = now;
 
       if (!isDraggingPlayhead.current) {
-        setPlayheadSeconds((prev) => {
-          const next = prev + delta * (speedVal || 1.0);
-          if (next >= sequenceDuration) {
-            if (isLooping) {
-              seekToTimeline(0);
-              return 0;
-            }
-            setPlaying(false);
-            stopSceneAudio();
-            if (videoRef.current && !videoRef.current.paused) {
-              videoRef.current.pause();
-            }
-            return sequenceDuration;
+        let currentPos = playheadSecondsRef.current + delta * (speedVal || 1.0);
+
+        if (currentPos >= sequenceDuration) {
+          if (isLooping) {
+            seekToTimeline(0);
+            return;
           }
-
-          // Check if we stepped into a new scene
-          if (effectiveScenes.length > 0) {
-            const currentScene = effectiveScenes.find((s) => {
-              const sStart = toSeconds(s.start);
-              const sEnd = toSeconds(s.end);
-              return next >= sStart && next < sEnd;
-            }) || effectiveScenes[effectiveScenes.length - 1];
-
-            if (currentScene && currentScene.id !== lastSceneIdRef.current) {
-              lastSceneIdRef.current = currentScene.id;
-              setSceneId(currentScene.id);
-
-              // Seek video to exact start of the new scene once
-              const srcStartSec = toSeconds(currentScene.sourceStart || currentScene.start);
-              const offset = Math.max(0, next - toSeconds(currentScene.start));
-              const targetVideoTime = srcStartSec + offset;
-              if (videoRef.current) {
-                videoRef.current.currentTime = targetVideoTime;
-                if (videoRef.current.paused) {
-                  void videoRef.current.play().catch(() => undefined);
-                }
-              }
-
-              // Trigger voice narration for the new scene
-              const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
-              const sceneText = currentScene.subtitle || currentScene.voiceover || currentScene.translation || "";
-              if (!isMutedLane && sceneText) {
-                lastSpokenSceneRef.current = currentScene.id;
-                const voiceOffset = Math.max(0, next - toSeconds(currentScene.voiceStart || currentScene.start));
-                void playSceneAudio(sceneText, currentScene.id, voiceOffset);
-              }
-            } else if (videoRef.current && videoRef.current.paused) {
-              // Ensure video is playing smoothly without interruption
-              void videoRef.current.play().catch(() => undefined);
-            }
+          setPlaying(false);
+          stopSceneAudio();
+          if (videoRef.current && !videoRef.current.paused) {
+            videoRef.current.pause();
           }
+          currentPos = sequenceDuration;
+          playheadSecondsRef.current = sequenceDuration;
+          setPlayheadSeconds(sequenceDuration);
+          return;
+        }
 
-          return next;
-        });
+        playheadSecondsRef.current = currentPos;
+
+        // 1. High-Performance Direct DOM updates at 60-144 FPS (Zero React Tree Diff Overhead)
+        const pct = sequenceDuration > 0 ? Math.min(100, Math.max(0, (currentPos / sequenceDuration) * 100)) : 0;
+        if (playheadLineElRef.current) playheadLineElRef.current.style.left = `${pct}%`;
+        if (scrubProgressElRef.current) scrubProgressElRef.current.style.width = `${pct}%`;
+        if (scrubThumbElRef.current) scrubThumbElRef.current.style.left = `${pct}%`;
+        if (timecodeElRef.current) timecodeElRef.current.textContent = `${formatTimecodePrecise(currentPos)} / ${formatTimecodePrecise(sequenceDuration)}`;
+
+        // 2. Check scene transitions cleanly
+        let sceneChanged = false;
+        if (effectiveScenes.length > 0) {
+          const currentScene = effectiveScenes.find((s) => {
+            const sStart = toSeconds(s.start);
+            const sEnd = toSeconds(s.end);
+            return currentPos >= sStart && currentPos < sEnd;
+          }) || effectiveScenes[effectiveScenes.length - 1];
+
+          if (currentScene && currentScene.id !== lastSceneIdRef.current) {
+            lastSceneIdRef.current = currentScene.id;
+            sceneChanged = true;
+            setSceneId(currentScene.id);
+
+            // Seek video to exact start of the new scene once
+            const srcStartSec = toSeconds(currentScene.sourceStart || currentScene.start);
+            const offset = Math.max(0, currentPos - toSeconds(currentScene.start));
+            const targetVideoTime = srcStartSec + offset;
+            if (videoRef.current) {
+              videoRef.current.currentTime = targetVideoTime;
+              if (videoRef.current.paused) {
+                void videoRef.current.play().catch(() => undefined);
+              }
+            }
+
+            // Trigger voice narration for the new scene
+            const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
+            const sceneText = currentScene.subtitle || currentScene.voiceover || currentScene.translation || "";
+            if (!isMutedLane && sceneText) {
+              lastSpokenSceneRef.current = currentScene.id;
+              const voiceOffset = Math.max(0, currentPos - toSeconds(currentScene.voiceStart || currentScene.start));
+              void playSceneAudio(sceneText, currentScene.id, voiceOffset);
+            }
+          } else if (videoRef.current && videoRef.current.paused) {
+            void videoRef.current.play().catch(() => undefined);
+          }
+        }
+
+        // 3. Throttled React state update (~10 FPS or on scene change) to keep CPU low
+        if (sceneChanged || now - lastUiUpdateRef.current > 100) {
+          lastUiUpdateRef.current = now;
+          setPlayheadSeconds(currentPos);
+        }
       }
 
       animId = requestAnimationFrame(tick);
@@ -829,6 +882,9 @@ export function EditorWorkspace({
 
     if (playing) {
       lastTime = performance.now();
+      playheadSecondsRef.current = playheadSeconds;
+      lastUiUpdateRef.current = performance.now();
+
       // On start playing, sync video position and trigger current scene audio
       if (effectiveScenes.length > 0) {
         const currentScene = effectiveScenes.find((s) => {
@@ -2616,14 +2672,14 @@ export function EditorWorkspace({
                     }}
                     style={{ accentColor: "#a855f7", width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
                   />
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", flexWrap: "wrap" }}>
                       <span style={{ fontSize: "11.5px", fontWeight: 700, color: removeOriginalBgm ? "#c084fc" : "#e2e8f0", display: "block" }}>
                         🎼 AI Vocal & SFX Remover (Tách Nhạc Nền)
                       </span>
                       {removeOriginalBgm && isIsolatingStem && (
-                        <span style={{ fontSize: "9px", background: "#f59e0b", color: "#000", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
-                          ⏳ ĐANG BÓC TÁCH...
+                        <span style={{ fontSize: "9.5px", background: "rgba(245, 158, 11, 0.2)", border: "1px solid #f59e0b", color: "#fbbf24", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                          ⚡ {stemProgress > 0 ? `${stemProgress}%` : "Đang xử lý..."}
                         </span>
                       )}
                       {removeOriginalBgm && !isIsolatingStem && isolatedStemPath && (
@@ -2637,6 +2693,33 @@ export function EditorWorkspace({
                         </span>
                       )}
                     </div>
+
+                    {removeOriginalBgm && isIsolatingStem && (
+                      <div style={{ marginTop: "6px", marginBottom: "4px", background: "rgba(0,0,0,0.3)", padding: "6px 8px", borderRadius: "6px", border: "1px solid rgba(245,158,11,0.2)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                          <span style={{ fontSize: "9.5px", color: "#fcd34d", fontWeight: 600 }}>
+                            {stemStage || `Đang bóc tách: ${stemProgress}%`}
+                          </span>
+                          <span style={{ fontSize: "9px", color: "#94a3b8" }}>
+                            {stemProgress > 5
+                              ? `Còn ~${Math.max(2, Math.round(((100 - stemProgress) / stemProgress) * (sourceJob?.durationSeconds ? Math.min(120, sourceJob.durationSeconds / 15) : 45)))}s`
+                              : "Ước tính ~1-2p"}
+                          </span>
+                        </div>
+                        <div style={{ width: "100%", height: "5px", background: "rgba(255,255,255,0.1)", borderRadius: "3px", overflow: "hidden" }}>
+                          <div
+                            style={{
+                              width: `${Math.max(4, stemProgress)}%`,
+                              height: "100%",
+                              background: "linear-gradient(90deg, #f59e0b 0%, #a855f7 100%)",
+                              borderRadius: "3px",
+                              transition: "width 0.25s ease-out",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <span style={{ fontSize: "10px", color: "#94a3b8", display: "block", marginTop: "2px", lineHeight: "1.4" }}>
                       Triệt tiêu 100% nhạc nền stereo, bảo toàn trọn vẹn lời thoại nhân vật, còi hú cảnh sát, tiếng súng & hiện trường
                     </span>
@@ -2899,10 +2982,12 @@ export function EditorWorkspace({
               }}
             >
               <div
+                ref={scrubProgressElRef}
                 className="ts-player-scrub-progress"
                 style={{ width: `${(playheadSeconds / sequenceDuration) * 100}%` }}
               />
               <div
+                ref={scrubThumbElRef}
                 className="ts-player-scrub-thumb"
                 style={{ left: `${(playheadSeconds / sequenceDuration) * 100}%` }}
               />
@@ -2910,7 +2995,7 @@ export function EditorWorkspace({
 
             {/* Bottom Row Buttons */}
             <div className="ts-player-bottom-buttons">
-              <span className="ts-player-timecode">
+              <span ref={timecodeElRef} className="ts-player-timecode">
                 {formatTimecodePrecise(playheadSeconds)} / {formatTimecodePrecise(sequenceDuration)}
               </span>
 
@@ -3741,6 +3826,7 @@ export function EditorWorkspace({
               {/* Playhead Marker & Line */}
               {effectiveScenes.length > 0 && (
                 <div
+                  ref={playheadLineElRef}
                   className="ts-timeline-playhead"
                   style={{
                     left: `${Math.min(100, Math.max(0, (playheadSeconds / sequenceDuration) * 100))}%`,
@@ -3923,7 +4009,7 @@ export function EditorWorkspace({
                         <span className="ts-audio-duration-tag">{item.voiceDur.toFixed(1)}s</span>
                       </div>
                       <div className="ts-audio-waveform-row">
-                        {Array.from({ length: Math.max(12, Math.floor(item.voiceDur * 8)) }).map((_, wIdx) => (
+                        {Array.from({ length: Math.min(36, Math.max(8, Math.floor(item.voiceDur * 4))) }).map((_, wIdx) => (
                           <span
                             key={wIdx}
                             className="ts-waveform-bar"
@@ -3960,7 +4046,7 @@ export function EditorWorkspace({
                     <span style={{ fontSize: "10px", color: "#f59e0b", marginRight: "6px", fontWeight: 700 }}>
                       🎵 BGM: Hoà Cùng Yêu Dấu Nỗi Buồn (Lo-Fi)
                     </span>
-                    {Array.from({ length: 48 }).map((_, wIdx) => (
+                    {Array.from({ length: 24 }).map((_, wIdx) => (
                       <span
                         key={wIdx}
                         className="ts-waveform-bar"

@@ -267,6 +267,7 @@ export type DesktopRuntime = {
   onDownloadProgress?: (listener: (value: RuntimeProgress) => void) => () => void;
   onAnalysisProgress?: (listener: (value: RuntimeProgress) => void) => () => void;
   onRenderProgress?: (listener: (value: RuntimeProgress) => void) => () => void;
+  onIsolateVocalsProgress?: (listener: (value: { progress: number; stage?: string; filePath?: string }) => void) => () => void;
   onUpdateProgress?: (listener: (value: UpdateProgress) => void) => () => void;
   readJobs?: () => Promise<Job[]>;
   saveJobs?: (jobs: Job[]) => Promise<void>;

@@ -52,6 +52,11 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
     ipcRenderer.on("runtime:render-progress", handler);
     return () => ipcRenderer.removeListener("runtime:render-progress", handler);
   },
+  onIsolateVocalsProgress: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("runtime:isolate-vocals-progress", handler);
+    return () => ipcRenderer.removeListener("runtime:isolate-vocals-progress", handler);
+  },
   onUpdateProgress: (listener) => {
     const handler = (_event, payload) => listener(payload);
     ipcRenderer.on("runtime:update-progress", handler);
