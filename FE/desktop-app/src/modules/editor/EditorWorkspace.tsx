@@ -418,12 +418,7 @@ export function EditorWorkspace({
 
       const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
       const voiceEstSec = Math.max(3.5, Math.round((wordCount / 2.75) * 10) / 10);
-
-      // Explicit recap timeline scene duration:
-      // If s.start and s.end were already calculated in analysis, use the scene length,
-      // otherwise use the voice duration so visual, voice and subtitle tracks are 100% 1:1 aligned!
-      const explicitSceneDur = toSeconds(s.end) - toSeconds(s.start);
-      const sceneDur = explicitSceneDur >= 2 && explicitSceneDur <= 60 ? explicitSceneDur : voiceEstSec;
+      const sceneDur = voiceEstSec;
 
       let srcStartSec = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
       if (!Number.isFinite(srcStartSec) || srcStartSec < 0) {
@@ -435,9 +430,9 @@ export function EditorWorkspace({
       const tEnd = cursorTime + sceneDur;
       cursorTime = tEnd;
 
-      // Voice track and Captions track align EXACTLY with the scene visuals!
+      // Voice track and Captions track align EXACTLY with scene visuals with zero gaps!
       const vStart = tStart;
-      const vEnd = tStart + voiceEstSec;
+      const vEnd = tEnd;
 
       return {
         id: s.id || `scene-${idx + 1}`,
@@ -1278,28 +1273,21 @@ export function EditorWorkspace({
     if (!sourceJob || !onAddJob) return;
 
     let timelineCursor = 0;
-    let voiceCursor = 0;
     const timelineSubtitleSegments: Array<{ start: number; end: number; text: string }> = [];
 
     const fullScenes = editorScenes.map((s, idx) => {
+      const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start));
       const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
-      const srcEnd = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
-      const dur = Math.max(0.5, srcEnd - srcStart);
+      const srcEnd = srcStart + sceneDur;
       const tStart = timelineCursor;
-      const tEnd = timelineCursor + dur;
-      timelineCursor += dur;
+      const tEnd = timelineCursor + sceneDur;
+      timelineCursor += sceneDur;
 
       const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
       if (sceneText) {
-        const wordCount = sceneText.split(/\s+/).filter(Boolean).length;
-        const estDur = Math.max(2.5, Math.round((wordCount / 2.75) * 10) / 10);
-        const vStart = voiceCursor;
-        const vEnd = voiceCursor + estDur;
-        voiceCursor = vEnd + 0.3;
-
         timelineSubtitleSegments.push({
-          start: vStart,
-          end: vEnd,
+          start: tStart,
+          end: tEnd,
           text: sceneText,
         });
       }
@@ -1321,13 +1309,14 @@ export function EditorWorkspace({
     });
 
     const cutClips = editorScenes.map((s) => {
+      const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start));
       const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
-      const srcEnd = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
+      const srcEnd = srcStart + sceneDur;
       const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
       return {
         sourceStart: srcStart,
         sourceEnd: srcEnd,
-        duration: Math.max(0.5, srcEnd - srcStart),
+        duration: sceneDur,
         text: sceneText || s.subtitle || s.detail,
         title: s.title,
       };
@@ -1411,9 +1400,9 @@ export function EditorWorkspace({
     const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
 
     editorScenes.forEach((scene, index) => {
+      const sceneDur = Math.max(0.5, toSeconds(scene.end) - toSeconds(scene.start));
       const srcStartSec = scene.sourceTimeStart ?? toSeconds(scene.sourceStart || scene.start);
-      const srcEndSec = scene.sourceTimeEnd ?? toSeconds(scene.sourceEnd || scene.end);
-      const sceneDur = Math.max(0.5, srcEndSec - srcStartSec);
+      const srcEndSec = srcStartSec + sceneDur;
       const sceneText = stripSceneMetadata(scene.subtitle || scene.voiceover || scene.translation || scene.detail || "").trim();
       onAddJob({
         id: `export-scene-${Date.now()}-${index + 1}`,
