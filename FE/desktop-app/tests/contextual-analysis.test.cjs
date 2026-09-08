@@ -44,3 +44,26 @@ test("splits a contextual script across scenes when a gateway omits per-scene vo
   assert.equal(scenes[0].voiceover, "Cô ấy phát hiện chiếc hộp bị mở.");
   assert.equal(scenes[1].voiceover, "Bí mật bên trong khiến mọi người bất ngờ.");
 });
+
+test("guarantees scene narrations contain pure Vietnamese without raw transcript splicing", () => {
+  const rawEnglishTranscript = "We stood at the gate with a kitchen knife saying he's going to stab police.";
+  const scenes = [
+    { id: "scene-1", start: "00:00", end: "00:10", title: "Hook Mở Màn", voiceover: "Tình huống căng thẳng bùng nổ khi đối tượng đối đầu với lực lượng chức năng." },
+    { id: "scene-2", start: "00:10", end: "00:30", title: "Hồi 1", voiceover: "Cảnh sát tuần tra tiếp cận hiện trường để ổn định trật tự." },
+    { id: "scene-3", start: "00:30", end: "01:00", title: "Hồi 2", voiceover: "Cuộc đối đầu kịch tính nhanh chóng được giải quyết an toàn." },
+  ];
+  const enriched = enrichAnalysis({
+    summary: "Tóm tắt chuyên sâu 100% tiếng Việt.",
+    score: 95,
+    tokensUsed: 100,
+    creditsUsed: 1,
+    scenes,
+  }, rawEnglishTranscript);
+
+  assert.equal(enriched.scenes.length, 3);
+  for (const sc of enriched.scenes) {
+    assert.ok(!sc.voiceover.includes("Tại thời điểm này của video,"));
+    assert.ok(!sc.voiceover.includes("kitchen knife"));
+    assert.ok(sc.voiceover.length > 5);
+  }
+});
