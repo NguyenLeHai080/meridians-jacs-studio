@@ -137,6 +137,7 @@ const browserRuntime: DesktopRuntime = {
   },
   readJobs: async () => readLocalJobs<Job[]>([]),
   saveJobs: async (value) => saveLocalJobs(value),
+  isolateVocals: async () => ({ ok: false, error: "Cần chạy bản Electron để bóc tách sóng âm AI" }),
   revealPath: async () => undefined,
   copyText: async (value) => {
     await navigator.clipboard?.writeText(value);
