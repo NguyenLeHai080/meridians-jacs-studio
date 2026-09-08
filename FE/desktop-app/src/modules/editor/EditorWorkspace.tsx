@@ -408,6 +408,7 @@ export function EditorWorkspace({
     }
 
     let cursorTime = 0;
+    let voiceCursor = 0;
     const initial: EditorScene[] = sourceJob.analysis.scenes.map((s, idx) => {
       const sub =
         s.voiceover ||
@@ -422,16 +423,7 @@ export function EditorWorkspace({
         "";
 
       const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
-      const voiceEstSec = Math.max(4, Math.round(wordCount / 2.75));
-
-      let tStart = (s as any).timeStart ?? toSeconds(s.start);
-      let tEnd = (s as any).timeEnd ?? toSeconds(s.end);
-
-      if (!Number.isFinite(tEnd) || tEnd <= tStart) {
-        tStart = cursorTime;
-        tEnd = cursorTime + voiceEstSec;
-      }
-      cursorTime = Math.max(cursorTime + 1, tEnd);
+      const voiceEstSec = Math.max(3, Math.round((wordCount / 2.75) * 10) / 10);
 
       let srcStartSec = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
       let srcEndSec = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
@@ -440,8 +432,17 @@ export function EditorWorkspace({
         srcStartSec = Math.max(0, idx * 15);
       }
       if (!Number.isFinite(srcEndSec) || srcEndSec <= srcStartSec) {
-        srcEndSec = srcStartSec + Math.max(tEnd - tStart, 5);
+        srcEndSec = srcStartSec + Math.max(voiceEstSec, 5);
       }
+
+      const clipDur = Math.max(0.5, srcEndSec - srcStartSec);
+      const tStart = cursorTime;
+      const tEnd = cursorTime + clipDur;
+      cursorTime = tEnd;
+
+      const vStart = voiceCursor;
+      const vEnd = voiceCursor + voiceEstSec;
+      voiceCursor = vEnd + 0.3;
 
       return {
         id: s.id || `scene-${idx + 1}`,
@@ -451,6 +452,10 @@ export function EditorWorkspace({
         sourceEnd: formatSeconds(srcEndSec),
         sourceTimeStart: srcStartSec,
         sourceTimeEnd: srcEndSec,
+        voiceStart: formatSeconds(vStart, true),
+        voiceEnd: formatSeconds(vEnd, true),
+        captionStart: formatSeconds(vStart, true),
+        captionEnd: formatSeconds(vEnd, true),
         action_visual: s.action_visual || s.detail,
         title: s.title || `Cảnh ${idx + 1}`,
         detail: s.detail || "",
@@ -1259,6 +1264,7 @@ export function EditorWorkspace({
     if (!sourceJob || !onAddJob) return;
 
     let timelineCursor = 0;
+    let voiceCursor = 0;
     const timelineSubtitleSegments: Array<{ start: number; end: number; text: string }> = [];
 
     const fullScenes = editorScenes.map((s, idx) => {
@@ -1271,9 +1277,15 @@ export function EditorWorkspace({
 
       const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
       if (sceneText) {
+        const wordCount = sceneText.split(/\s+/).filter(Boolean).length;
+        const estDur = Math.max(2.5, Math.round((wordCount / 2.75) * 10) / 10);
+        const vStart = voiceCursor;
+        const vEnd = voiceCursor + estDur;
+        voiceCursor = vEnd + 0.3;
+
         timelineSubtitleSegments.push({
-          start: tStart,
-          end: tEnd,
+          start: vStart,
+          end: vEnd,
           text: sceneText,
         });
       }
