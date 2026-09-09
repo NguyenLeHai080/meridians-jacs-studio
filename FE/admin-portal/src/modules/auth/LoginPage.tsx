@@ -135,11 +135,11 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: () => void }) 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem", marginBottom: "0.5rem", color: "#34d399", fontSize: "0.75rem", fontWeight: 700 }}>
             <ShieldCheck size={14} /> {t("loginSecurityBadge")}
           </div>
-          {import.meta.env.DEV && (
+          {/* {import.meta.env.DEV && (
             <span className="auth-hint">
               {t("localHint")}
             </span>
-          )}
+          )} */}
         </div>
       </div>
     </div>

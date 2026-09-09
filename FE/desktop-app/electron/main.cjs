@@ -15,6 +15,10 @@ const { resolveVoicePack, listVoicePacks } = require("./voice-pack.cjs");
 const { frameTimeline, enrichAnalysis } = require("./contextual-analysis.cjs");
 const { formatTtsProviderError, isRetryableTtsStatus, isVoiceCompatibilityError, resolveTtsModels, resolveTtsVoices } = require("./tts.cjs");
 const { compareVersions, downloadRelease, installRelease, trustedUrl: isTrustedUpdateUrl, validateRelease, versionParts } = require("./updater.cjs");
+const { initSecurityShield, applyWindowSecurityShield, signClientRequest } = require("./security-shield.cjs");
+
+// Initialize Anti-Debug and Tamper Protection
+initSecurityShield();
 
 if (!app || typeof app.whenReady !== "function") {
   throw new Error("JACS Studio phải được khởi động bằng Electron desktop runtime; không chạy main.cjs bằng Node.");
@@ -421,6 +425,12 @@ function runProcess(command, args, options = {}, operationId) {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
+
+    try {
+      if (child.pid && typeof os.setPriority === "function" && os.constants?.priority?.PRIORITY_BELOW_NORMAL !== undefined) {
+        os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL);
+      }
+    } catch {}
 
     let stdout = "";
     let stderr = "";
@@ -2013,7 +2023,19 @@ function runProcess(command, args, onLine, operationId) {
     const state = operationState(operationId);
     state?.children.add(processHandle);
     let stderr = "";
-    processHandle.stderr.on("data", (chunk) => { const line = String(chunk); stderr += line; onLine?.(line); });
+    if (processHandle.stdout) {
+      processHandle.stdout.on("data", (chunk) => {
+        const line = String(chunk);
+        onLine?.(line);
+      });
+    }
+    if (processHandle.stderr) {
+      processHandle.stderr.on("data", (chunk) => {
+        const line = String(chunk);
+        stderr += line;
+        onLine?.(line);
+      });
+    }
     processHandle.on("error", (error) => { state?.children.delete(processHandle); reject(error); });
     processHandle.on("close", (code) => {
       state?.children.delete(processHandle);
@@ -2736,8 +2758,9 @@ async function extractIsolatedVocalStem(videoOrAudioPath, operationId, event) {
 
   const rawWav = path.join(stemDir, `raw_${hash}.wav`);
   try {
-    if (event) {
+    if (event?.sender) {
       event.sender.send("runtime:render-progress", { progress: 2, stage: "AI Vocal Remover: Đang bóc tách 100% nhạc nền gốc...", operationId });
+      event.sender.send("runtime:isolate-vocals-progress", { progress: 2, stage: "Khởi tạo bóc tách...", filePath: absolutePath, operationId });
     }
     // 1. Extract raw stereo wav
     await runProcess(ffmpeg, ["-y", "-i", absolutePath, "-vn", "-ac", "2", "-ar", "44100", rawWav], undefined, operationId);
@@ -2746,17 +2769,65 @@ async function extractIsolatedVocalStem(videoOrAudioPath, operationId, event) {
     const invocation = voiceWorkerInvocation();
     if (invocation) {
       const args = [...invocation.prefix, "separate-stem", "--input", rawWav, "--output", outWav];
-      await runProcess(invocation.command, args, undefined, operationId);
+      const onProgressLine = (line) => {
+        try {
+          const parsed = JSON.parse(line.trim());
+          if (parsed && typeof parsed.progress === "number" && event?.sender) {
+            event.sender.send("runtime:isolate-vocals-progress", {
+              progress: parsed.progress,
+              stage: parsed.stage || `Bóc tách âm thanh: ${parsed.progress}%`,
+              filePath: absolutePath,
+              operationId,
+            });
+          }
+        } catch {}
+      };
+      await runProcess(invocation.command, args, onProgressLine, operationId);
       if (fs.existsSync(outWav) && fs.statSync(outWav).size > 10000) {
         try { fs.unlinkSync(rawWav); } catch {}
+        if (event?.sender) {
+          event.sender.send("runtime:isolate-vocals-progress", {
+            progress: 100,
+            stage: "Hoàn tất bóc tách âm thanh!",
+            filePath: absolutePath,
+            operationId,
+          });
+        }
         return outWav;
       }
+    }
+
+    // 3. Fallback: High-precision FFmpeg DSP stem isolation if python worker was unavailable
+    if (event?.sender) {
+      event.sender.send("runtime:isolate-vocals-progress", {
+        progress: 50,
+        stage: "Đang lọc âm thanh DSP...",
+        filePath: absolutePath,
+        operationId,
+      });
+    }
+    await runProcess(ffmpeg, [
+      "-y", "-i", rawWav,
+      "-af", "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1,stereotools=mlev=1.8:slev=0.015625:sbal=0:mpan=0,highpass=f=130,lowpass=f=6500,equalizer=f=1200:t=q:w=1.5:g=4,equalizer=f=2500:t=q:w=1.5:g=3,afftdn=nf=-45:om=o,dynaudnorm=f=150:g=15:p=0.95",
+      outWav
+    ], undefined, operationId);
+    if (fs.existsSync(outWav) && fs.statSync(outWav).size > 10000) {
+      try { fs.unlinkSync(rawWav); } catch {}
+      if (event?.sender) {
+        event.sender.send("runtime:isolate-vocals-progress", {
+          progress: 100,
+          stage: "Hoàn tất bóc tách âm thanh!",
+          filePath: absolutePath,
+          operationId,
+        });
+      }
+      return outWav;
     }
   } catch (err) {
     console.warn("Stem separation warning:", err);
   }
 
-  return rawWav;
+  return fs.existsSync(outWav) ? outWav : rawWav;
 }
 
 async function renderVideoFile(event, filePath, folder, options = {}, operationId) {
@@ -2972,6 +3043,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
       const clipAudioSource = (isolatedStemPath && fs.existsSync(isolatedStemPath)) ? isolatedStemPath : path.resolve(localVideoPath);
       const sliceArgs = [
         "-y",
+        "-threads", String(safeThreads),
         "-ss", sStart.toFixed(3),
         "-i", path.resolve(localVideoPath),
         "-ss", sStart.toFixed(3),
@@ -4050,6 +4122,10 @@ Return ONLY valid JSON with no markdown wrapping. Mảng 'scenes' phải có đ�
 
     return null;
   });
+
+  ipcMain.handle("runtime:sign-request", (_event, payload, hwid) => {
+    return signClientRequest(payload, hwid);
+  });
 }
 
 function createWindow() {
@@ -4065,14 +4141,10 @@ function createWindow() {
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, "preload.cjs") },
   });
   window.setMenuBarVisibility(false);
-  window.webContents.on("before-input-event", (event, input) => {
-    if (((input.control || input.meta) && input.key.toLowerCase() === "r") || input.key === "F5") {
-      window.webContents.reloadIgnoringCache();
-    }
-    if (((input.control || input.meta) && input.shift && input.key.toLowerCase() === "i") || input.key === "F12") {
-      window.webContents.toggleDevTools();
-    }
-  });
+
+  // Apply Security Shield: Blocks DevTools, Inspect and view-source shortcuts in production
+  applyWindowSecurityShield(window);
+
   const devUrl = process.env.JACS_DESKTOP_DEV_URL;
   void (devUrl ? window.loadURL(devUrl) : window.loadFile(path.join(__dirname, "..", "dist", "index.html")));
 }
