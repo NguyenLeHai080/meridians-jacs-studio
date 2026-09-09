@@ -125,16 +125,28 @@ class SqliteStore:
     def list(self, collection: str) -> list[dict]:
         with self._lock, sqlite3.connect(self.path) as connection:
             rows = connection.execute(
-                "SELECT data FROM records WHERE collection = ? ORDER BY created_at ASC", (collection,)
+                "SELECT id, data FROM records WHERE collection = ? ORDER BY created_at ASC", (collection,)
             ).fetchall()
-        return [json.loads(row[0], object_hook=_json_object_hook) for row in rows]
+        result = []
+        for row_id, data_str in rows:
+            item = json.loads(data_str, object_hook=_json_object_hook)
+            if isinstance(item, dict):
+                if "id" not in item or not item["id"]:
+                    item["id"] = row_id
+                result.append(item)
+        return result
 
     def get(self, collection: str, record_id: UUID | str) -> dict | None:
         with self._lock, sqlite3.connect(self.path) as connection:
             row = connection.execute(
-                "SELECT data FROM records WHERE collection = ? AND id = ?", (collection, str(record_id))
+                "SELECT id, data FROM records WHERE collection = ? AND id = ?", (collection, str(record_id))
             ).fetchone()
-        return json.loads(row[0], object_hook=_json_object_hook) if row else None
+        if not row:
+            return None
+        item = json.loads(row[1], object_hook=_json_object_hook)
+        if isinstance(item, dict) and ("id" not in item or not item["id"]):
+            item["id"] = row[0]
+        return item
 
     def update(self, collection: str, record_id: UUID | str, values: dict) -> dict | None:
         current = self.get(collection, record_id)
@@ -278,18 +290,30 @@ class PostgresStore:
     def list(self, collection: str) -> list[dict]:
         with self._lock, self.connection() as conn:
             rows = conn.execute(
-                "SELECT data FROM jacs_records WHERE collection = %s ORDER BY created_at ASC",
+                "SELECT id, data FROM jacs_records WHERE collection = %s ORDER BY created_at ASC",
                 (collection,),
             ).fetchall()
-        return [_decode_json_payload(row[0]) for row in rows]
+        result = []
+        for row_id, data in rows:
+            item = _decode_json_payload(data)
+            if isinstance(item, dict):
+                if "id" not in item or not item["id"]:
+                    item["id"] = row_id
+                result.append(item)
+        return result
 
     def get(self, collection: str, record_id: UUID | str) -> dict | None:
         with self._lock, self.connection() as conn:
             row = conn.execute(
-                "SELECT data FROM jacs_records WHERE collection = %s AND id = %s",
+                "SELECT id, data FROM jacs_records WHERE collection = %s AND id = %s",
                 (collection, str(record_id)),
             ).fetchone()
-        return _decode_json_payload(row[0]) if row else None
+        if not row:
+            return None
+        item = _decode_json_payload(row[1])
+        if isinstance(item, dict) and ("id" not in item or not item["id"]):
+            item["id"] = row[0]
+        return item
 
     def update(self, collection: str, record_id: UUID | str, values: dict) -> dict | None:
         with self._lock:
