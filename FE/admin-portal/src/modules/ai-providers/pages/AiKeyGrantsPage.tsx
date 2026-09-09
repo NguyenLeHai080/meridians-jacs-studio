@@ -20,9 +20,15 @@ import {
   TrendingUp,
   CreditCard,
   CheckCircle2,
+  Home,
+  ChevronRight,
+  X,
+  Bot,
+  Laptop,
 } from "lucide-react";
 import { getToken } from "../../../core/session";
 import { apiRequest } from "../../../core/api";
+import { showToast } from "../../../core/swal";
 
 interface LicenseRecord {
   id: string;
@@ -41,15 +47,6 @@ interface LicenseRecord {
   created_at?: string;
   last_seen_at?: string;
   last_app_version?: string;
-}
-
-interface ProviderModelItem {
-  id: string;
-  model_id: string;
-  model_name: string;
-  provider_type: string;
-  is_active: boolean;
-  pricing_tier?: string;
 }
 
 const DEFAULT_MODELS_LIST: { id: string; name: string; provider: string; tag: string }[] = [
@@ -119,41 +116,16 @@ export const AiKeyGrantsPage: React.FC = () => {
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(text);
+    showToast("Đã sao chép License Key vào Clipboard", "success");
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Open Grant Credit Modal
+  // Open Credit Modal
   const openCreditModal = (lic: LicenseRecord) => {
     setCreditModalLicense(lic);
     setCreditAmount(500);
     setCreditMode("add");
-    setCreditReason("Admin cấp thêm Credit sử dụng AI");
-  };
-
-  // Submit Grant Credit
-  const handleGrantCredit = async () => {
-    if (!creditModalLicense || !token) return;
-    try {
-      setSubmittingCredit(true);
-      await apiRequest(
-        `/api/v1/licenses/${creditModalLicense.id}/grant-credit`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            amount: Number(creditAmount),
-            mode: creditMode,
-            reason: creditReason || "Cấp Credit từ Admin Portal",
-          }),
-        },
-        token
-      );
-      await fetchLicenses(true);
-      setCreditModalLicense(null);
-    } catch (err: any) {
-      alert(`Lỗi cấp Credit: ${err?.message || err}`);
-    } finally {
-      setSubmittingCredit(false);
-    }
+    setCreditReason("");
   };
 
   // Open Models Modal
@@ -161,43 +133,89 @@ export const AiKeyGrantsPage: React.FC = () => {
     setModelsModalLicense(lic);
     setIsGatewayEnabled(lic.ai_gateway_enabled !== false);
     if (!lic.allowed_models || lic.allowed_models.length === 0) {
-      // All models by default
       setSelectedModels(DEFAULT_MODELS_LIST.map((m) => m.id));
     } else {
       setSelectedModels([...lic.allowed_models]);
     }
   };
 
-  // Toggle model item
-  const toggleModel = (id: string) => {
-    setSelectedModels((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
-    );
+  // Submit Grant Credit
+  const handleGrantCredit = async () => {
+    if (!creditModalLicense || !token) return;
+    try {
+      setSubmittingCredit(true);
+      const targetBalance =
+        creditMode === "add"
+          ? (creditModalLicense.credit_balance || 0) + creditAmount
+          : creditAmount;
+
+      await apiRequest(
+        `/api/v1/licenses/${creditModalLicense.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            credit_balance: targetBalance,
+            credit_adjustment: {
+              mode: creditMode,
+              amount: creditAmount,
+              reason: creditReason.trim() || "Cấp phát thủ công qua Admin Portal",
+            },
+          }),
+        },
+        token
+      );
+
+      showToast(
+        `Đã cấp ${creditAmount} Credit cho ${creditModalLicense.customer_name} thành công.`,
+        "success"
+      );
+      setCreditModalLicense(null);
+      fetchLicenses(true);
+    } catch (err: any) {
+      showToast(err?.message || "Lỗi khi cấp phát Credit", "error");
+    } finally {
+      setSubmittingCredit(false);
+    }
   };
 
-  // Submit Allowed Models
-  const handleSaveAllowedModels = async () => {
+  // Submit Grant Models
+  const handleGrantModels = async () => {
     if (!modelsModalLicense || !token) return;
     try {
       setSubmittingModels(true);
+      const isAll = selectedModels.length >= DEFAULT_MODELS_LIST.length;
+      const allowedPayload = isAll ? null : selectedModels;
+
       await apiRequest(
-        `/api/v1/licenses/${modelsModalLicense.id}/allowed-models`,
+        `/api/v1/licenses/${modelsModalLicense.id}`,
         {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify({
-            allowed_models: selectedModels,
+            allowed_models: allowedPayload,
             ai_gateway_enabled: isGatewayEnabled,
           }),
         },
         token
       );
-      await fetchLicenses(true);
+
+      showToast(
+        `Đã cập nhật quyền Model AI cho ${modelsModalLicense.customer_name} thành công.`,
+        "success"
+      );
       setModelsModalLicense(null);
+      fetchLicenses(true);
     } catch (err: any) {
-      alert(`Lỗi lưu cấu hình Model: ${err?.message || err}`);
+      showToast(err?.message || "Lỗi khi cấp quyền Model AI", "error");
     } finally {
       setSubmittingModels(false);
     }
+  };
+
+  // Toggle model checkbox
+  const toggleModelSelection = (modelId: string) => {
+    setSelectedModels((prev) =>
+      prev.includes(modelId) ? prev.filter((id) => id !== modelId) : [...prev, modelId]
+    );
   };
 
   // Filtered licenses
@@ -229,220 +247,237 @@ export const AiKeyGrantsPage: React.FC = () => {
   const zeroCreditKeys = licenses.filter((l) => (l.credit_balance || 0) <= 0).length;
 
   return (
-    <div style={{ padding: "24px 28px", maxWidth: "1600px", margin: "0 auto" }}>
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "16px",
-          marginBottom: "20px",
-        }}
-      >
+    <div className="w-full max-w-full space-y-6">
+      {/* 1. Header with Breadcrumb & Action Toolbar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "38px",
-                height: "38px",
-                borderRadius: "10px",
-                background: "linear-gradient(135deg, #d97706, #f59e0b)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#12151f",
-                boxShadow: "0 2px 8px rgba(245, 158, 11, 0.3)",
-              }}
-            >
-              <KeyRound size={20} />
+          {/* Breadcrumb Trail */}
+          <nav className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2.5">
+            <span className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors">
+              <Home size={12} className="text-slate-400" />
+              <span>JACS Studio</span>
+            </span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="text-slate-500">Dịch Vụ AI & Mô Hình</span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-orange-500/10 text-orange-700 border border-orange-500/20">
+              Cấp Quyền & Credit Key Tool
+            </span>
+          </nav>
+
+          {/* Title & Live Status Badges */}
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-yellow-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/25 ring-4 ring-orange-500/10 shrink-0">
+              <KeyRound size={24} className="stroke-[2.2]" />
             </div>
             <div>
-              <h1 style={{ fontSize: "20px", fontWeight: 850, color: "#0f172a", margin: 0, letterSpacing: "-0.3px" }}>
-                Cấp Quyền Model AI & Nạp Credit Cho Key Tool
-              </h1>
-              <p style={{ fontSize: "13px", color: "#64748b", margin: "2px 0 0" }}>
-                Quản lý quyền sử dụng Model AI và cấp phát số dư Credit cho từng Key Tool Desktop / Thiết bị máy khách
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight m-0">
+                  Cấp Quyền Model AI & Nạp Credit Cho Key Tool
+                </h1>
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>{activeGatewayKeys} Key Đang Bật Gateway</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Quản lý phân quyền gọi từng model AI và nạp số dư Credit cho từng Key Tool Desktop / Thiết bị máy khách.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Action Buttons Toolbar */}
+        <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center">
           <button
             type="button"
             onClick={() => fetchLicenses()}
             disabled={loading}
-            style={{
-              background: "#ffffff",
-              border: "1px solid #cbd5e1",
-              borderRadius: "8px",
-              padding: "7px 14px",
-              fontSize: "12.5px",
-              fontWeight: 700,
-              color: "#334155",
-              cursor: loading ? "not-allowed" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-800 bg-white hover:bg-slate-50 hover:border-slate-400 border border-slate-200/90 rounded-xl shadow-xs transition-colors duration-150 active:scale-95 disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            {loading ? "Đang tải..." : "Làm Mới"}
+            <RefreshCw size={14} className={loading ? "animate-spin text-orange-500" : "text-slate-500"} />
+            <span>{loading ? "Đang tải..." : "Làm Mới"}</span>
           </button>
         </div>
       </div>
 
-      {/* 4 KPI Summary Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", marginBottom: "20px" }}>
+      {/* 2. Top 4 Glassmorphism KPI Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Tool Keys */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
-              Tổng Số Key Tool Máy Khách
-            </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#eff6ff", color: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <KeyRound size={16} />
+        <div className="group relative bg-white/95 backdrop-blur-sm border border-slate-200/80 hover:border-amber-400/60 rounded-2xl p-5 shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-600 shrink-0">
+              <KeyRound size={22} />
             </div>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 text-slate-600 font-mono">
+              Tổng Key
+            </span>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: "#0f172a", marginTop: "6px" }}>
-            {totalKeys} <span style={{ fontSize: "13px", color: "#64748b", fontWeight: 600 }}>thiết bị</span>
-          </div>
-          <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px" }}>
-            Đã kích hoạt trên hệ thống
+          <div className="mt-4">
+            <div className="text-[11.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Tổng Số Key Tool Khách
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 leading-tight mt-1 flex items-baseline gap-2">
+              <span>{totalKeys}</span>
+              <span className="text-xs font-bold text-slate-400">thiết bị</span>
+            </div>
+            <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Đã kích hoạt bản quyền</span>
+              <span className="font-bold text-slate-700">100% Active</span>
+            </div>
           </div>
         </div>
 
         {/* Card 2: Total Credit Circulating */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
-              Tổng Credit Đang Lưu Hành
-            </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#fef3c7", color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Coins size={16} />
+        <div className="group relative bg-white/95 backdrop-blur-sm border border-slate-200/80 hover:border-amber-400/60 rounded-2xl p-5 shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-600 shrink-0">
+              <Coins size={22} />
             </div>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60 font-mono">
+              1đ = 1 Cr
+            </span>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: "#d97706", marginTop: "6px" }}>
-            {totalCreditBalance.toLocaleString("vi-VN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: "13px", color: "#d97706", fontWeight: 700 }}>Cr</span>
-          </div>
-          <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px" }}>
-            Tương đương ~{(totalCreditBalance * 1000).toLocaleString("vi-VN")} VNĐ
+          <div className="mt-4">
+            <div className="text-[11.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Tổng Credit Đang Lưu Hành
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-amber-600 leading-tight mt-1 flex items-baseline gap-1.5 font-mono">
+              <span>{totalCreditBalance.toLocaleString("vi-VN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+              <span className="text-xs font-bold text-amber-700 font-sans">Cr</span>
+            </div>
+            <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Quy đổi giá trị:</span>
+              <span className="font-bold text-slate-700 font-mono">~{(totalCreditBalance * 1000).toLocaleString("vi-VN")} đ</span>
+            </div>
           </div>
         </div>
 
         {/* Card 3: Active AI Gateway Keys */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
-              Key Bật Quyền AI Gateway
-            </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#f0fdf4", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Zap size={16} />
+        <div className="group relative bg-white/95 backdrop-blur-sm border border-slate-200/80 hover:border-emerald-400/60 rounded-2xl p-5 shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600 shrink-0">
+              <Zap size={22} />
             </div>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono">
+              Online
+            </span>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: "#16a34a", marginTop: "6px" }}>
-            {activeGatewayKeys} <span style={{ fontSize: "13px", color: "#64748b", fontWeight: 600 }}>/ {totalKeys} key</span>
-          </div>
-          <div style={{ fontSize: "11.5px", color: "#16a34a", fontWeight: 700, marginTop: "4px" }}>
-            🟢 Sẵn sàng gọi AI Gateway
+          <div className="mt-4">
+            <div className="text-[11.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Key Bật Quyền AI Gateway
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-600 leading-tight mt-1 flex items-baseline gap-2">
+              <span>{activeGatewayKeys}</span>
+              <span className="text-xs font-bold text-slate-400">/ {totalKeys} key</span>
+            </div>
+            <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Trạng thái Gateway:</span>
+              <span className="font-bold text-emerald-600">Sẵn sàng gọi AI</span>
+            </div>
           </div>
         </div>
 
         {/* Card 4: Zero credit warning */}
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "16px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
-              Key Hết Credit (Cần nạp)
-            </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: zeroCreditKeys > 0 ? "#fef2f2" : "#f8fafc", color: zeroCreditKeys > 0 ? "#dc2626" : "#94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <AlertCircle size={16} />
+        <div className="group relative bg-white/95 backdrop-blur-sm border border-slate-200/80 hover:border-rose-400/60 rounded-2xl p-5 shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-center text-rose-600 shrink-0">
+              <AlertCircle size={22} />
             </div>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200/60 font-mono">
+              Cảnh báo
+            </span>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: zeroCreditKeys > 0 ? "#dc2626" : "#0f172a", marginTop: "6px" }}>
-            {zeroCreditKeys} <span style={{ fontSize: "13px", color: "#64748b", fontWeight: 600 }}>key</span>
-          </div>
-          <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px" }}>
-            Cần cấp thêm Credit để không gián đoạn
+          <div className="mt-4">
+            <div className="text-[11.5px] font-bold text-slate-500 uppercase tracking-wider">
+              Key Hết Credit (Cần Nạp)
+            </div>
+            <div className={`text-2xl sm:text-3xl font-black leading-tight mt-1 flex items-baseline gap-2 ${zeroCreditKeys > 0 ? "text-rose-600" : "text-slate-900"}`}>
+              <span>{zeroCreditKeys}</span>
+              <span className="text-xs font-bold text-slate-400">key</span>
+            </div>
+            <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>Nguy cơ gián đoạn:</span>
+              <span className={`font-bold ${zeroCreditKeys > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                {zeroCreditKeys > 0 ? "Cần nạp thêm" : "An toàn"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Table Container */}
-      <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "12px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+      {/* 3. Main Table Container */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
         {/* Search & Filter Toolbar */}
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", background: "#f8fafc" }}>
-          {/* Search Box */}
-          <div style={{ position: "relative", width: "320px", maxWidth: "100%" }}>
-            <Search size={14} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-slate-50/70 via-white to-amber-50/20">
+          <div className="relative w-full sm:w-80">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Tìm theo tên khách, Key máy, HWID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "7px 12px 7px 34px",
-                fontSize: "12.5px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "8px",
-                background: "#ffffff",
-                outline: "none",
-                boxSizing: "border-box",
-              }}
+              className="w-full pl-9.5 pr-8 py-2 text-xs font-medium text-slate-800 bg-white border border-slate-200/90 rounded-xl focus:border-orange-500 focus:outline-none focus:ring-3 focus:ring-orange-500/10 placeholder-slate-400 shadow-2xs transition-all"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
           {/* Filter Pills */}
-          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
             {[
               { id: "all", label: "Tất cả key" },
-              { id: "active", label: "Đang hoạt động" },
-              { id: "has_credit", label: "Còn Credit" },
-              { id: "no_credit", label: "Hết Credit" },
-            ].map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setStatusFilter(f.id as any)}
-                style={{
-                  background: statusFilter === f.id ? "#0f172a" : "#ffffff",
-                  color: statusFilter === f.id ? "#ffffff" : "#475569",
-                  border: statusFilter === f.id ? "1px solid #0f172a" : "1px solid #cbd5e1",
-                  padding: "5px 12px",
-                  borderRadius: "6px",
-                  fontSize: "11.5px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {f.label}
-              </button>
-            ))}
+              { id: "active", label: "🟢 Đang hoạt động" },
+              { id: "has_credit", label: "🪙 Còn Credit" },
+              { id: "no_credit", label: "⚠️ Hết Credit" },
+            ].map((f) => {
+              const isSelected = statusFilter === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setStatusFilter(f.id as any)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer select-none ${
+                    isSelected
+                      ? "bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/10"
+                      : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 hover:bg-slate-100/80"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Table Content */}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "12.5px" }}>
+        {/* Table Content - Single Line Compact Rows */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[1050px]">
             <thead>
-              <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#475569", fontWeight: 800, fontSize: "11.5px", textTransform: "uppercase", letterSpacing: "0.4px" }}>
-                <th style={{ padding: "12px 16px" }}>Khách Hàng / Thiết Bị</th>
-                <th style={{ padding: "12px 16px" }}>Key Tool (License)</th>
-                <th style={{ padding: "12px 16px" }}>Số Dư Credit</th>
-                <th style={{ padding: "12px 16px" }}>Mô Hình AI Được Cấp Phép</th>
-                <th style={{ padding: "12px 16px", textAlign: "center" }}>AI Gateway</th>
-                <th style={{ padding: "12px 16px", textAlign: "right" }}>Thao Tác Cấp Phát</th>
+              <tr className="border-b border-slate-200/90 bg-slate-50/90 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none whitespace-nowrap">
+                <th className="py-3.5 pl-6 pr-3 w-[25%]">Khách Hàng & Thiết Bị</th>
+                <th className="py-3.5 px-3 w-[20%]">Key Tool (License)</th>
+                <th className="py-3.5 px-3 w-[15%] text-center text-amber-700">Số Dư Credit</th>
+                <th className="py-3.5 px-3 w-[22%]">Mô Hình AI Cấp Phép</th>
+                <th className="py-3.5 px-3 w-[8%] text-center">AI Gateway</th>
+                <th className="py-3.5 pr-6 pl-3 w-[10%] text-right">Thao Tác Cấp Phát</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100 text-xs">
               {filteredLicenses.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: "36px 16px", textAlign: "center", color: "#94a3b8" }}>
-                    {loading ? "Đang tải dữ liệu..." : "Không tìm thấy Key Tool nào phù hợp."}
+                  <td colSpan={6} className="py-16 text-center text-slate-400">
+                    <KeyRound size={32} className="mx-auto mb-2 opacity-40" />
+                    <div className="font-bold text-sm text-slate-700">
+                      {loading ? "Đang tải dữ liệu..." : "Không tìm thấy Key Tool nào phù hợp."}
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -454,119 +489,72 @@ export const AiKeyGrantsPage: React.FC = () => {
                   return (
                     <tr
                       key={lic.id}
-                      style={{
-                        borderBottom: "1px solid #f1f5f9",
-                        transition: "background 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      className="group hover:bg-slate-50/80 transition-colors duration-150"
                     >
                       {/* Customer & Machine Info */}
-                      <td style={{ padding: "14px 16px", verticalAlign: "middle" }}>
-                        <div style={{ fontWeight: 800, color: "#0f172a", fontSize: "13px" }}>
-                          {lic.customer_name || "Khách hàng Desktop"}
-                        </div>
-                        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <span style={{ fontFamily: "monospace", color: "#475569" }}>
-                            HWID: {lic.hwid ? `${lic.hwid.slice(0, 16)}...` : "Chưa gắn máy"}
-                          </span>
-                          {lic.customer_contact && <span>• {lic.customer_contact}</span>}
+                      <td className="py-3 pl-6 pr-3 align-middle whitespace-nowrap">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-bold shrink-0">
+                            <Laptop size={14} />
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-900 text-xs">
+                              {lic.customer_name || "Khách hàng Desktop"}
+                            </div>
+                            <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                              <span>HWID: {lic.hwid ? `${lic.hwid.slice(0, 12)}...` : "Chưa gắn máy"}</span>
+                              {lic.customer_contact && <span>• {lic.customer_contact}</span>}
+                            </div>
+                          </div>
                         </div>
                       </td>
 
                       {/* License Key with Copy button */}
-                      <td style={{ padding: "14px 16px", verticalAlign: "middle" }}>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#f1f5f9", padding: "4px 8px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                          <span style={{ fontFamily: "monospace", fontWeight: 750, color: "#1e293b", fontSize: "12px" }}>
+                      <td className="py-3 px-3 align-middle whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5 bg-slate-100/90 border border-slate-200/90 px-2.5 py-1 rounded-lg">
+                          <span className="font-mono font-bold text-slate-800 text-[11.5px]">
                             {fullKey}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleCopy(fullKey)}
                             title="Sao chép License Key"
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              cursor: "pointer",
-                              color: copiedKey === fullKey ? "#16a34a" : "#64748b",
-                            }}
+                            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-white transition-colors cursor-pointer"
                           >
-                            {copiedKey === fullKey ? <Check size={13} /> : <Copy size={13} />}
+                            {copiedKey === fullKey ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
                           </button>
                         </div>
                       </td>
 
                       {/* Credit Balance */}
-                      <td style={{ padding: "14px 16px", verticalAlign: "middle" }}>
-                        <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-                          <span
-                            style={{
-                              fontSize: "16px",
-                              fontWeight: 850,
-                              color: (lic.credit_balance || 0) > 0 ? "#d97706" : "#dc2626",
-                            }}
-                          >
-                            {(lic.credit_balance || 0).toLocaleString("vi-VN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                          <span style={{ fontSize: "11px", fontWeight: 700, color: "#d97706" }}>Cr</span>
-                        </div>
-                        <div style={{ fontSize: "10.5px", color: "#64748b" }}>
-                          ~{((lic.credit_balance || 0) * 1000).toLocaleString("vi-VN")} đ
+                      <td className="py-3 px-3 align-middle text-center whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1 bg-amber-50/80 border border-amber-200/80 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-900 font-mono shadow-2xs">
+                          <Coins size={12} className="text-amber-600" />
+                          <span>{(lic.credit_balance || 0).toLocaleString("vi-VN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                          <span className="text-[10px] text-amber-700 font-sans">Cr</span>
                         </div>
                       </td>
 
                       {/* Allowed Models */}
-                      <td style={{ padding: "14px 16px", verticalAlign: "middle", maxWidth: "380px" }}>
+                      <td className="py-3 px-3 align-middle whitespace-nowrap">
                         {isAllModels ? (
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              background: "rgba(22, 163, 74, 0.1)",
-                              color: "#16a34a",
-                              border: "1px solid rgba(22, 163, 74, 0.25)",
-                              padding: "3px 8px",
-                              borderRadius: "6px",
-                              fontSize: "11.5px",
-                              fontWeight: 750,
-                            }}
-                          >
-                            <Sparkles size={12} /> Tất cả Model AI (Full Access)
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/70 shadow-2xs">
+                            <Sparkles size={10} />
+                            <span>Tất cả Model AI (Full Access)</span>
                           </span>
                         ) : (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                            {allowedList.slice(0, 3).map((mId) => (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {allowedList.slice(0, 2).map((mId) => (
                               <span
                                 key={mId}
-                                style={{
-                                  background: "#f1f5f9",
-                                  border: "1px solid #e2e8f0",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  fontSize: "10.5px",
-                                  fontFamily: "monospace",
-                                  color: "#334155",
-                                  fontWeight: 600,
-                                }}
+                                className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10.5px] font-mono text-slate-700 font-semibold"
                               >
                                 {mId}
                               </span>
                             ))}
-                            {allowedList.length > 3 && (
-                              <span
-                                style={{
-                                  background: "#f8fafc",
-                                  border: "1px solid #cbd5e1",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  fontSize: "10px",
-                                  color: "#64748b",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                +{allowedList.length - 3} model khác
+                            {allowedList.length > 2 && (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-200/80 text-[10px] font-bold text-slate-600">
+                                +{allowedList.length - 2} model
                               </span>
                             )}
                           </div>
@@ -574,62 +562,40 @@ export const AiKeyGrantsPage: React.FC = () => {
                       </td>
 
                       {/* AI Gateway Status */}
-                      <td style={{ padding: "14px 16px", verticalAlign: "middle", textAlign: "center" }}>
+                      <td className="py-3 px-3 align-middle text-center whitespace-nowrap">
                         {lic.ai_gateway_enabled !== false ? (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "11px", color: "#16a34a", fontWeight: 750, background: "#f0fdf4", padding: "3px 8px", borderRadius: "12px", border: "1px solid #bbf7d0" }}>
-                            <Zap size={11} /> Bật
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <Zap size={10} />
+                            <span>Bật</span>
                           </span>
                         ) : (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "11px", color: "#dc2626", fontWeight: 750, background: "#fef2f2", padding: "3px 8px", borderRadius: "12px", border: "1px solid #fecaca" }}>
-                            <Lock size={11} /> Khóa
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                            <Lock size={10} />
+                            <span>Khóa</span>
                           </span>
                         )}
                       </td>
 
                       {/* Actions */}
-                      <td style={{ padding: "14px 16px", verticalAlign: "middle", textAlign: "right" }}>
-                        <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
-                          {/* Nút Cấp Quyền Model AI */}
+                      <td className="py-3 pr-6 pl-3 align-middle text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5 justify-end">
                           <button
                             type="button"
                             onClick={() => openModelsModal(lic)}
-                            style={{
-                              background: "rgba(37, 99, 235, 0.08)",
-                              border: "1px solid rgba(37, 99, 235, 0.3)",
-                              color: "#2563eb",
-                              padding: "5px 10px",
-                              borderRadius: "6px",
-                              fontSize: "11.5px",
-                              fontWeight: 750,
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                            title="Phân quyền Model AI"
                           >
-                            <Cpu size={12} /> Cấp Model AI
+                            <Cpu size={11} className="text-slate-500" />
+                            <span>Cấp Model</span>
                           </button>
-
-                          {/* Nút Nạp Credit */}
                           <button
                             type="button"
                             onClick={() => openCreditModal(lic)}
-                            style={{
-                              background: "linear-gradient(135deg, #d97706, #f59e0b)",
-                              border: "none",
-                              color: "#12151f",
-                              padding: "5px 11px",
-                              borderRadius: "6px",
-                              fontSize: "11.5px",
-                              fontWeight: 800,
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              boxShadow: "0 1px 4px rgba(245, 158, 11, 0.3)",
-                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors cursor-pointer shadow-2xs active:scale-95"
+                            title="Nạp Credit cho Key này"
                           >
-                            <Coins size={12} /> + Nạp Credit
+                            <Coins size={11} />
+                            <span>+ Nạp Cr</span>
                           </button>
                         </div>
                       </td>
@@ -644,40 +610,22 @@ export const AiKeyGrantsPage: React.FC = () => {
 
       {/* MODAL 1: Nạp / Cấp Credit Cho Key Tool */}
       {creditModalLicense && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "16px",
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-md transition-all duration-300">
           <div
-            style={{
-              background: "#ffffff",
-              borderRadius: "16px",
-              width: "480px",
-              maxWidth: "100%",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15)",
-              overflow: "hidden",
-            }}
+            className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-900/10 transition-all"
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div style={{ padding: "18px 22px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#fef3c7", color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Coins size={16} />
+            <div className="relative border-b border-slate-100 bg-gradient-to-r from-slate-50/80 via-white to-amber-50/30 px-6 py-5 flex items-start justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-200/80 shadow-xs">
+                  <Coins className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 800, color: "#0f172a" }}>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">
                     Cấp Credit Cho Key Tool
                   </h3>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>
+                  <div className="text-xs text-slate-500 mt-0.5">
                     {creditModalLicense.customer_name} ({creditModalLicense.key_hint})
                   </div>
                 </div>
@@ -685,57 +633,47 @@ export const AiKeyGrantsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCreditModalLicense(null)}
-                style={{ background: "none", border: "none", fontSize: "18px", color: "#94a3b8", cursor: "pointer" }}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
               >
-                ✕
+                <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: "16px" }}>
-              {/* Current balance display */}
-              <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "12.5px", color: "#64748b", fontWeight: 600 }}>Số dư Credit hiện tại:</span>
-                <span style={{ fontSize: "16px", fontWeight: 850, color: "#d97706" }}>
-                  {(creditModalLicense.credit_balance || 0).toLocaleString("vi-VN", { minimumFractionDigits: 2 })} Cr
+            <div className="p-6 space-y-4">
+              {/* Current balance card */}
+              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-3.5 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-600">Số dư Credit hiện tại:</span>
+                <span className="text-base font-black text-amber-600 font-mono">
+                  {(creditModalLicense.credit_balance || 0).toLocaleString("vi-VN", { minimumFractionDigits: 0 })} Cr
                 </span>
               </div>
 
               {/* Mode: Add or Set */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Hình Thức Cấp Phát:
                 </label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setCreditMode("add")}
-                    style={{
-                      background: creditMode === "add" ? "#0f172a" : "#ffffff",
-                      color: creditMode === "add" ? "#ffffff" : "#475569",
-                      border: creditMode === "add" ? "1px solid #0f172a" : "1px solid #cbd5e1",
-                      padding: "8px",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      fontWeight: 750,
-                      cursor: "pointer",
-                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      creditMode === "add"
+                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                    }`}
                   >
                     ➕ Cộng Thêm Vào Số Dư
                   </button>
                   <button
                     type="button"
                     onClick={() => setCreditMode("set")}
-                    style={{
-                      background: creditMode === "set" ? "#0f172a" : "#ffffff",
-                      color: creditMode === "set" ? "#ffffff" : "#475569",
-                      border: creditMode === "set" ? "1px solid #0f172a" : "1px solid #cbd5e1",
-                      padding: "8px",
-                      borderRadius: "6px",
-                      fontSize: "12px",
-                      fontWeight: 750,
-                      cursor: "pointer",
-                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      creditMode === "set"
+                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                    }`}
                   >
                     🎯 Đặt Lại Số Dư Mới
                   </button>
@@ -744,46 +682,33 @@ export const AiKeyGrantsPage: React.FC = () => {
 
               {/* Amount input & Quick buttons */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Số Lượng Credit ({creditMode === "add" ? "Cộng thêm" : "Số dư mới"}):
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="10"
-                  value={creditAmount}
-                  onChange={(e) => setCreditAmount(Number(e.target.value))}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    fontSize: "15px",
-                    fontWeight: 800,
-                    color: "#0f172a",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "8px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-200/90 bg-slate-50/50 hover:bg-white focus:bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-900 focus:border-orange-500 focus:outline-none focus:ring-3 focus:ring-orange-500/10 shadow-2xs"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-700 font-mono">Cr</span>
+                </div>
 
                 {/* Quick preset buttons */}
-                <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+                <div className="flex gap-2 mt-2">
                   {[100, 500, 1000, 2000, 5000].map((val) => (
                     <button
                       key={val}
                       type="button"
                       onClick={() => setCreditAmount(val)}
-                      style={{
-                        flex: 1,
-                        background: creditAmount === val ? "rgba(245, 158, 11, 0.2)" : "#f1f5f9",
-                        color: creditAmount === val ? "#b45309" : "#475569",
-                        border: creditAmount === val ? "1px solid #f59e0b" : "1px solid #e2e8f0",
-                        padding: "5px 0",
-                        borderRadius: "6px",
-                        fontSize: "11px",
-                        fontWeight: 750,
-                        cursor: "pointer",
-                      }}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        creditAmount === val
+                          ? "bg-amber-500 text-slate-950 font-black shadow-2xs"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
                     >
                       +{val}
                     </button>
@@ -793,7 +718,7 @@ export const AiKeyGrantsPage: React.FC = () => {
 
               {/* Reason input */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#475569", marginBottom: "6px" }}>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Lý Do / Ghi Chú Cấp Phát:
                 </label>
                 <input
@@ -801,34 +726,17 @@ export const AiKeyGrantsPage: React.FC = () => {
                   placeholder="Ví dụ: Nạp tiền gói tháng, Tặng thử nghiệm..."
                   value={creditReason}
                   onChange={(e) => setCreditReason(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 12px",
-                    fontSize: "12.5px",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "8px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
+                  className="w-full rounded-xl border border-slate-200/90 bg-slate-50/50 hover:bg-white focus:bg-white px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-orange-500 focus:outline-none focus:ring-3 focus:ring-orange-500/10 shadow-2xs"
                 />
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div style={{ padding: "14px 22px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/90 px-6 py-4">
               <button
                 type="button"
                 onClick={() => setCreditModalLicense(null)}
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #cbd5e1",
-                  padding: "7px 14px",
-                  borderRadius: "8px",
-                  fontSize: "12.5px",
-                  fontWeight: 700,
-                  color: "#64748b",
-                  cursor: "pointer",
-                }}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Hủy
               </button>
@@ -836,64 +744,34 @@ export const AiKeyGrantsPage: React.FC = () => {
                 type="button"
                 onClick={handleGrantCredit}
                 disabled={submittingCredit || creditAmount <= 0}
-                style={{
-                  background: "linear-gradient(135deg, #d97706, #f59e0b)",
-                  border: "none",
-                  padding: "7px 18px",
-                  borderRadius: "8px",
-                  fontSize: "12.5px",
-                  fontWeight: 800,
-                  color: "#12151f",
-                  cursor: submittingCredit ? "not-allowed" : "pointer",
-                  boxShadow: "0 2px 6px rgba(245, 158, 11, 0.3)",
-                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-orange-600 hover:bg-orange-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-orange-600/20 disabled:opacity-50 transition-colors cursor-pointer active:scale-95"
               >
-                {submittingCredit ? "Đang xử lý..." : "Xác Nhận Cấp Credit"}
+                <Coins size={13} />
+                <span>{submittingCredit ? "Đang xử lý..." : "Xác Nhận Nạp Credit"}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL 2: Cấp Phép Danh Sách Model AI */}
+      {/* MODAL 2: Phân Quyền Model AI Cho Key Tool */}
       {modelsModalLicense && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "16px",
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-md transition-all duration-300">
           <div
-            style={{
-              background: "#ffffff",
-              borderRadius: "16px",
-              width: "650px",
-              maxWidth: "100%",
-              maxHeight: "90vh",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15)",
-              overflow: "hidden",
-            }}
+            className="relative w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-900/10 transition-all"
+            onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
-            <div style={{ padding: "18px 22px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#eff6ff", color: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Cpu size={16} />
+            {/* Header */}
+            <div className="relative border-b border-slate-100 bg-gradient-to-r from-slate-50/80 via-white to-orange-50/30 px-6 py-5 flex items-start justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-200/80 shadow-xs">
+                  <Cpu className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 800, color: "#0f172a" }}>
-                    Cấp Quyền Mô Hình AI Cho Key Tool
+                  <h3 className="text-base font-black text-slate-900 tracking-tight">
+                    Phân Quyền Model AI Cho Key Tool
                   </h3>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>
+                  <div className="text-xs text-slate-500 mt-0.5">
                     {modelsModalLicense.customer_name} ({modelsModalLicense.key_hint})
                   </div>
                 </div>
@@ -901,159 +779,115 @@ export const AiKeyGrantsPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setModelsModalLicense(null)}
-                style={{ background: "none", border: "none", fontSize: "18px", color: "#94a3b8", cursor: "pointer" }}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
               >
-                ✕
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div style={{ padding: "18px 22px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "14px" }}>
-              {/* AI Gateway Switch */}
-              <div style={{ background: "#f8fafc", padding: "12px 16px", borderRadius: "10px", border: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            {/* Body */}
+            <div className="max-h-[68vh] overflow-y-auto p-6 space-y-4 scrollbar-thin">
+              {/* Gateway Toggle Switch */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 flex items-center justify-between">
                 <div>
-                  <div style={{ fontWeight: 800, color: "#0f172a", fontSize: "13px" }}>
-                    Quyền Truy Cập AI Gateway:
-                  </div>
-                  <div style={{ fontSize: "11.5px", color: "#64748b" }}>
-                    Cho phép Key Tool gọi các model AI qua hệ thống Cloud Gateway của Admin
+                  <div className="text-xs font-bold text-slate-900">Bật Quyền Gọi AI Gateway Cho Key Này</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Nếu tắt, thiết bị Desktop sẽ bị chặn mọi lượt gọi phân tích AI.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsGatewayEnabled(!isGatewayEnabled)}
-                  style={{
-                    background: isGatewayEnabled ? "#16a34a" : "#cbd5e1",
-                    color: "#ffffff",
-                    border: "none",
-                    padding: "6px 14px",
-                    borderRadius: "20px",
-                    fontSize: "11.5px",
-                    fontWeight: 800,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isGatewayEnabled
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "bg-slate-200 text-slate-700"
+                  }`}
                 >
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#ffffff" }} />
-                  {isGatewayEnabled ? "ĐÃ BẬT" : "ĐÃ KHÓA"}
+                  {isGatewayEnabled ? "🟢 Đang Bật" : "🔒 Đã Khóa"}
                 </button>
               </div>
 
-              {/* Models selection title & actions */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-                <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#334155", textTransform: "uppercase" }}>
-                  Danh Sách Model AI Được Cấp Phép ({selectedModels.length}/{DEFAULT_MODELS_LIST.length}):
-                </span>
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedModels(DEFAULT_MODELS_LIST.map((m) => m.id))}
-                    style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", color: "#334155", padding: "3px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
-                  >
-                    Chọn tất cả
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedModels([])}
-                    style={{ background: "#f1f5f9", border: "1px solid #cbd5e1", color: "#94a3b8", padding: "3px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
-                  >
-                    Bỏ chọn hết
-                  </button>
-                </div>
-              </div>
-
-              {/* Models List Grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "6px" }}>
-                {DEFAULT_MODELS_LIST.map((model) => {
-                  const isChecked = selectedModels.includes(model.id);
-                  return (
-                    <div
-                      key={model.id}
-                      onClick={() => toggleModel(model.id)}
-                      style={{
-                        background: isChecked ? "rgba(37, 99, 235, 0.05)" : "#ffffff",
-                        border: isChecked ? "1px solid #3b82f6" : "1px solid #e2e8f0",
-                        borderRadius: "8px",
-                        padding: "8px 12px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
+              {/* Models selection checklist */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-700">
+                    Danh Sách Model AI Được Phép Gọi ({selectedModels.length}/{DEFAULT_MODELS_LIST.length}):
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModels(DEFAULT_MODELS_LIST.map((m) => m.id))}
+                      className="text-[11px] font-bold text-orange-600 hover:underline cursor-pointer"
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      Chọn Tất Cả
+                    </button>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModels([])}
+                      className="text-[11px] font-bold text-slate-500 hover:underline cursor-pointer"
+                    >
+                      Bỏ Chọn
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {DEFAULT_MODELS_LIST.map((m) => {
+                    const isChecked = selectedModels.includes(m.id);
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex items-start gap-2.5 p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                          isChecked
+                            ? "bg-orange-50/40 border-orange-200 ring-1 ring-orange-400/20"
+                            : "bg-white border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => {}}
-                          style={{ accentColor: "#2563eb", width: "15px", height: "15px", cursor: "pointer" }}
+                          onChange={() => toggleModelSelection(m.id)}
+                          className="mt-0.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500 accent-orange-600"
                         />
-                        <div>
-                          <div style={{ fontSize: "12.5px", fontWeight: 750, color: isChecked ? "#1e293b" : "#64748b" }}>
-                            {model.name}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 justify-between">
+                            <span className="font-mono font-bold text-xs text-slate-900 truncate">
+                              {m.id}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-bold shrink-0">
+                              {m.tag}
+                            </span>
                           </div>
-                          <div style={{ fontSize: "11px", color: "#94a3b8" }}>
-                            {model.provider} • ID: <code style={{ color: "#475569" }}>{model.id}</code>
+                          <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                            {m.provider}
                           </div>
                         </div>
-                      </div>
-
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          fontWeight: 750,
-                          padding: "2px 6px",
-                          borderRadius: "4px",
-                          background: "#f1f5f9",
-                          color: "#475569",
-                        }}
-                      >
-                        {model.tag}
-                      </span>
-                    </div>
-                  );
-                })}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Modal Footer */}
-            <div style={{ padding: "14px 22px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/90 px-6 py-4">
               <button
                 type="button"
                 onClick={() => setModelsModalLicense(null)}
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #cbd5e1",
-                  padding: "7px 14px",
-                  borderRadius: "8px",
-                  fontSize: "12.5px",
-                  fontWeight: 700,
-                  color: "#64748b",
-                  cursor: "pointer",
-                }}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 Hủy
               </button>
               <button
                 type="button"
-                onClick={handleSaveAllowedModels}
+                onClick={handleGrantModels}
                 disabled={submittingModels}
-                style={{
-                  background: "#2563eb",
-                  border: "none",
-                  padding: "7px 18px",
-                  borderRadius: "8px",
-                  fontSize: "12.5px",
-                  fontWeight: 800,
-                  color: "#ffffff",
-                  cursor: submittingModels ? "not-allowed" : "pointer",
-                  boxShadow: "0 2px 6px rgba(37, 99, 235, 0.3)",
-                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-orange-600 hover:bg-orange-700 px-5 py-2 text-xs font-bold text-white shadow-md shadow-orange-600/20 disabled:opacity-50 transition-colors cursor-pointer active:scale-95"
               >
-                {submittingModels ? "Đang lưu..." : "Lưu Phân Quyền Model"}
+                <CheckCircle2 size={13} />
+                <span>{submittingModels ? "Đang lưu..." : "Lưu Phân Quyền"}</span>
               </button>
             </div>
           </div>
@@ -1062,3 +896,5 @@ export const AiKeyGrantsPage: React.FC = () => {
     </div>
   );
 };
+
+export default AiKeyGrantsPage;

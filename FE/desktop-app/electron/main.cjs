@@ -15,6 +15,10 @@ const { resolveVoicePack, listVoicePacks } = require("./voice-pack.cjs");
 const { frameTimeline, enrichAnalysis } = require("./contextual-analysis.cjs");
 const { formatTtsProviderError, isRetryableTtsStatus, isVoiceCompatibilityError, resolveTtsModels, resolveTtsVoices } = require("./tts.cjs");
 const { compareVersions, downloadRelease, installRelease, trustedUrl: isTrustedUpdateUrl, validateRelease, versionParts } = require("./updater.cjs");
+const { initSecurityShield, applyWindowSecurityShield, signClientRequest } = require("./security-shield.cjs");
+
+// Initialize Anti-Debug and Tamper Protection
+initSecurityShield();
 
 if (!app || typeof app.whenReady !== "function") {
   throw new Error("JACS Studio phải được khởi động bằng Electron desktop runtime; không chạy main.cjs bằng Node.");
@@ -4118,6 +4122,10 @@ Return ONLY valid JSON with no markdown wrapping. Mảng 'scenes' phải có đ�
 
     return null;
   });
+
+  ipcMain.handle("runtime:sign-request", (_event, payload, hwid) => {
+    return signClientRequest(payload, hwid);
+  });
 }
 
 function createWindow() {
@@ -4133,14 +4141,10 @@ function createWindow() {
     webPreferences: { contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, "preload.cjs") },
   });
   window.setMenuBarVisibility(false);
-  window.webContents.on("before-input-event", (event, input) => {
-    if (((input.control || input.meta) && input.key.toLowerCase() === "r") || input.key === "F5") {
-      window.webContents.reloadIgnoringCache();
-    }
-    if (((input.control || input.meta) && input.shift && input.key.toLowerCase() === "i") || input.key === "F12") {
-      window.webContents.toggleDevTools();
-    }
-  });
+
+  // Apply Security Shield: Blocks DevTools, Inspect and view-source shortcuts in production
+  applyWindowSecurityShield(window);
+
   const devUrl = process.env.JACS_DESKTOP_DEV_URL;
   void (devUrl ? window.loadURL(devUrl) : window.loadFile(path.join(__dirname, "..", "dist", "index.html")));
 }

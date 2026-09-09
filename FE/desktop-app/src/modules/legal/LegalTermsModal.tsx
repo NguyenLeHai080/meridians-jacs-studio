@@ -26,48 +26,50 @@ export function LegalTermsModal({
   if (!isOpen) return null;
 
   const handleCopy = () => {
-    const textToCopy = `JACS STUDIO COMPLIANCE & LEGAL CERTIFICATE
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM — Độc lập • Tự do • Hạnh phúc
-DOC-REF: JACS-LEGAL-2026-v2.4 - 2026
+    const textToCopy = `JACS STUDIO • SOFTWARE LICENSING & TERMS OF SERVICE
+BỘ PHẬN PHÁT TRIỂN & BẢO HỘ BẢN QUYỀN JACS STUDIO
+Mã tài liệu: JACS-EULA-2026-v2.6
 
-Điều Khoản Sử Dụng & Miễn Trừ Trách Nhiệm Pháp Lý JACS Studio
-Văn bản có hiệu lực thi hành từ ngày 2026-01-01 cho toàn bộ người dùng và giấy phép JACS Studio
+THỎA THUẬN CẤP PHÉP SỬ DỤNG VÀ ĐIỀU KHOẢN DỊCH VỤ PHẦN MỀM JACS STUDIO
+(Phiên bản: 2026.1 • Có hiệu lực thi hành từ ngày kích hoạt License Key)
 
-ĐIỀU 1. BẢN QUYỀN & TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM NỘI DUNG
-1. BẢN QUYỀN VÀ MIỄN TRỪ TRÁCH NHIỆM NỘI DUNG
-- JACS Studio là bộ công cụ hỗ trợ biên tập, dựng video, trích xuất cảnh và tổng hợp giọng đọc AI tự động.
-- Người dùng chịu trách nhiệm pháp lý 100% đối với toàn bộ video nguồn, hình ảnh, âm thanh và văn bản do chính người dùng nhập vào hoặc xử lý qua phần mềm.
-- Nhà phát triển JACS Studio không sở hữu, không lưu trữ và không chịu bất kỳ trách nhiệm pháp lý nào về tranh chấp quyền tác giả, bản quyền thương hiệu, quyền hình ảnh hoặc các khiếu nại liên quan đến nội dung do người dùng tạo ra.
+Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24 tháng 11 năm 2015;
+Căn cứ Luật Sở hữu trí tuệ số 36/2005/QH11 ngày 29 tháng 11 năm 2005 (sửa đổi, bổ sung năm 2009, 2019, 2022);
+Căn cứ Luật Công nghệ thông tin số 67/2006/QH11 ngày 29 tháng 6 năm 2006;
+Căn cứ Luật Giao dịch điện tử số 20/2023/QH15 ngày 22 tháng 6 năm 2023;
+Căn cứ Nghị định số 13/2023/NĐ-CP ngày 17 tháng 04 năm 2023 của Chính phủ về bảo vệ dữ liệu cá nhân.
 
-ĐIỀU 2. QUY ĐỊNH SỬ DỤNG AI, VOICE CLONING & API BÊN THỨ BA (BYOK)
-2. QUY ĐỊNH SỬ DỤNG AI & DỊCH VỤ BÊN THỨ BA (BYOK POLICY)
-- Người dùng tự cấu hình và sử dụng API Key cá nhân (OpenAI, Gemini, ElevenLabs, Claude...) theo đúng chính sách điều khoản của từng nhà cung cấp dịch vụ tương ứng.
-- Toàn bộ API Key được mã hóa cục bộ bằng Windows DPAPI / Secure Storage trên thiết bị của khách hàng; hệ thống máy chủ JACS không lưu trữ khóa API thô của người dùng.
-- JACS Studio không chịu trách nhiệm đối với bất kỳ chi phí phát sinh, việc khóa tài khoản API hoặc tính chính xác của nội dung do mô hình AI của bên thứ ba sinh ra.
+Điều 1. Bản quyền phần mềm và phạm vi cấp phép sử dụng
+1. JACS Studio là sản phẩm phần mềm độc quyền được phát triển bởi Nhà phát triển JACS Studio, bao gồm toàn bộ mã nguồn, cấu trúc thuật toán, giao diện đồ họa (UI/UX) và các tài liệu kỹ thuật liên quan, được bảo hộ theo pháp luật về Sở hữu trí tuệ.
+2. License Key được cấp cho Khách hàng là quyền sử dụng có giới hạn (Limited), không độc quyền (Non-exclusive), không được chuyển nhượng (Non-transferable) và chỉ phục vụ cho mục đích tác nghiệp, biên tập video nội bộ theo đúng thỏa thuận.
+3. Nghiêm cấm mọi hành vi sao chép, phân phối lại, cho thuê, thương mại hóa phần mềm hoặc chuyển nhượng License Key cho bên thứ ba khi chưa có văn bản chấp thuận từ Nhà phát triển.
 
-ĐIỀU 3. QUYỀN HẠN LICENSE, KHÓA HWID & CHỐNG BẺ KHÓA (ANTI-CRACK)
-3. QUYỀN SỬ DỤNG BẢN QUYỀN & THIẾT BỊ (ANTI-CRACK & HWID)
-- Mỗi License Key được cấp quyền kích hoạt sử dụng trên số lượng thiết bị phần cứng (HWID) đã đăng ký theo gói dịch vụ.
-- Nghiêm cấm mọi hành vi đảo ngược mã nguồn (Reverse Engineering), bẻ khóa (Crack), chia sẻ trái phép hoặc bán lại license khi chưa có sự đồng ý bằng văn bản của JACS Studio.
-- Vi phạm điều khoản sẽ dẫn đến việc thu hồi và khóa vĩnh viễn License Key trên toàn hệ thống mà không được hoàn tiền.
+Điều 2. Bảo mật phần mềm, kiểm soát thiết bị (HWID) và chống can thiệp mã nguồn
+1. Mỗi License Key được định danh và gắn kết chặt chẽ với mã nhận dạng phần cứng (HWID) của số lượng thiết bị đã đăng ký trong gói dịch vụ.
+2. Nghiêm cấm tuyệt đối mọi hành vi can thiệp trái phép vào phần mềm, bao gồm nhưng không giới hạn: đảo ngược mã nguồn (Reverse Engineering), dịch ngược (Decompilation), can thiệp bộ nhớ (Debugging/Memory Hooking), bẻ khóa (Crack), hoặc vô hiệu hóa cơ chế xác thực bản quyền.
+3. Mọi hành vi vi phạm sẽ dẫn đến việc đình chỉ ngay lập tức và thu hồi vĩnh viễn quyền sử dụng mà không được hoàn lại bất kỳ khoản phí nào, đồng thời Người dùng phải chịu hoàn toàn trách nhiệm bồi thường thiệt hại theo quy định của pháp luật.
 
-ĐIỀU 4. QUYỀN RIÊNG TƯ, BẢO MẬT DỮ LIỆU & GIẢI QUYẾT TRANH CHẤP
-4. QUYỀN RIÊNG TƯ & GIẢI QUYẾT TRANH CHẤP
-- JACS Studio chỉ thu thập mã định danh phần cứng (HWID), phiên bản app và nhật ký sự cố (Crash logs) phục vụ mục đích kiểm soát bản quyền và cải thiện độ ổn định. Không thu thập nội dung video cá nhân.
-- Mọi khiếu nại hoặc hỗ trợ kỹ thuật xin vui lòng liên hệ bộ phận hỗ trợ chính thức qua kênh Telegram / Hotline hỗ trợ.
-- Trong trường hợp xảy ra tranh chấp pháp lý, các bên cam kết ưu tiên thương lượng trên tinh thần tôn trọng quyền sở hữu trí tuệ và quy định pháp luật hiện hành.
+Điều 3. Trách nhiệm về dữ liệu đầu vào và tuyên bố miễn trừ trách nhiệm bản quyền nội dung
+1. JACS Studio là công cụ hỗ trợ công nghệ tự động hóa quy trình phân tích và biên tập video. Nhà phát triển JACS Studio hoàn toàn không sở hữu, không quản lý, không kiểm duyệt và không lưu trữ bất kỳ video nguồn, âm thanh, hình ảnh hoặc tài liệu nào do Người dùng đưa vào xử lý.
+2. Người dùng cam đoan và bảo đảm rằng mình là chủ sở hữu hợp pháp hoặc đã được cấp đầy đủ quyền sử dụng, quyền phát hành đối với toàn bộ dữ liệu, nguyên liệu đầu vào và nội dung được tạo ra thông qua phần mềm.
+3. Người dùng chịu trách nhiệm pháp lý 100% trước cơ quan nhà nước có thẩm quyền và các bên thứ ba đối với mọi tranh chấp bản quyền, quyền tác giả, nhãn hiệu thương mại, quyền hình ảnh hoặc các nội dung vi phạm pháp luật phát sinh từ việc sử dụng phần mềm.
+4. Nhà phát triển JACS Studio được miễn trừ hoàn toàn và vô điều kiện khỏi mọi khiếu nại, khiếu kiện, trách nhiệm dân sự, hình sự hoặc tổn thất phát sinh liên quan đến nội dung do Người dùng tạo ra.
 
----------------------------------------------------------------------------------
-ĐẠI DIỆN BAN PHÁP CHẾ & AN NINH MẠNG JACS:
-Jacs.Legal.Auth
-Đơn vị xác thực: Ban Pháp Chế & An Ninh Mạng JACS Studio
-Ký duyệt điện tử: SHA256:8F92-4B10-AC99-2026-JACS-LEGAL
-Thời điểm cấp chứng chỉ: 6/9/2026
+Điều 4. Tích hợp mô hình AI và chính sách API bên thứ ba (BYOK)
+1. Người dùng tự chịu trách nhiệm cấu hình, quản lý và sử dụng các khóa API cá nhân/doanh nghiệp (OpenAI, Gemini, Anthropic Claude, ElevenLabs...) theo đúng chính sách và điều khoản dịch vụ của từng nhà cung cấp.
+2. Toàn bộ API Key được mã hóa an toàn cục bộ trên thiết bị của Người dùng. Nhà phát triển không chịu trách nhiệm đối với chi phí phát sinh, việc khóa tài khoản API hoặc tính chính xác, tính đầy đủ của nội dung do các mô hình trí tuệ nhân tạo bên thứ ba sinh ra.
 
-[JACS LEGAL COMPLIANCE]
-CERT: 8F92-4B10-AC99-2026-JACS-LEGAL
-ISO/IEC 27001 • GDPR • VN CYBERSECURITY ACT
-✓ ENTERPRISE VERIFIED & SECURED`;
+Điều 5. Giới hạn trách nhiệm pháp lý và từ chối bảo đảm (Limitation of Liability)
+1. Phần mềm được cung cấp trên nguyên tắc "Theo Nguyên Trạng" (As Is) và "Như Hiện Có" (As Available). Nhà phát triển nỗ lực tối đa để đảm bảo phần mềm hoạt động ổn định nhưng không bảo đảm rằng phần mềm sẽ hoàn toàn không có lỗi kỹ thuật hoặc tương thích 100% với mọi cấu hình máy tính của bên thứ ba.
+2. Trong mọi trường hợp, Nhà phát triển JACS Studio không chịu trách nhiệm về bất kỳ thiệt hại gián tiếp, ngẫu nhiên, hệ quả, thiệt hại về lợi nhuận hoặc gián đoạn hoạt động kinh doanh phát sinh từ việc sử dụng hoặc không thể sử dụng phần mềm.
+
+Điều 6. Hiệu lực thỏa thuận, chấp thuận điện tử và giải quyết tranh chấp
+1. Bằng hành động cài đặt, kích hoạt License Key hoặc nhấn nút "Xác nhận & Đồng ý" trên giao diện phần mềm, Người dùng đã đọc, hiểu rõ và tự nguyện cam kết tuân thủ toàn bộ các điều khoản của Thỏa thuận này (có giá trị pháp lý tương đương hợp đồng bằng văn bản theo Luật Giao dịch điện tử).
+2. Thỏa thuận này được điều chỉnh và giải thích theo quy định của pháp luật Nước Cộng hòa Xã hội Chủ nghĩa Việt Nam. Mọi tranh chấp nếu không thể giải quyết thông qua thương lượng sẽ được đưa ra giải quyết tại Tòa án có thẩm quyền theo quy định của pháp luật.
+
+ĐẠI DIỆN NHÀ PHÁT TRIỂN JACS STUDIO
+Xác thực bản quyền phần mềm: Jacs.Legal.Auth
+Chữ ký điện tử / Hash: SHA256:8F92-4B10-AC99-2026-JACS-LEGAL`;
 
     navigator.clipboard.writeText(textToCopy);
     setCopiedText(true);
@@ -85,14 +87,14 @@ ISO/IEC 27001 • GDPR • VN CYBERSECURITY ACT
         <div className="legal-cert-top-bar">
           <div className="legal-cert-top-title">
             <span style={{ fontSize: "16px" }}>⚖️</span>
-            <strong>VĂN BẢN ĐIỀU KHOẢN & CHỨNG THỰC PHÁP LÝ JACS STUDIO</strong>
+            <strong>THỎA THUẬN CẤP PHÉP & ĐIỀU KHOẢN SỬ DỤNG (EULA)</strong>
           </div>
           <div className="legal-cert-top-actions">
             <button
               type="button"
               className="btn-cert-tool"
               onClick={handleCopy}
-              title="Sao chép toàn bộ văn bản"
+              title="Sao chép toàn bộ văn bản EULA"
             >
               <Icon name="copy" size={13} />
               <span>{copiedText ? "✓ Đã sao chép" : "Sao chép"}</span>
@@ -140,15 +142,15 @@ ISO/IEC 27001 • GDPR • VN CYBERSECURITY ACT
               color: "#1e293b",
               borderRadius: "14px",
               boxShadow: "0 20px 60px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08)",
-              padding: "40px 48px 48px 48px",
-              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+              padding: "44px 52px",
+              fontFamily: '"Times New Roman", Times, "Liberation Serif", serif',
               boxSizing: "border-box",
               userSelect: "text",
               display: "flex",
               flexDirection: "column",
             }}
           >
-            {/* 1. Header of Certificate */}
+            {/* 1. Software Publisher & Legal Standard Header */}
             <div
               className="cert-sheet-header"
               style={{
@@ -156,532 +158,414 @@ ISO/IEC 27001 • GDPR • VN CYBERSECURITY ACT
                 justifyContent: "space-between",
                 alignItems: "flex-start",
                 gap: "16px",
+                borderBottom: "1px solid #e2e8f0",
+                paddingBottom: "16px",
+                marginBottom: "16px",
               }}
             >
-              <div className="cert-header-left" style={{ flex: 1 }}>
-                <h3
-                  className="cert-comp-title"
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 900,
-                    color: "#0f172a",
-                    letterSpacing: "0.04em",
-                    margin: 0,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  JACS STUDIO COMPLIANCE & LEGAL CERTIFICATE
-                </h3>
-                <p
-                  className="cert-nation-motto"
+              {/* Left: Software Publisher & Doc Ref */}
+              <div className="cert-header-left" style={{ textAlign: "left", width: "250px", flexShrink: 0 }}>
+                <div
                   style={{
                     fontSize: "11px",
-                    color: "#475569",
-                    margin: "4px 0 0 0",
-                    fontWeight: 500,
-                  }}
-                >
-                  CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM — Độc lập • Tự do • Hạnh phúc
-                </p>
-              </div>
-              <div className="cert-header-right" style={{ flexShrink: 0 }}>
-                <div
-                  className="cert-doc-ref-badge"
-                  style={{
-                    background: "#f1f5f9",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: "6px",
-                    padding: "4px 10px",
-                    fontFamily: "'DM Mono', Consolas, monospace",
-                    fontSize: "10px",
                     fontWeight: 700,
-                    color: "#475569",
-                    letterSpacing: "0.04em",
-                    whiteSpace: "nowrap",
+                    color: "#0f172a",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.01em",
                   }}
                 >
-                  DOC-REF: JACS-LEGAL-2026-v2.4 - 2026
+                  JACS STUDIO • SOFTWARE VENDOR
+                </div>
+                <div
+                  style={{
+                    fontSize: "10px",
+                    color: "#475569",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.01em",
+                    marginTop: "2px",
+                  }}
+                >
+                  BỘ PHẬN PHÁT TRIỂN & BẢO HỘ BẢN QUYỀN
+                </div>
+                <div
+                  style={{
+                    width: "70px",
+                    height: "1px",
+                    backgroundColor: "#94a3b8",
+                    margin: "6px 0",
+                  }}
+                />
+                <div
+                  style={{
+                    fontSize: "10px",
+                    fontFamily: "'DM Mono', Consolas, monospace",
+                    color: "#64748b",
+                  }}
+                >
+                  DOC-REF: JACS-EULA-2026-v2.6
+                </div>
+              </div>
+
+              {/* Right: Legal Framework & Effective Standard */}
+              <div className="cert-header-right" style={{ textAlign: "right", width: "290px", flexShrink: 0 }}>
+                <div
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#0f172a",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  TIÊU CHUẨN THỎA THUẬN CẤP PHÉP EULA
+                </div>
+                <div
+                  style={{
+                    fontSize: "10px",
+                    color: "#475569",
+                    marginTop: "2px",
+                  }}
+                >
+                  CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+                </div>
+                <div
+                  style={{
+                    width: "90px",
+                    height: "1px",
+                    backgroundColor: "#94a3b8",
+                    margin: "6px 0 6px auto",
+                  }}
+                />
+                <div
+                  style={{
+                    fontSize: "10px",
+                    fontStyle: "italic",
+                    color: "#64748b",
+                  }}
+                >
+                  Phiên bản: 2026.1 • Áp dụng khi kích hoạt HWID
                 </div>
               </div>
             </div>
-
-            <div
-              className="cert-header-divider"
-              style={{
-                height: "2px",
-                background: "#0f172a",
-                margin: "14px 0 24px 0",
-              }}
-            />
 
             {/* 2. Main Title */}
             <div
               className="cert-main-title-block"
               style={{
                 textAlign: "center",
-                marginBottom: "26px",
+                margin: "14px 0 18px 0",
               }}
             >
               <h2
                 className="cert-main-heading"
                 style={{
-                  fontSize: "20px",
+                  fontSize: "13.5px",
                   fontWeight: 900,
                   color: "#0f172a",
                   letterSpacing: "-0.01em",
+                  textTransform: "uppercase",
                   margin: "0 0 6px 0",
+                  lineHeight: "1.4",
                 }}
               >
-                Điều Khoản Sử Dụng & Miễn Trừ Trách Nhiệm Pháp Lý JACS Studio
+                THỎA THUẬN CẤP PHÉP SỬ DỤNG VÀ ĐIỀU KHOẢN DỊCH VỤ PHẦN MỀM JACS STUDIO
               </h2>
               <p
                 className="cert-effective-date"
                 style={{
-                  fontSize: "12px",
+                  fontSize: "10.5px",
                   fontStyle: "italic",
                   color: "#64748b",
                   margin: 0,
                 }}
               >
-                Văn bản có hiệu lực thi hành từ ngày 2026-01-01 cho toàn bộ người dùng và giấy phép JACS Studio
+                (Phiên bản: 2026.1 • Xác thực cấp phép điện tử & ràng buộc trách nhiệm pháp lý người dùng cuối)
               </p>
             </div>
 
-            {/* 3. Four Legal Articles */}
+            {/* 3. Legal Foundations */}
+            <div
+              style={{
+                fontSize: "11px",
+                fontStyle: "italic",
+                lineHeight: "1.7",
+                color: "#334155",
+                marginBottom: "20px",
+                paddingLeft: "4px",
+              }}
+            >
+              <p style={{ margin: "0 0 3px 0" }}>Căn cứ Bộ luật Dân sự số 91/2015/QH13 ngày 24 tháng 11 năm 2015;</p>
+              <p style={{ margin: "0 0 3px 0" }}>Căn cứ Luật Sở hữu trí tuệ số 36/2005/QH11 ngày 29 tháng 11 năm 2005 (sửa đổi, bổ sung năm 2009, 2019, 2022);</p>
+              <p style={{ margin: "0 0 3px 0" }}>Căn cứ Luật Công nghệ thông tin số 67/2006/QH11 ngày 29 tháng 6 năm 2006;</p>
+              <p style={{ margin: "0 0 3px 0" }}>Căn cứ Luật Giao dịch điện tử số 20/2023/QH15 ngày 22 tháng 6 năm 2023;</p>
+              <p style={{ margin: "0 0 3px 0" }}>Căn cứ Nghị định số 13/2023/NĐ-CP ngày 17 tháng 04 năm 2023 của Chính phủ về bảo vệ dữ liệu cá nhân.</p>
+            </div>
+
+            {/* 4. Six Legal Articles */}
             <div
               className="cert-articles-container"
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: "20px",
+                gap: "16px",
+                fontSize: "12px",
+                lineHeight: "1.65",
+                color: "#1e293b",
+                fontFamily: '"Times New Roman", Times, "Liberation Serif", serif',
               }}
             >
               {/* Điều 1 */}
               <div className="cert-article-block">
                 <h4
-                  className="cert-article-title"
                   style={{
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    color: "#0f172a",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.02em",
-                    margin: "0 0 3px 0",
-                  }}
-                >
-                  ĐIỀU 1. BẢN QUYỀN & TUYÊN BỐ MIỄN TRỪ TRÁCH NHIỆM NỘI DUNG
-                </h4>
-                <div
-                  className="cert-article-subtitle"
-                  style={{
-                    fontSize: "10.5px",
+                    fontSize: "12.5px",
                     fontWeight: 700,
-                    color: "#64748b",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.03em",
-                    marginBottom: "6px",
+                    color: "#0f172a",
+                    margin: "0 0 4px 0",
                   }}
                 >
-                  1. BẢN QUYỀN VÀ MIỄN TRỪ TRÁCH NHIỆM NỘI DUNG
+                  Điều 1. Bản quyền phần mềm và phạm vi cấp phép sử dụng
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", color: "#334155" }}>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    1. JACS Studio là sản phẩm phần mềm độc quyền được phát triển bởi Nhà phát triển JACS Studio, bao gồm toàn bộ mã nguồn, cấu trúc thuật toán, giao diện đồ họa (UI/UX) và các tài liệu kỹ thuật liên quan, được bảo hộ theo pháp luật về Sở hữu trí tuệ.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    2. License Key được cấp cho Khách hàng là quyền sử dụng có giới hạn (Limited), không độc quyền (Non-exclusive), không được chuyển nhượng (Non-transferable) và chỉ phục vụ cho mục đích tác nghiệp, biên tập video nội bộ theo đúng thỏa thuận.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    3. Nghiêm cấm mọi hành vi sao chép, phân phối lại, cho thuê, thương mại hóa phần mềm hoặc chuyển nhượng License Key cho bên thứ ba khi chưa có văn bản chấp thuận từ Nhà phát triển.
+                  </p>
                 </div>
-                <ul
-                  className="cert-article-list"
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "5px",
-                  }}
-                >
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    JACS Studio là bộ công cụ hỗ trợ biên tập, dựng video, trích xuất cảnh và tổng hợp giọng đọc AI tự động.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Người dùng chịu trách nhiệm pháp lý 100% đối với toàn bộ video nguồn, hình ảnh, âm thanh và văn bản do chính người dùng nhập vào hoặc xử lý qua phần mềm.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Nhà phát triển JACS Studio không sở hữu, không lưu trữ và không chịu bất kỳ trách nhiệm pháp lý nào về tranh chấp quyền tác giả, bản quyền thương hiệu, quyền hình ảnh hoặc các khiếu nại liên quan đến nội dung do người dùng tạo ra.
-                  </li>
-                </ul>
               </div>
 
               {/* Điều 2 */}
               <div className="cert-article-block">
                 <h4
-                  className="cert-article-title"
                   style={{
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    color: "#0f172a",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.02em",
-                    margin: "0 0 3px 0",
-                  }}
-                >
-                  ĐIỀU 2. QUY ĐỊNH SỬ DỤNG AI, VOICE CLONING & API BÊN THỨ BA (BYOK)
-                </h4>
-                <div
-                  className="cert-article-subtitle"
-                  style={{
-                    fontSize: "10.5px",
+                    fontSize: "12.5px",
                     fontWeight: 700,
-                    color: "#64748b",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.03em",
-                    marginBottom: "6px",
+                    color: "#0f172a",
+                    margin: "0 0 4px 0",
                   }}
                 >
-                  2. QUY ĐỊNH SỬ DỤNG AI & DỊCH VỤ BÊN THỨ BA (BYOK POLICY)
+                  Điều 2. Bảo mật phần mềm, kiểm soát thiết bị (HWID) và chống can thiệp mã nguồn
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", color: "#334155" }}>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    1. Mỗi License Key được định danh và gắn kết chặt chẽ với mã nhận dạng phần cứng (HWID) của số lượng thiết bị đã đăng ký trong gói dịch vụ.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    2. Nghiêm cấm tuyệt đối mọi hành vi can thiệp trái phép vào phần mềm, bao gồm nhưng không giới hạn: đảo ngược mã nguồn (Reverse Engineering), dịch ngược (Decompilation), can thiệp bộ nhớ (Debugging/Memory Hooking), bẻ khóa (Crack), hoặc vô hiệu hóa cơ chế xác thực bản quyền.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    3. Mọi hành vi vi phạm sẽ dẫn đến việc đình chỉ ngay lập tức và thu hồi vĩnh viễn quyền sử dụng mà không được hoàn lại bất kỳ khoản phí nào, đồng thời Người dùng phải chịu hoàn toàn trách nhiệm bồi thường thiệt hại theo quy định của pháp luật.
+                  </p>
                 </div>
-                <ul
-                  className="cert-article-list"
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "5px",
-                  }}
-                >
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Người dùng tự cấu hình và sử dụng API Key cá nhân (OpenAI, Gemini, ElevenLabs, Claude...) theo đúng chính sách điều khoản của từng nhà cung cấp dịch vụ tương ứng.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Toàn bộ API Key được mã hóa cục bộ bằng Windows DPAPI / Secure Storage trên thiết bị của khách hàng; hệ thống máy chủ JACS không lưu trữ khóa API thô của người dùng.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    JACS Studio không chịu trách nhiệm đối với bất kỳ chi phí phát sinh, việc khóa tài khoản API hoặc tính chính xác của nội dung do mô hình AI của bên thứ ba sinh ra.
-                  </li>
-                </ul>
               </div>
 
               {/* Điều 3 */}
               <div className="cert-article-block">
                 <h4
-                  className="cert-article-title"
                   style={{
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    color: "#0f172a",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.02em",
-                    margin: "0 0 3px 0",
-                  }}
-                >
-                  ĐIỀU 3. QUYỀN HẠN LICENSE, KHÓA HWID & CHỐNG BẺ KHÓA (ANTI-CRACK)
-                </h4>
-                <div
-                  className="cert-article-subtitle"
-                  style={{
-                    fontSize: "10.5px",
+                    fontSize: "12.5px",
                     fontWeight: 700,
-                    color: "#64748b",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.03em",
-                    marginBottom: "6px",
+                    color: "#0f172a",
+                    margin: "0 0 4px 0",
                   }}
                 >
-                  3. QUYỀN SỬ DỤNG BẢN QUYỀN & THIẾT BỊ (ANTI-CRACK & HWID)
+                  Điều 3. Trách nhiệm về dữ liệu đầu vào và tuyên bố miễn trừ trách nhiệm bản quyền nội dung
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", color: "#334155" }}>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    1. JACS Studio là công cụ hỗ trợ công nghệ tự động hóa quy trình phân tích và biên tập video. Nhà phát triển JACS Studio hoàn toàn không sở hữu, không quản lý, không kiểm duyệt và không lưu trữ bất kỳ video nguồn, âm thanh, hình ảnh hoặc tài liệu nào do Người dùng đưa vào xử lý.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    2. Người dùng cam đoan và bảo đảm rằng mình là chủ sở hữu hợp pháp hoặc đã được cấp đầy đủ quyền sử dụng, quyền phát hành đối với toàn bộ dữ liệu, nguyên liệu đầu vào và nội dung được tạo ra thông qua phần mềm.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    3. Người dùng chịu trách nhiệm pháp lý 100% trước cơ quan nhà nước có thẩm quyền và các bên thứ ba đối với mọi tranh chấp bản quyền, quyền tác giả, nhãn hiệu thương mại, quyền hình ảnh hoặc các nội dung vi phạm pháp luật phát sinh từ việc sử dụng phần mềm.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    4. Nhà phát triển JACS Studio được miễn trừ hoàn toàn và vô điều kiện khỏi mọi khiếu nại, khiếu kiện, trách nhiệm dân sự, hình sự hoặc tổn thất phát sinh liên quan đến nội dung do Người dùng tạo ra.
+                  </p>
                 </div>
-                <ul
-                  className="cert-article-list"
-                  style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "5px",
-                  }}
-                >
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Mỗi License Key được cấp quyền kích hoạt sử dụng trên số lượng thiết bị phần cứng (HWID) đã đăng ký theo gói dịch vụ.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Nghiêm cấm mọi hành vi đảo ngược mã nguồn (Reverse Engineering), bẻ khóa (Crack), chia sẻ trái phép hoặc bán lại license khi chưa có sự đồng ý bằng văn bản của JACS Studio.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Vi phạm điều khoản sẽ dẫn đến việc thu hồi và khóa vĩnh viễn License Key trên toàn hệ thống mà không được hoàn tiền.
-                  </li>
-                </ul>
               </div>
 
               {/* Điều 4 */}
               <div className="cert-article-block">
                 <h4
-                  className="cert-article-title"
                   style={{
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    color: "#0f172a",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.02em",
-                    margin: "0 0 3px 0",
-                  }}
-                >
-                  ĐIỀU 4. QUYỀN RIÊNG TƯ, BẢO MẬT DỮ LIỆU & GIẢI QUYẾT TRANH CHẤP
-                </h4>
-                <div
-                  className="cert-article-subtitle"
-                  style={{
-                    fontSize: "10.5px",
+                    fontSize: "12.5px",
                     fontWeight: 700,
-                    color: "#64748b",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.03em",
-                    marginBottom: "6px",
+                    color: "#0f172a",
+                    margin: "0 0 4px 0",
                   }}
                 >
-                  4. QUYỀN RIÊNG TƯ & GIẢI QUYẾT TRANH CHẤP
+                  Điều 4. Tích hợp mô hình AI và chính sách API bên thứ ba (BYOK)
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", color: "#334155" }}>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    1. Người dùng tự chịu trách nhiệm cấu hình, quản lý và sử dụng các khóa API cá nhân/doanh nghiệp (OpenAI, Gemini, Anthropic Claude, ElevenLabs...) theo đúng chính sách và điều khoản dịch vụ của từng nhà cung cấp.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    2. Toàn bộ API Key được mã hóa an toàn cục bộ trên thiết bị của Người dùng. Nhà phát triển không chịu trách nhiệm đối với chi phí phát sinh, việc khóa tài khoản API hoặc tính chính xác, tính đầy đủ của nội dung do các mô hình trí tuệ nhân tạo bên thứ ba sinh ra.
+                  </p>
                 </div>
-                <ul
-                  className="cert-article-list"
+              </div>
+
+              {/* Điều 5 */}
+              <div className="cert-article-block">
+                <h4
                   style={{
-                    listStyle: "none",
-                    padding: 0,
-                    margin: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "5px",
+                    fontSize: "12.5px",
+                    fontWeight: 700,
+                    color: "#0f172a",
+                    margin: "0 0 4px 0",
                   }}
                 >
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    JACS Studio chỉ thu thập mã định danh phần cứng (HWID), phiên bản app và nhật ký sự cố (Crash logs) phục vụ mục đích kiểm soát bản quyền và cải thiện độ ổn định. Không thu thập nội dung video cá nhân.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Mọi khiếu nại hoặc hỗ trợ kỹ thuật xin vui lòng liên hệ bộ phận hỗ trợ chính thức qua kênh Telegram / Hotline hỗ trợ.
-                  </li>
-                  <li style={{ position: "relative", paddingLeft: "16px", fontSize: "11.5px", lineHeight: "1.6", color: "#334155" }}>
-                    <span style={{ position: "absolute", left: 0, color: "#64748b", fontWeight: 700 }}>–</span>
-                    Trong trường hợp xảy ra tranh chấp pháp lý, các bên cam kết ưu tiên thương lượng trên tinh thần tôn trọng quyền sở hữu trí tuệ và quy định pháp luật hiện hành.
-                  </li>
-                </ul>
+                  Điều 5. Giới hạn trách nhiệm pháp lý và từ chối bảo đảm (Limitation of Liability)
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", color: "#334155" }}>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    1. Phần mềm được cung cấp trên nguyên tắc "Theo Nguyên Trạng" (As Is) và "Như Hiện Có" (As Available). Nhà phát triển nỗ lực tối đa để đảm bảo phần mềm hoạt động ổn định nhưng không bảo đảm rằng phần mềm sẽ hoàn toàn không có lỗi kỹ thuật hoặc tương thích 100% với mọi cấu hình máy tính của bên thứ ba.
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    2. Trong mọi trường hợp, Nhà phát triển JACS Studio không chịu trách nhiệm về bất kỳ thiệt hại gián tiếp, ngẫu nhiên, hệ quả, thiệt hại về lợi nhuận hoặc gián đoạn hoạt động kinh doanh phát sinh từ việc sử dụng hoặc không thể sử dụng phần mềm.
+                  </p>
+                </div>
+              </div>
+
+              {/* Điều 6 */}
+              <div className="cert-article-block">
+                <h4
+                  style={{
+                    fontSize: "12.5px",
+                    fontWeight: 700,
+                    color: "#0f172a",
+                    margin: "0 0 4px 0",
+                  }}
+                >
+                  Điều 6. Hiệu lực thỏa thuận, chấp thuận điện tử và giải quyết tranh chấp
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", color: "#334155" }}>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    1. Bằng hành động cài đặt, kích hoạt License Key hoặc nhấn nút "Xác nhận & Đồng ý" trên giao diện phần mềm, Người dùng đã đọc, hiểu rõ và tự nguyện cam kết tuân thủ toàn bộ các điều khoản của Thỏa thuận này (có giá trị pháp lý tương đương hợp đồng bằng văn bản theo Luật Giao dịch điện tử).
+                  </p>
+                  <p style={{ margin: 0, textIndent: "24px", textAlign: "justify" }}>
+                    2. Thỏa thuận này được điều chỉnh và giải thích theo quy định của pháp luật Nước Cộng hòa Xã hội Chủ nghĩa Việt Nam. Mọi tranh chấp nếu không thể giải quyết thông qua thương lượng sẽ được đưa ra giải quyết tại Tòa án có thẩm quyền theo quy định của pháp luật.
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Dashed Separator Line */}
+            {/* 5. Dual Signature & Electronic Authorization */}
             <div
-              className="cert-dashed-divider"
-              style={{
-                borderTop: "1.5px dashed #cbd5e1",
-                margin: "28px 0 22px 0",
-              }}
-            />
-
-            {/* 4. Signature & Official Compliance Badge Stamp */}
-            <div
-              className="cert-bottom-signatures-row"
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "flex-end",
+                alignItems: "flex-start",
                 gap: "24px",
-                flexWrap: "wrap",
-                marginTop: "auto",
+                marginTop: "28px",
+                paddingTop: "16px",
+                borderTop: "1px solid #e2e8f0",
               }}
             >
-              {/* Left: Signature Info */}
-              <div
-                className="cert-sig-left-col"
-                style={{
-                  flex: 1,
-                  minWidth: "260px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "3px",
-                }}
-              >
+              {/* Left: Software Publisher Signature */}
+              <div style={{ textAlign: "center", width: "260px" }}>
                 <div
-                  className="cert-sig-heading"
                   style={{
                     fontSize: "11px",
-                    fontWeight: 800,
+                    fontWeight: 700,
                     textTransform: "uppercase",
                     color: "#0f172a",
-                    letterSpacing: "0.03em",
+                    letterSpacing: "0.01em",
                   }}
                 >
-                  ĐẠI DIỆN BAN PHÁP CHẾ & AN NINH MẠNG JACS:
+                  ĐẠI DIỆN NHÀ PHÁT TRIỂN JACS STUDIO
                 </div>
                 <div
-                  className="cert-sig-cursive-name"
+                  style={{
+                    fontSize: "10px",
+                    fontStyle: "italic",
+                    color: "#64748b",
+                    margin: "2px 0 4px 0",
+                  }}
+                >
+                  (Xác thực bản quyền phần mềm)
+                </div>
+                <div
                   style={{
                     fontFamily: "'Brush Script MT', 'Dancing Script', 'Segoe Script', cursive",
-                    fontSize: "28px",
+                    fontSize: "26px",
                     fontWeight: 700,
                     color: "#1e3a8a",
                     letterSpacing: "1px",
-                    margin: "4px 0 2px 0",
+                    margin: "2px 0",
                   }}
                 >
                   Jacs.Legal.Auth
                 </div>
                 <div
-                  className="cert-sig-meta-line"
                   style={{
-                    fontSize: "11px",
-                    color: "#475569",
-                    lineHeight: "1.4",
+                    fontSize: "9px",
+                    fontFamily: "'DM Mono', Consolas, monospace",
+                    color: "#64748b",
                   }}
                 >
-                  <span style={{ fontWeight: 600, color: "#1e293b" }}>Đơn vị xác thực:</span> Ban Pháp Chế & An Ninh Mạng JACS Studio
-                </div>
-                <div
-                  className="cert-sig-meta-line"
-                  style={{
-                    fontSize: "11px",
-                    color: "#475569",
-                    lineHeight: "1.4",
-                  }}
-                >
-                  <span style={{ fontWeight: 600, color: "#1e293b" }}>Ký duyệt điện tử:</span>{" "}
-                  <code
-                    style={{
-                      fontFamily: "'DM Mono', Consolas, monospace",
-                      fontSize: "10px",
-                      background: "#f1f5f9",
-                      border: "1px solid #e2e8f0",
-                      padding: "1px 5px",
-                      borderRadius: "4px",
-                      color: "#0f172a",
-                      fontWeight: 600,
-                    }}
-                  >
-                    SHA256:8F92-4B10-AC99-2026-JACS-LEGAL
-                  </code>
-                </div>
-                <div
-                  className="cert-sig-meta-line"
-                  style={{
-                    fontSize: "11px",
-                    color: "#475569",
-                    lineHeight: "1.4",
-                  }}
-                >
-                  <span style={{ fontWeight: 600, color: "#1e293b" }}>Thời điểm cấp chứng chỉ:</span> 6/9/2026
+                  SHA256:8F92-4B10-AC99-2026-JACS-LEGAL
                 </div>
               </div>
 
-              {/* Right: Official Red Compliance Box */}
-              <div
-                className="cert-compliance-stamp-box"
-                style={{
-                  border: "2px solid #dc2626",
-                  borderRadius: "12px",
-                  background: "linear-gradient(135deg, #fff5f5 0%, #fef2f2 100%)",
-                  padding: "12px 18px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "14px",
-                  boxShadow: "0 4px 14px rgba(220, 38, 38, 0.15)",
-                  flexShrink: 0,
-                }}
-              >
+              {/* Right: End User Electronic Signature */}
+              <div style={{ textAlign: "center", width: "260px" }}>
                 <div
-                  className="stamp-shield-icon"
                   style={{
-                    width: "44px",
-                    height: "44px",
-                    borderRadius: "50%",
-                    background: "#dc2626",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#ffffff",
-                    flexShrink: 0,
-                    boxShadow: "0 3px 8px rgba(220, 38, 38, 0.35)",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    color: "#0f172a",
+                    letterSpacing: "0.01em",
                   }}
                 >
-                  <div
-                    className="shield-inner"
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      lineHeight: 1,
-                    }}
-                  >
-                    <span className="shield-symbol" style={{ fontSize: "15px" }}>🛡️</span>
-                    <span className="shield-stars" style={{ fontSize: "7px", letterSpacing: "1px", color: "#fef08a", marginTop: "2px" }}>★★★★★</span>
-                  </div>
+                  NGƯỜI DÙNG CUỐI / KHÁCH HÀNG
                 </div>
                 <div
-                  className="stamp-details-col"
                   style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "2px",
+                    fontSize: "10px",
+                    fontStyle: "italic",
+                    color: "#64748b",
+                    margin: "2px 0 4px 0",
                   }}
                 >
-                  <div
-                    className="stamp-comp-title"
-                    style={{
-                      fontSize: "11.5px",
-                      fontWeight: 900,
-                      color: "#b91c1c",
-                      letterSpacing: "0.04em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    JACS LEGAL COMPLIANCE
-                  </div>
-                  <div
-                    className="stamp-cert-code"
-                    style={{
-                      fontSize: "9.5px",
-                      fontWeight: 700,
-                      color: "#dc2626",
-                      fontFamily: "'DM Mono', Consolas, monospace",
-                    }}
-                  >
-                    CERT: 8F92-4B10-AC99-2026-JACS-LEGAL
-                  </div>
-                  <div
-                    className="stamp-iso-standards"
-                    style={{
-                      fontSize: "9px",
-                      fontWeight: 700,
-                      color: "#7f1d1d",
-                      letterSpacing: "0.02em",
-                    }}
-                  >
-                    ISO/IEC 27001 • GDPR • VN CYBERSECURITY ACT
-                  </div>
-                  <div
-                    className="stamp-verified-tag"
-                    style={{
-                      fontSize: "9px",
-                      fontWeight: 800,
-                      color: "#15803d",
-                      marginTop: "3px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    ✓ ENTERPRISE VERIFIED & SECURED
-                  </div>
+                  (ĐÃ KÝ CAM KẾT ĐIỆN TỬ)
+                </div>
+                <div
+                  style={{
+                    fontFamily: "'Brush Script MT', 'Dancing Script', 'Segoe Script', cursive",
+                    fontSize: "26px",
+                    fontWeight: 700,
+                    color: "#047857",
+                    letterSpacing: "1px",
+                    margin: "2px 0",
+                  }}
+                >
+                  Verified User [HWID Lock]
+                </div>
+                <div
+                  style={{
+                    fontSize: "9px",
+                    fontFamily: "'DM Mono', Consolas, monospace",
+                    color: "#047857",
+                    fontWeight: 600,
+                  }}
+                >
+                  ✓ ĐÃ CHẤP THUẬN 6 ĐIỀU KHOẢN EULA
                 </div>
               </div>
             </div>
           </div>
         </div>
-
 
         {/* Modal Footer Controls */}
         <div className="legal-cert-modal-footer">
@@ -694,7 +578,7 @@ ISO/IEC 27001 • GDPR • VN CYBERSECURITY ACT
                   onChange={(e) => setHasAgreed(e.target.checked)}
                 />
                 <span>
-                  Tôi đã đọc kỹ toàn bộ Văn bản Pháp lý & Chứng chỉ Compliance trên, xác nhận <strong>chịu trách nhiệm 100% về bản quyền nội dung</strong> và <strong>hoàn toàn đồng ý</strong> với tất cả các điều khoản của JACS Studio.
+                  Tôi đã đọc kỹ toàn bộ <strong>Thỏa Thuận Cấp Phép Sử Dụng và Điều Khoản Dịch Vụ (EULA)</strong> trên, xác nhận <strong>chịu trách nhiệm 100% về bản quyền nội dung</strong> và <strong>hoàn toàn đồng ý</strong> tuân thủ mọi điều khoản.
                 </span>
               </label>
 
@@ -721,7 +605,7 @@ ISO/IEC 27001 • GDPR • VN CYBERSECURITY ACT
             <div className="legal-cert-footer-btns" style={{ justifyContent: "space-between", width: "100%" }}>
               <div className="legal-cert-footer-meta">
                 <Icon name="shield" size={14} />
-                <span>Văn bản chứng chỉ số: DOC-REF: JACS-LEGAL-2026-v2.4 - 2026</span>
+                <span>Mã thỏa thuận EULA: JACS-EULA-2026-v2.6</span>
               </div>
               <button
                 type="button"

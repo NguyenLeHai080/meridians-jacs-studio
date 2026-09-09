@@ -1,12 +1,19 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Job, NavKey } from "../../core/types";
-import { getRuntime, isNativeRuntime } from "../../core/runtime";
-import { playAudioStream, stopGlobalAudio } from "../../core/audio-player";
-import { VOICE_PACKS } from "../../core/voice-packs";
-import { Icon } from "../../shared/Icon";
-import { type EditorScene } from "./editor.types";
-import { Modal } from "../../shared/Modal";
+import { getRuntime } from "../../core/runtime";
+import type { EditorScene } from "./editor.types";
+import { FILTER_PRESETS, MASK_PRESETS } from "./constants/presets";
+import { fileUrl, formatSeconds, formatTimecodePrecise, stripSceneMetadata, toSeconds } from "./utils/editorTime";
+import { EditorHeader } from "./components/EditorHeader";
+import { EditorLeftDock } from "./components/EditorLeftDock";
+import { EditorStagePlayer } from "./components/EditorStagePlayer";
+import { EditorInspector } from "./components/EditorInspector";
+import { EditorTimeline } from "./components/EditorTimeline";
+import { EditorContextMenu, type ContextMenuState } from "./components/EditorContextMenu";
+import { EditorConfigModal } from "./components/EditorConfigModal";
+import { useEditorExport } from "./hooks/useEditorExport";
+import { useEditorAudio } from "./hooks/useEditorAudio";
+import { useTimelineInteractions } from "./hooks/useTimelineInteractions";
 
 type Props = {
   jobs: Job[];
@@ -15,103 +22,6 @@ type Props = {
   onUpdateJob?: (jobId: string, values: Partial<Job>) => void;
   sourceJobId?: string;
 };
-
-function fileUrl(value?: string) {
-  if (!value || !isNativeRuntime()) return undefined;
-  return `jacs-media://local?path=${encodeURIComponent(value)}`;
-}
-
-function toSeconds(value: string | number | undefined | null): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (!value) return 0;
-  const str = String(value).trim().replace(/,/g, ".");
-  if (/^\d+(?:\.\d+)?$/.test(str)) return Number(str);
-  const parts = str.split(":").map(Number);
-  if (parts.length === 3 && Number.isFinite(parts[0]) && Number.isFinite(parts[1]) && Number.isFinite(parts[2])) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
-  if (parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
-    return parts[0] * 60 + parts[1];
-  }
-  const match = str.match(/(\d+(?:\.\d+)?)/);
-  return match ? Number(match[1]) : 0;
-}
-
-function formatSeconds(total: number, withDecimals = false): string {
-  const mins = Math.floor(total / 60);
-  const remainder = Math.max(0, total % 60);
-  if (withDecimals) {
-    const s = remainder.toFixed(2).padStart(5, "0");
-    return `${mins.toString().padStart(2, "0")}:${s}`;
-  }
-  const secs = Math.floor(remainder);
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-}
-
-function formatTimecodePrecise(total: number): string {
-  const mins = Math.floor(total / 60);
-  const secs = Math.floor(total % 60);
-  const hundredths = Math.floor((total % 1) * 100);
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}.${hundredths.toString().padStart(2, "0")}`;
-}
-
-// Media assets for Timeline Studio Library
-const SAMPLE_LIBRARY_IMAGES = [
-  { id: "img-1", title: "Nature cover, Nov...", meta: "1345 × 1959 · Public domain", color: "#334155" },
-  { id: "img-2", title: "Скелі Демерджі...", meta: "3124 × 3124 · CC BY-SA 3.0", color: "#475569" },
-  { id: "img-3", title: "Valley Sunset View", meta: "1920 × 1080 · Unsplash", color: "#1e293b" },
-  { id: "img-4", title: "Cyberpunk City Neon", meta: "1080 × 1920 · Creative Commons", color: "#0f172a" },
-  { id: "img-5", title: "Technology AI Core", meta: "1920 × 1080 · Premium Stock", color: "#0e7490" },
-];
-
-const SAMPLE_LIBRARY_VIDEOS = [
-  { id: "vid-1", title: "Cinematic B-roll Forest", meta: "00:15 · 1080p 60fps", color: "#065f46" },
-  { id: "vid-2", title: "Urban Drone Hyperlapse", meta: "00:10 · 4K UHD", color: "#1e3a8a" },
-  { id: "vid-3", title: "Action Combat Sequence", meta: "00:25 · 1080p 60fps", color: "#78350f" },
-  { id: "vid-4", title: "Time-lapse Starry Night", meta: "00:18 · 4K 60fps", color: "#4c1d95" },
-];
-
-const SAMPLE_LIBRARY_MUSIC = [
-  { id: "mus-1", title: "Hoà Cùng Yêu Dấu Nỗi Buồn", meta: "03:45 · Lo-Fi Chill", color: "#38bdf8", type: "music" },
-  { id: "mus-2", title: "Kịch Tính Phá Án & Điều Tra", meta: "04:12 · Suspense Thriller", color: "#f59e0b", type: "music" },
-  { id: "mus-3", title: "Hành Động Khởi Chiến", meta: "02:30 · Epic Cinematic", color: "#ef4444", type: "music" },
-  { id: "mus-4", title: "Vlog Tươi Vui Năng Động", meta: "02:15 · Happy Upbeat", color: "#10b981", type: "music" },
-];
-
-const SAMPLE_LIBRARY_SFX = [
-  { id: "sfx-1", title: "SFX Whoosh Chuyển Cảnh", meta: "00:01 · Whoosh Sound", color: "#a855f7", type: "sfx" },
-  { id: "sfx-2", title: "SFX Cinematic Impact Boom", meta: "00:02 · Bass Drop", color: "#ec4899", type: "sfx" },
-  { id: "sfx-3", title: "SFX Pop Notification", meta: "00:01 · Digital Chime", color: "#06b6d4", type: "sfx" },
-  { id: "sfx-4", title: "SFX Camera Shutter Snap", meta: "00:01 · Shutter", color: "#64748b", type: "sfx" },
-];
-
-const FILTER_PRESETS = [
-  { id: "none", name: "Gốc (Normal)", css: "none" },
-  { id: "cinematic", name: "Điện ảnh (Cinematic)", css: "contrast(1.15) saturate(1.2) brightness(0.95)" },
-  { id: "warm", name: "Ấm áp (Warm Film)", css: "sepia(0.25) saturate(1.3) contrast(1.05)" },
-  { id: "noir", name: "Đen trắng (Dark Noir)", css: "grayscale(1) contrast(1.3) brightness(0.9)" },
-  { id: "cyber", name: "Cyberpunk Neon", css: "hue-rotate(180deg) saturate(1.5) contrast(1.2)" },
-  { id: "vibrant", name: "Rực rỡ (Vibrant)", css: "saturate(1.6) contrast(1.1)" },
-  { id: "teal-orange", name: "Teal & Orange", css: "hue-rotate(20deg) contrast(1.2) saturate(1.4)" },
-  { id: "moody", name: "Moody Dark", css: "brightness(0.85) contrast(1.25) saturate(0.9)" },
-];
-
-const MASK_PRESETS = [
-  { id: "none", name: "Không Mask", clip: "none" },
-  { id: "letterbox", name: "21:9 Letterbox (Viền trên dưới)", clip: "inset(12% 0 12% 0)" },
-  { id: "rounded", name: "Bo góc tròn (Rounded)", clip: "inset(4% 4% 4% 4% round 16px)" },
-  { id: "circle", name: "Hình tròn (Circle)", clip: "circle(46% at 50% 50%)" },
-  { id: "diamond", name: "Hình thoi (Diamond)", clip: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" },
-];
-
-const STICKER_PRESETS = [
-  { id: "stk-1", label: "🔔 Like & Subscribe", color: "#ef4444" },
-  { id: "stk-2", label: "✨ TikTok Follow", color: "#06b6d4" },
-  { id: "stk-3", label: "🔥 Hot News / Tin Nóng", color: "#f97316" },
-  { id: "stk-4", label: "🎯 Đăng ký kênh", color: "#10b981" },
-  { id: "stk-5", label: "⚡ 50% GIẢM GIÁ", color: "#eab308" },
-  { id: "stk-6", label: "💎 100% UY TÍN", color: "#38bdf8" },
-];
 
 export function EditorWorkspace({
   jobs,
@@ -127,6 +37,7 @@ export function EditorWorkspace({
       setSelectedSourceJobId(initialSourceJobId);
     }
   }, [initialSourceJobId]);
+
   const [sceneId, setSceneId] = useState("");
   const [playing, setPlaying] = useState(false);
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
@@ -143,7 +54,6 @@ export function EditorWorkspace({
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isJobDropdownOpen, setIsJobDropdownOpen] = useState(false);
   const [projectMessage, setProjectMessage] = useState("");
-  const [speakingSceneId, setSpeakingSceneId] = useState<string | null>(null);
 
   // Timeline Studio Left Dock / Drawer Navigation
   const [dockTab, setDockTab] = useState<"media" | "captions" | "smart" | "audio" | "effects" | "stickers">("media");
@@ -165,13 +75,6 @@ export function EditorWorkspace({
   const [inAnimation, setInAnimation] = useState<"none" | "fade" | "zoom" | "slide" | "bounce">("none");
   const [outAnimation, setOutAnimation] = useState<"none" | "fade" | "zoom" | "slide">("none");
 
-  // Audio Controls State
-  const [bgmVolume, setBgmVolume] = useState(50);
-  const [voiceVolume, setVoiceVolume] = useState(100);
-  const [originalAudioVolume, setOriginalAudioVolume] = useState(0);
-  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
-  const [selectedBgm, setSelectedBgm] = useState<string>("mus-1");
-
   // Captions & Stickers State
   const [activeStickers, setActiveStickers] = useState<Array<{ id: string; label: string; x: number; y: number }>>([]);
   const [subtitleStyle, setSubtitleStyle] = useState<"gold" | "white" | "neon" | "box">("gold");
@@ -180,29 +83,15 @@ export function EditorWorkspace({
   const [subtitlesVisible, setSubtitlesVisible] = useState(true);
 
   // Context Menu State
-  const [contextMenu, setContextMenu] = useState<{
-    visible: boolean;
-    x: number;
-    y: number;
-    sceneId: string;
-    trackType: string;
-  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [copiedScene, setCopiedScene] = useState<EditorScene | null>(null);
 
-  // Drag-and-drop scene reordering & trim states
-  const [draggedSceneIdx, setDraggedSceneIdx] = useState<number | null>(null);
-  const [dragOverSceneIdx, setDragOverSceneIdx] = useState<number | null>(null);
-  const [activeTrimming, setActiveTrimming] = useState<{
-    sceneId: string;
-    handle: "left" | "right" | "slide";
-    trackType?: "voice" | "visuals" | "captions";
-    initialDur: number;
-    tempScenes: EditorScene[];
-  } | null>(null);
-
   // Undo / Redo History
+  const [editorScenes, setEditorScenes] = useState<EditorScene[]>([]);
   const [scenesHistory, setScenesHistory] = useState<EditorScene[][]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
+  const [mediaDuration, setMediaDuration] = useState<number>(0);
+  const [originalAudioVolume, setOriginalAudioVolume] = useState(0);
 
   const timelineViewportRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -216,29 +105,8 @@ export function EditorWorkspace({
   const timecodeElRef = useRef<HTMLSpanElement>(null);
   const playheadSecondsRef = useRef(0);
   const lastUiUpdateRef = useRef(0);
-
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const hpFilterRef = useRef<BiquadFilterNode | null>(null);
-  const lpFilterRef = useRef<BiquadFilterNode | null>(null);
-  const peakFilterRef = useRef<BiquadFilterNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-
-  const [isolatedStemPath, setIsolatedStemPath] = useState<string | null>(null);
-  const [isIsolatingStem, setIsIsolatingStem] = useState<boolean>(false);
-  const [stemProgress, setStemProgress] = useState<number>(0);
-  const [stemStage, setStemStage] = useState<string>("");
-
-  useEffect(() => {
-    const unsub = getRuntime().onIsolateVocalsProgress?.((data) => {
-      if (typeof data?.progress === "number") {
-        setStemProgress(data.progress);
-        if (data.stage) setStemStage(data.stage);
-      }
-    });
-    return () => {
-      unsub?.();
-    };
-  }, []);
+  const lastSceneIdRef = useRef<string | null>(null);
+  const lastSpokenSceneRef = useRef<string | null>(null);
 
   const sourceCandidates = useMemo(
     () => jobs.filter((job) => job.localPath || job.sourceType === "url" || job.analysis || job.source),
@@ -250,77 +118,72 @@ export function EditorWorkspace({
     [sourceCandidates, selectedSourceJobId]
   );
 
-  useEffect(() => {
-    if (sourceJob && !selectedSourceJobId) {
-      setSelectedSourceJobId(sourceJob.id);
-    }
-  }, [sourceJob, selectedSourceJobId]);
-
   const defaultVoiceForLang = useCallback((lang?: string, gender?: string) => {
     const l = (lang || "vi").toLowerCase();
-    if (l === "en" || l === "en-us") return gender === "female" ? "en-jenny" : "en-adam";
-    if (l === "ja" || l === "ja-jp") return gender === "female" ? "ja-female" : "ja-male";
-    if (l === "ko" || l === "ko-kr") return gender === "female" ? "ko-female" : "ko-male";
-    if (l === "zh" || l.startsWith("zh")) return gender === "female" ? "zh-CN-female" : "zh-CN-male";
-    if (l === "fr") return gender === "female" ? "fr-female" : "fr-male";
-    if (l === "es") return gender === "female" ? "es-female" : "es-male";
-    return gender === "female" ? "vi-hoaimy-review" : "vi-adam-review";
+    const g = (gender || "male").toLowerCase();
+    if (l.includes("en")) return g === "female" ? "en-jenny" : "en-guy";
+    if (l.includes("zh") || l.includes("cn")) return g === "female" ? "zh-xiaoxiao" : "zh-yunxi";
+    if (l.includes("ja")) return g === "female" ? "ja-nanami" : "ja-keita";
+    if (l.includes("ko")) return g === "female" ? "ko-sunhi" : "ko-insoo";
+    if (l.includes("fr")) return g === "female" ? "fr-denise" : "fr-henri";
+    if (l.includes("de")) return g === "female" ? "de-katja" : "de-conrad";
+    if (l.includes("es")) return g === "female" ? "es-elvira" : "es-alvaro";
+    if (l.includes("th")) return g === "female" ? "th-premsuda" : "th-niwat";
+    if (l.includes("id")) return g === "female" ? "id-gadis" : "id-ardhi";
+    if (l.includes("ru")) return g === "female" ? "ru-svetlana" : "ru-dmitry";
+    return g === "female" ? "vi-hoaimy" : "vi-namminh";
   }, []);
 
-  const [selectedVoice, setSelectedVoice] = useState<string>(() => {
-    if (sourceJob?.narratorVoice && !sourceJob.narratorVoice.startsWith("en-")) {
-      return sourceJob.narratorVoice;
-    }
-    return sourceJob?.narratorGender === "female" ? "vi-hoaimy-review" : "vi-adam-review";
+  // Use Audio & Stem Hook
+  const {
+    bgmVolume,
+    setBgmVolume,
+    voiceVolume,
+    setVoiceVolume,
+    voiceSpeed,
+    setVoiceSpeed,
+    selectedBgm,
+    setSelectedBgm,
+    selectedVoice,
+    setSelectedVoice,
+    speakingSceneId,
+    removeOriginalBgm,
+    setRemoveOriginalBgm,
+    isolatedStemPath,
+    isIsolatingStem,
+    stemProgress,
+    stemStage,
+    playSceneAudio,
+    stopSceneAudio,
+  } = useEditorAudio({
+    sourceJob,
+    muted,
+    trackMutes,
+    originalAudioVolume,
+    speedVal,
+    playing,
+    videoRef,
+    stemAudioRef,
+    defaultVoiceForLang,
   });
 
-  useEffect(() => {
-    if (sourceJob?.narratorVoice && !sourceJob.narratorVoice.startsWith("en-")) {
-      setSelectedVoice(sourceJob.narratorVoice);
-    } else {
-      setSelectedVoice(sourceJob?.narratorGender === "female" ? "vi-hoaimy-review" : "vi-adam-review");
-    }
-  }, [sourceJob?.id, sourceJob?.narratorVoice, sourceJob?.narratorGender]);
-
-  const [removeOriginalBgm, setRemoveOriginalBgm] = useState<boolean>(() => {
-    return Boolean(sourceJob?.removeOriginalBgm || sourceJob?.isolateVocals);
-  });
-
+  // Sync initial configuration from sourceJob
   useEffect(() => {
     if (sourceJob) {
-      setRemoveOriginalBgm(Boolean(sourceJob.removeOriginalBgm || sourceJob.isolateVocals));
-    }
-  }, [sourceJob?.id, sourceJob?.removeOriginalBgm, sourceJob?.isolateVocals]);
-
-  // Lazy trigger AI Vocal & SFX Stem Isolation in background (debounced, low CPU impact)
-  useEffect(() => {
-    const localVideo = sourceJob?.localPath;
-    if (!removeOriginalBgm || !localVideo || !getRuntime().isolateVocals) {
-      return;
-    }
-    let isMounted = true;
-    const timer = setTimeout(() => {
-      if (!isMounted) return;
-      setIsIsolatingStem(true);
-      getRuntime().isolateVocals!(localVideo).then((res) => {
-        if (isMounted && res?.ok && res?.path) {
-          setIsolatedStemPath(res.path);
-        }
-      }).finally(() => {
-        if (isMounted) setIsIsolatingStem(false);
-      });
-    }, 1500);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [removeOriginalBgm, sourceJob?.localPath]);
-
-  useEffect(() => {
-    if (sourceJob) {
+      if (sourceJob.aspectRatio) {
+        setAspectRatio(sourceJob.aspectRatio as "9:16" | "1:1" | "16:9" | "4:5");
+      }
+      if (sourceJob.narratorVoice) {
+        setSelectedVoice(sourceJob.narratorVoice);
+      }
+      if (sourceJob.subtitleStyle) {
+        setSubtitleStyle(sourceJob.subtitleStyle as "gold" | "white" | "neon" | "box");
+      }
+      if (typeof sourceJob.subtitlesEnabled === "boolean") {
+        setSubtitlesVisible(sourceJob.subtitlesEnabled);
+      }
       if (sourceJob.keepOriginalAudio === false) {
-        setTrackMutes((prev) => ({ ...prev, originalAudio: true }));
+        setTrackMutes((prev) => ({ ...prev, originalAudio: true, voice: false }));
         setOriginalAudioVolume(0);
       } else {
         const isNarratorOff = sourceJob.narratorEnabled === false;
@@ -330,98 +193,17 @@ export function EditorWorkspace({
         setOriginalAudioVolume(vol);
       }
     }
-  }, [sourceJob?.id, sourceJob?.keepOriginalAudio, sourceJob?.originalAudioVolume, sourceJob?.narratorEnabled]);
-
-  function stripSceneMetadata(text?: string): string {
-    if (!text) return "";
-    let cleaned = String(text || "")
-      .replace(/\[\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part|Hồi)\s*\d+[^\]]*\]/gi, "")
-      .replace(/(?:^|\n)\s*(?:Phân cảnh|Cảnh|Scene|Segment|Part|Hồi)\s*\d+[:\-\.]\s*/gi, " ")
-      .replace(/\[\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\]/g, "")
-      .replace(/\(\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\s*-\s*\d{1,2}[:.]\d{2}(?:[:.]\d{2})?\)/g, "")
-      .replace(/(?:tại|ở|từ)\s+mốc\s+\d{1,2}[:.]\d{2}(?:\s*đến\s+\d{1,2}[:.]\d{2})?,?\s*/gi, "")
-      .replace(/(?:vào\s+)?lúc\s+\d{1,2}[:.]\d{2},?\s*/gi, "")
-      .replace(/\(\d{1,2}[:.]\d{2}\)/g, "")
-      .replace(/\[[^\]]{1,60}\]/g, "")
-      .replace(/#\d+\b/g, "")
-      .replace(/["'“”«»‘’`\\{}[\]^~*#_<>]/g, "")
-      .replace(/\.{2,}/g, ".")
-      .replace(/,{2,}/g, ",")
-      .replace(/\s+/g, " ")
-      .trim();
-    return cleaned;
-  }
-
-  const playSceneAudio = async (text?: string, scId?: string, offsetSeconds: number = 0) => {
-    const rawClean = stripSceneMetadata(text);
-    if (!rawClean || typeof window === "undefined") return;
-    stopSceneAudio();
-    if (scId) setSpeakingSceneId(scId);
-
-    const voiceToUse = selectedVoice || sourceJob?.narratorVoice || defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender);
-    const voiceObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === voiceToUse.toLowerCase());
-    const langToUse = voiceObj?.language || sourceJob?.languages?.[0] || "vi";
-    const genderToUse = voiceObj?.gender || sourceJob?.narratorGender || "male";
-    const rateToUse = voiceSpeed || 1.0;
-
-    try {
-      const speechUrl = await getRuntime().synthesizeSpeech?.(
-        rawClean,
-        langToUse,
-        genderToUse,
-        voiceToUse,
-        rateToUse
-      );
-
-      if (speechUrl) {
-        await playAudioStream(
-          speechUrl,
-          () => setSpeakingSceneId(null),
-          () => setSpeakingSceneId(null),
-          rateToUse,
-          offsetSeconds
-        );
-        return;
-      }
-    } catch {
-      // fallback to Web Speech API
-    }
-
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      try {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(rawClean);
-        utterance.lang = langToUse === "vi" ? "vi-VN" : langToUse === "en" ? "en-US" : langToUse;
-        utterance.rate = rateToUse;
-        utterance.onend = () => setSpeakingSceneId(null);
-        utterance.onerror = () => setSpeakingSceneId(null);
-        window.speechSynthesis.speak(utterance);
-        return;
-      } catch {}
-    }
-
-    setSpeakingSceneId(null);
-  };
-
-  const stopSceneAudio = () => {
-    stopGlobalAudio();
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {}
-    }
-    setSpeakingSceneId(null);
-  };
-
-  const [editorScenes, setEditorScenes] = useState<EditorScene[]>([]);
-  const [mediaDuration, setMediaDuration] = useState<number>(0);
+  }, [sourceJob?.id, sourceJob?.keepOriginalAudio, sourceJob?.originalAudioVolume, sourceJob?.narratorEnabled, setSelectedVoice]);
 
   // Push history state on scene edits
-  const setScenesWithHistory = useCallback((newScenes: EditorScene[]) => {
-    setEditorScenes(newScenes);
-    setScenesHistory((prev) => [...prev.slice(0, historyIdx + 1), newScenes]);
-    setHistoryIdx((prev) => prev + 1);
-  }, [historyIdx]);
+  const setScenesWithHistory = useCallback(
+    (newScenes: EditorScene[]) => {
+      setEditorScenes(newScenes);
+      setScenesHistory((prev) => [...prev.slice(0, historyIdx + 1), newScenes]);
+      setHistoryIdx((prev) => prev + 1);
+    },
+    [historyIdx]
+  );
 
   const undoTimeline = () => {
     if (historyIdx > 0) {
@@ -443,6 +225,7 @@ export function EditorWorkspace({
     }
   };
 
+  // Populate scenes from sourceJob analysis
   useEffect(() => {
     if (!sourceJob) {
       setEditorScenes([]);
@@ -507,14 +290,9 @@ export function EditorWorkspace({
       }
 
       const srcEndSec = srcStartSec + sceneDur;
-
       const tStart = cursorTime;
       const tEnd = cursorTime + sceneDur;
       cursorTime = tEnd;
-
-      // Voice track and Captions track align EXACTLY with scene visuals with zero gaps!
-      const vStart = tStart;
-      const vEnd = tEnd;
 
       return {
         id: s.id || `scene-${idx + 1}`,
@@ -524,10 +302,10 @@ export function EditorWorkspace({
         sourceEnd: formatSeconds(srcEndSec),
         sourceTimeStart: srcStartSec,
         sourceTimeEnd: srcEndSec,
-        voiceStart: formatSeconds(vStart, true),
-        voiceEnd: formatSeconds(vEnd, true),
-        captionStart: formatSeconds(vStart, true),
-        captionEnd: formatSeconds(vEnd, true),
+        voiceStart: formatSeconds(tStart, true),
+        voiceEnd: formatSeconds(tEnd, true),
+        captionStart: formatSeconds(tStart, true),
+        captionEnd: formatSeconds(tEnd, true),
         action_visual: s.action_visual || s.detail,
         title: s.title || `Cảnh ${idx + 1}`,
         detail: s.detail || "",
@@ -558,133 +336,50 @@ export function EditorWorkspace({
   // Sync active scene with playhead
   useEffect(() => {
     if (!editorScenes.length) return;
-    const currentScene = editorScenes.find((item) => {
-      const start = toSeconds(item.start);
-      const end = toSeconds(item.end);
-      return playheadSeconds >= start && playheadSeconds < end;
-    }) || editorScenes[editorScenes.length - 1];
+    const currentScene =
+      editorScenes.find((item) => {
+        const start = toSeconds(item.start);
+        const end = toSeconds(item.end);
+        return playheadSeconds >= start && playheadSeconds < end;
+      }) || editorScenes[editorScenes.length - 1];
 
     if (currentScene && currentScene.id !== sceneId) {
       setSceneId(currentScene.id);
     }
   }, [playheadSeconds, editorScenes, sceneId]);
 
-  // Sync video element & audio volume with real-time DSP Vocal & SFX Stem Isolation
-  const mediaUrl = sourceJob?.localPath ? fileUrl(sourceJob.localPath) : undefined;
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    try {
-      if (!audioCtxRef.current) {
-        const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (AudioContextClass) {
-          const ctx = new AudioContextClass();
-          const source = ctx.createMediaElementSource(video);
-          const hp = ctx.createBiquadFilter();
-          hp.type = "highpass";
-          hp.frequency.value = 20;
-
-          const lp = ctx.createBiquadFilter();
-          lp.type = "lowpass";
-          lp.frequency.value = 20000;
-
-          const peak = ctx.createBiquadFilter();
-          peak.type = "peaking";
-          peak.frequency.value = 1200;
-          peak.Q.value = 1.5;
-          peak.gain.value = 0;
-
-          const gain = ctx.createGain();
-          gain.gain.value = 1;
-
-          source.connect(hp);
-          hp.connect(lp);
-          lp.connect(peak);
-          peak.connect(gain);
-          gain.connect(ctx.destination);
-
-          audioCtxRef.current = ctx;
-          hpFilterRef.current = hp;
-          lpFilterRef.current = lp;
-          peakFilterRef.current = peak;
-          gainNodeRef.current = gain;
-        }
-      }
-    } catch {
-      // Element might already be connected or not supported
-    }
-
-    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-      audioCtxRef.current.resume().catch(() => {});
-    }
-
-    const isOrigMuted = muted || Boolean(trackMutes.originalAudio) || originalAudioVolume === 0;
-    const vol = isOrigMuted ? 0 : Math.max(0, Math.min(1, originalAudioVolume / 100));
-
-    if (removeOriginalBgm && isolatedStemPath) {
-      if (gainNodeRef.current) {
-        gainNodeRef.current.gain.value = 0;
-      }
-      video.muted = true;
-      if (stemAudioRef.current) {
-        stemAudioRef.current.volume = isOrigMuted ? 0 : vol;
-      }
-    } else {
-      if (gainNodeRef.current) {
-        gainNodeRef.current.gain.value = vol;
-      } else {
-        video.muted = isOrigMuted;
-        video.volume = vol;
-      }
-      if (stemAudioRef.current) {
-        stemAudioRef.current.volume = 0;
-      }
-    }
-
-    if (hpFilterRef.current && lpFilterRef.current && peakFilterRef.current) {
-      if (removeOriginalBgm) {
-        // Deep Vocal, Siren & SFX Isolation (Phase-inversion spectral band)
-        hpFilterRef.current.frequency.value = 140;
-        lpFilterRef.current.frequency.value = 6000;
-        peakFilterRef.current.frequency.value = 1200;
-        peakFilterRef.current.gain.value = 6.0;
-      } else {
-        // Bypass to original flat sound
-        hpFilterRef.current.frequency.value = 20;
-        lpFilterRef.current.frequency.value = 20000;
-        peakFilterRef.current.gain.value = 0;
-      }
-    }
-  }, [muted, trackMutes.originalAudio, originalAudioVolume, removeOriginalBgm, isolatedStemPath]);
-
-  // Synchronize AI isolated stem audio track with video playback
-  useEffect(() => {
-    const stemAudio = stemAudioRef.current;
-    if (!stemAudio || !removeOriginalBgm || !isolatedStemPath) {
-      if (stemAudio) {
-        stemAudio.pause();
-      }
-      return;
-    }
-    if (playing) {
-      if (videoRef.current) {
-        if (Math.abs(stemAudio.currentTime - videoRef.current.currentTime) > 0.08) {
-          stemAudio.currentTime = videoRef.current.currentTime;
-        }
-      }
-      stemAudio.playbackRate = speedVal || 1.0;
-      stemAudio.play().catch(() => {});
-    } else {
-      stemAudio.pause();
-    }
-  }, [playing, removeOriginalBgm, isolatedStemPath, speedVal]);
+  // Use Timeline Interactions Hook
+  const {
+    activeTrimming,
+    splitActiveScene,
+    deleteActiveScene,
+    addNewSceneSegment,
+    handleAutoAlignVoiceAndVisuals,
+    handleTrimStart,
+    handleClipSlideStart,
+  } = useTimelineInteractions({
+    editorScenes,
+    setScenesWithHistory,
+    activeSceneId,
+    activeScene,
+    setSceneId,
+    sequenceDuration: 0, // dynamic
+    zoomLevel,
+    playheadSeconds,
+    seekToTimeline: (sec) => seekToTimeline(sec),
+    trackLocks,
+    timelineViewportRef,
+    voiceSpeed,
+    sourceJob,
+    onUpdateJob,
+    setProjectMessage,
+  });
 
   const effectiveScenes = useMemo(() => {
     return activeTrimming?.tempScenes || editorScenes;
   }, [activeTrimming, editorScenes]);
 
-  // Sequence Timeline Duration: Fit precisely to the actual scene sequence bounds
+  // Sequence Timeline Duration
   const sequenceDuration = useMemo(() => {
     const maxEnd = effectiveScenes.reduce((max, s) => {
       const vEnd = toSeconds(s.end);
@@ -693,28 +388,29 @@ export function EditorWorkspace({
       return Math.max(max, vEnd, aEnd, cEnd);
     }, 0);
     if (maxEnd > 0) return Math.max(5, maxEnd);
-    const videoDur = mediaDuration || (videoRef.current?.duration && !isNaN(videoRef.current.duration) ? videoRef.current.duration : 0) || (sourceJob?.durationSeconds || 0);
+    const videoDur =
+      mediaDuration ||
+      (videoRef.current?.duration && !isNaN(videoRef.current.duration) ? videoRef.current.duration : 0) ||
+      sourceJob?.durationSeconds ||
+      0;
     return Math.max(videoDur, 5);
   }, [effectiveScenes, mediaDuration, sourceJob?.durationSeconds]);
 
   // Compute layout for each clip on each track independently
   const clipLayouts = useMemo(() => {
     return effectiveScenes.map((item, idx) => {
-      // 1. Visuals track
       const visualStartSec = toSeconds(item.start);
       const visualEndSec = toSeconds(item.end);
       const visualDur = Math.max(0.2, visualEndSec - visualStartSec);
       const visualLeft = (visualStartSec / sequenceDuration) * 100;
       const visualWidth = Math.max(0.2, (visualDur / sequenceDuration) * 100);
 
-      // 2. Voice track
       const voiceStartSec = toSeconds(item.voiceStart || item.start);
       const voiceEndSec = toSeconds(item.voiceEnd || item.end);
       const voiceDur = Math.max(0.2, voiceEndSec - voiceStartSec);
       const voiceLeft = (voiceStartSec / sequenceDuration) * 100;
       const voiceWidth = Math.max(0.2, (voiceDur / sequenceDuration) * 100);
 
-      // 3. Captions track
       const captionStartSec = toSeconds(item.captionStart || item.start);
       const captionEndSec = toSeconds(item.captionEnd || item.end);
       const captionDur = Math.max(0.2, captionEndSec - captionStartSec);
@@ -724,19 +420,16 @@ export function EditorWorkspace({
       return {
         scene: item,
         index: idx,
-        // Visuals
         visualStartSec,
         visualEndSec,
         visualLeft,
         visualWidth,
         visualDur,
-        // Voice
         voiceStartSec,
         voiceEndSec,
         voiceLeft,
         voiceWidth,
         voiceDur,
-        // Captions
         captionStartSec,
         captionEndSec,
         captionLeft,
@@ -746,22 +439,19 @@ export function EditorWorkspace({
     });
   }, [effectiveScenes, sequenceDuration]);
 
-  const lastSceneIdRef = useRef<string | null>(null);
-  const lastSpokenSceneRef = useRef<string | null>(null);
-
-  // Unified Seek to Timeline Sequence Timestamp (Khớp chuẩn xác mốc video gốc và dừng giật đơ)
+  // Unified Seek to Timeline Sequence Timestamp
   const seekToTimeline = useCallback(
     (targetSec: number) => {
       const clampedSec = Math.max(0, Math.min(sequenceDuration, targetSec));
       playheadSecondsRef.current = clampedSec;
       setPlayheadSeconds(clampedSec);
 
-      // Direct DOM update for instant responsiveness without lag
       const pct = sequenceDuration > 0 ? Math.min(100, Math.max(0, (clampedSec / sequenceDuration) * 100)) : 0;
       if (playheadLineElRef.current) playheadLineElRef.current.style.left = `${pct}%`;
       if (scrubProgressElRef.current) scrubProgressElRef.current.style.width = `${pct}%`;
       if (scrubThumbElRef.current) scrubThumbElRef.current.style.left = `${pct}%`;
-      if (timecodeElRef.current) timecodeElRef.current.textContent = `${formatTimecodePrecise(clampedSec)} / ${formatTimecodePrecise(sequenceDuration)}`;
+      if (timecodeElRef.current)
+        timecodeElRef.current.textContent = `${formatTimecodePrecise(clampedSec)} / ${formatTimecodePrecise(sequenceDuration)}`;
 
       if (!effectiveScenes.length) {
         if (videoRef.current) {
@@ -770,11 +460,12 @@ export function EditorWorkspace({
         return;
       }
 
-      const matched = effectiveScenes.find((item) => {
-        const start = toSeconds(item.start);
-        const end = toSeconds(item.end);
-        return clampedSec >= start && clampedSec < end;
-      }) || effectiveScenes[effectiveScenes.length - 1];
+      const matched =
+        effectiveScenes.find((item) => {
+          const start = toSeconds(item.start);
+          const end = toSeconds(item.end);
+          return clampedSec >= start && clampedSec < end;
+        }) || effectiveScenes[effectiveScenes.length - 1];
 
       if (matched) {
         setSceneId(matched.id);
@@ -792,7 +483,7 @@ export function EditorWorkspace({
     [effectiveScenes, sequenceDuration]
   );
 
-  // High-Precision 60FPS Virtual Timeline Playhead Engine (Mượt mà 60 FPS, chạy êm ái, tối ưu tài nguyên CPU)
+  // High-Precision 60FPS Virtual Timeline Playhead Engine
   useEffect(() => {
     let animId: number;
     let lastTime = performance.now();
@@ -825,28 +516,27 @@ export function EditorWorkspace({
 
         playheadSecondsRef.current = currentPos;
 
-        // 1. High-Performance Direct DOM updates at 60-144 FPS (Zero React Tree Diff Overhead)
         const pct = sequenceDuration > 0 ? Math.min(100, Math.max(0, (currentPos / sequenceDuration) * 100)) : 0;
         if (playheadLineElRef.current) playheadLineElRef.current.style.left = `${pct}%`;
         if (scrubProgressElRef.current) scrubProgressElRef.current.style.width = `${pct}%`;
         if (scrubThumbElRef.current) scrubThumbElRef.current.style.left = `${pct}%`;
-        if (timecodeElRef.current) timecodeElRef.current.textContent = `${formatTimecodePrecise(currentPos)} / ${formatTimecodePrecise(sequenceDuration)}`;
+        if (timecodeElRef.current)
+          timecodeElRef.current.textContent = `${formatTimecodePrecise(currentPos)} / ${formatTimecodePrecise(sequenceDuration)}`;
 
-        // 2. Check scene transitions cleanly
         let sceneChanged = false;
         if (effectiveScenes.length > 0) {
-          const currentScene = effectiveScenes.find((s) => {
-            const sStart = toSeconds(s.start);
-            const sEnd = toSeconds(s.end);
-            return currentPos >= sStart && currentPos < sEnd;
-          }) || effectiveScenes[effectiveScenes.length - 1];
+          const currentScene =
+            effectiveScenes.find((s) => {
+              const sStart = toSeconds(s.start);
+              const sEnd = toSeconds(s.end);
+              return currentPos >= sStart && currentPos < sEnd;
+            }) || effectiveScenes[effectiveScenes.length - 1];
 
           if (currentScene && currentScene.id !== lastSceneIdRef.current) {
             lastSceneIdRef.current = currentScene.id;
             sceneChanged = true;
             setSceneId(currentScene.id);
 
-            // Seek video to exact start of the new scene once
             const srcStartSec = toSeconds(currentScene.sourceStart || currentScene.start);
             const offset = Math.max(0, currentPos - toSeconds(currentScene.start));
             const targetVideoTime = srcStartSec + offset;
@@ -857,7 +547,6 @@ export function EditorWorkspace({
               }
             }
 
-            // Trigger voice narration for the new scene
             const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
             const sceneText = currentScene.subtitle || currentScene.voiceover || currentScene.translation || "";
             if (!isMutedLane && sceneText) {
@@ -870,7 +559,6 @@ export function EditorWorkspace({
           }
         }
 
-        // 3. Throttled React state update (~10 FPS or on scene change) to keep CPU low
         if (sceneChanged || now - lastUiUpdateRef.current > 100) {
           lastUiUpdateRef.current = now;
           setPlayheadSeconds(currentPos);
@@ -885,13 +573,13 @@ export function EditorWorkspace({
       playheadSecondsRef.current = playheadSeconds;
       lastUiUpdateRef.current = performance.now();
 
-      // On start playing, sync video position and trigger current scene audio
       if (effectiveScenes.length > 0) {
-        const currentScene = effectiveScenes.find((s) => {
-          const sStart = toSeconds(s.start);
-          const sEnd = toSeconds(s.end);
-          return playheadSeconds >= sStart && playheadSeconds < sEnd;
-        }) || effectiveScenes[0];
+        const currentScene =
+          effectiveScenes.find((s) => {
+            const sStart = toSeconds(s.start);
+            const sEnd = toSeconds(s.end);
+            return playheadSeconds >= sStart && playheadSeconds < sEnd;
+          }) || effectiveScenes[0];
 
         if (currentScene) {
           lastSceneIdRef.current = currentScene.id;
@@ -927,7 +615,7 @@ export function EditorWorkspace({
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [playing, speedVal, sequenceDuration, isLooping, effectiveScenes, trackMutes, seekToTimeline]);
+  }, [playing, speedVal, sequenceDuration, isLooping, effectiveScenes, trackMutes, seekToTimeline, stopSceneAudio, playSceneAudio]);
 
   // Sync video playbackRate with speedVal
   useEffect(() => {
@@ -936,347 +624,24 @@ export function EditorWorkspace({
     }
   }, [speedVal]);
 
-  // Auto-scroll timeline viewport to follow playhead when zoomed in
-  useEffect(() => {
-    if (timelineViewportRef.current && playing) {
-      const viewport = timelineViewportRef.current;
-      const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content");
-      if (contentEl && viewport.scrollWidth > viewport.clientWidth) {
-        const totalW = contentEl.clientWidth;
-        const playheadPx = (playheadSeconds / sequenceDuration) * totalW;
-        const scrollLeft = viewport.scrollLeft;
-        const viewportW = viewport.clientWidth;
-        if (playheadPx > scrollLeft + viewportW * 0.85) {
-          viewport.scrollLeft = playheadPx - viewportW * 0.2;
-        } else if (playheadPx < scrollLeft) {
-          viewport.scrollLeft = Math.max(0, playheadPx - viewportW * 0.2);
-        }
-      }
-    }
-  }, [playheadSeconds, sequenceDuration, playing]);
-
-  // Interactive Clip Trimming (Independent Track Trimming: Co giãn đầu/đuôi từng track độc lập)
-  const handleTrimStart = (
-    e: React.MouseEvent,
-    scene: EditorScene,
-    handle: "left" | "right",
-    trackType: "voice" | "visuals" | "captions" = "visuals"
-  ) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const viewport = timelineViewportRef.current;
-    if (!viewport) return;
-    const rect = viewport.getBoundingClientRect();
-    const startX = e.clientX;
-    const initStart = toSeconds(
-      trackType === "voice"
-        ? scene.voiceStart || scene.start
-        : trackType === "captions"
-        ? scene.captionStart || scene.start
-        : scene.start
-    );
-    const initEnd = toSeconds(
-      trackType === "voice"
-        ? scene.voiceEnd || scene.end
-        : trackType === "captions"
-        ? scene.captionEnd || scene.end
-        : scene.end
-    );
-    const initDur = Math.max(0.2, initEnd - initStart);
-    const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content");
-    const totalWidth = (contentEl ? contentEl.clientWidth : rect.width * zoomLevel) || rect.width;
-    const secPerPx = sequenceDuration / totalWidth;
-
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    let rafId: number | null = null;
-
-    const onPointerMove = (moveEvt: MouseEvent) => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const deltaX = moveEvt.clientX - startX;
-        const deltaSec = deltaX * secPerPx;
-        let nextScenes = [...editorScenes];
-        if (handle === "right") {
-          const newDur = Math.max(0.2, initDur + deltaSec);
-          const newEnd = formatSeconds(initStart + newDur, true);
-          nextScenes = editorScenes.map((s) => {
-            if (s.id !== scene.id) return s;
-            if (trackType === "voice") {
-              return { ...s, voiceEnd: newEnd, voiceStart: s.voiceStart || s.start };
-            }
-            if (trackType === "captions") {
-              return { ...s, captionEnd: newEnd, captionStart: s.captionStart || s.start };
-            }
-            return { ...s, end: newEnd };
-          });
-        } else {
-          const newStartNum = Math.max(0, Math.min(initEnd - 0.2, initStart + deltaSec));
-          const newStart = formatSeconds(newStartNum, true);
-          nextScenes = editorScenes.map((s) => {
-            if (s.id !== scene.id) return s;
-            if (trackType === "voice") {
-              return { ...s, voiceStart: newStart, voiceEnd: s.voiceEnd || s.end };
-            }
-            if (trackType === "captions") {
-              return { ...s, captionStart: newStart, captionEnd: s.captionEnd || s.end };
-            }
-            return { ...s, start: newStart };
-          });
-        }
-
-        setActiveTrimming({
-          sceneId: scene.id,
-          handle,
-          trackType,
-          initialDur: initDur,
-          tempScenes: nextScenes,
-        });
-      });
-    };
-
-    const onPointerUp = (upEvt: MouseEvent) => {
-      if (rafId) cancelAnimationFrame(rafId);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", onPointerMove);
-      window.removeEventListener("mouseup", onPointerUp);
-
-      const deltaX = upEvt.clientX - startX;
-      const deltaSec = deltaX * secPerPx;
-      let finalScenes = [...editorScenes];
-      if (handle === "right") {
-        const newDur = Math.max(0.2, initDur + deltaSec);
-        const newEnd = formatSeconds(initStart + newDur, true);
-        finalScenes = editorScenes.map((s) => {
-          if (s.id !== scene.id) return s;
-          if (trackType === "voice") {
-            return { ...s, voiceEnd: newEnd, voiceStart: s.voiceStart || s.start };
-          }
-          if (trackType === "captions") {
-            return { ...s, captionEnd: newEnd, captionStart: s.captionStart || s.start };
-          }
-          return { ...s, end: newEnd };
-        });
-      } else {
-        const newStartNum = Math.max(0, Math.min(initEnd - 0.2, initStart + deltaSec));
-        const newStart = formatSeconds(newStartNum, true);
-        finalScenes = editorScenes.map((s) => {
-          if (s.id !== scene.id) return s;
-          if (trackType === "voice") {
-            return { ...s, voiceStart: newStart, voiceEnd: s.voiceEnd || s.end };
-          }
-          if (trackType === "captions") {
-            return { ...s, captionStart: newStart, captionEnd: s.captionEnd || s.end };
-          }
-          return { ...s, start: newStart };
-        });
-      }
-
-      setScenesWithHistory(finalScenes);
-      setActiveTrimming(null);
-      const trackName = trackType === "voice" ? "âm thanh" : trackType === "captions" ? "phụ đề" : "cảnh";
-      setProjectMessage(`✓ Đã chỉnh thời lượng ${trackName} độc lập`);
-      setTimeout(() => setProjectMessage(""), 2000);
-    };
-
-    window.addEventListener("mousemove", onPointerMove);
-    window.addEventListener("mouseup", onPointerUp);
-  };
-
-  // Interactive Clip Position Dragging / Sliding (Kéo di chuyển mượt mà từng track độc lập)
-  const handleClipSlideStart = (
-    e: React.MouseEvent,
-    scene: EditorScene,
-    trackType: "voice" | "visuals" | "captions" = "visuals"
-  ) => {
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).classList.contains("ts-clip-handle")) return;
-
-    e.stopPropagation();
-    e.preventDefault();
-    const viewport = timelineViewportRef.current;
-    if (!viewport) return;
-    const rect = viewport.getBoundingClientRect();
-    const startX = e.clientX;
-    const initStart = toSeconds(
-      trackType === "voice"
-        ? scene.voiceStart || scene.start
-        : trackType === "captions"
-        ? scene.captionStart || scene.start
-        : scene.start
-    );
-    const initEnd = toSeconds(
-      trackType === "voice"
-        ? scene.voiceEnd || scene.end
-        : trackType === "captions"
-        ? scene.captionEnd || scene.end
-        : scene.end
-    );
-    const dur = Math.max(0.2, initEnd - initStart);
-    const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content");
-    const totalWidth = (contentEl ? contentEl.clientWidth : rect.width * zoomLevel) || rect.width;
-    const secPerPx = sequenceDuration / totalWidth;
-
-    document.body.style.cursor = "grab";
-    document.body.style.userSelect = "none";
-
-    let rafId: number | null = null;
-
-    const onPointerMove = (moveEvt: MouseEvent) => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => {
-        const deltaX = moveEvt.clientX - startX;
-        const deltaSec = deltaX * secPerPx;
-        const newStart = Math.max(0, initStart + deltaSec);
-        const newEnd = newStart + dur;
-
-        const nextScenes = editorScenes.map((s) => {
-          if (s.id !== scene.id) return s;
-          if (trackType === "voice") {
-            return {
-              ...s,
-              voiceStart: formatSeconds(newStart, true),
-              voiceEnd: formatSeconds(newEnd, true),
-            };
-          }
-          if (trackType === "captions") {
-            return {
-              ...s,
-              captionStart: formatSeconds(newStart, true),
-              captionEnd: formatSeconds(newEnd, true),
-            };
-          }
-          return {
-            ...s,
-            start: formatSeconds(newStart, true),
-            end: formatSeconds(newEnd, true),
-          };
-        });
-
-        setActiveTrimming({
-          sceneId: scene.id,
-          handle: "slide",
-          trackType,
-          initialDur: dur,
-          tempScenes: nextScenes,
-        });
-      });
-    };
-
-    const onPointerUp = (upEvt: MouseEvent) => {
-      if (rafId) cancelAnimationFrame(rafId);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", onPointerMove);
-      window.removeEventListener("mouseup", onPointerUp);
-
-      const deltaX = upEvt.clientX - startX;
-      const deltaSec = deltaX * secPerPx;
-      const newStart = Math.max(0, initStart + deltaSec);
-      const newEnd = newStart + dur;
-
-      const finalScenes = editorScenes.map((s) => {
-        if (s.id !== scene.id) return s;
-        if (trackType === "voice") {
-          return {
-            ...s,
-            voiceStart: formatSeconds(newStart, true),
-            voiceEnd: formatSeconds(newEnd, true),
-          };
-        }
-        if (trackType === "captions") {
-          return {
-            ...s,
-            captionStart: formatSeconds(newStart, true),
-            captionEnd: formatSeconds(newEnd, true),
-          };
-        }
-        return {
-          ...s,
-          start: formatSeconds(newStart, true),
-          end: formatSeconds(newEnd, true),
-        };
-      });
-
-      setScenesWithHistory(finalScenes);
-      setActiveTrimming(null);
-      setSceneId(scene.id);
-      seekToTimeline(newStart);
-      const trackName = trackType === "voice" ? "âm thanh" : trackType === "captions" ? "phụ đề" : "cảnh";
-      setProjectMessage(`✓ Đã căn vị trí ${trackName}: ${formatSeconds(newStart)} - ${formatSeconds(newEnd)}`);
-      setTimeout(() => setProjectMessage(""), 2000);
-    };
-
-    window.addEventListener("mousemove", onPointerMove);
-    window.addEventListener("mouseup", onPointerUp);
-  };
-
-  // Drag & Drop Reordering of Scenes
-  const handleDragStartScene = (e: React.DragEvent, index: number) => {
-    setDraggedSceneIdx(index);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", String(index));
-  };
-
-  const handleDragOverScene = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (dragOverSceneIdx !== index) {
-      setDragOverSceneIdx(index);
-    }
-  };
-
-  const handleDragLeaveScene = () => {
-    setDragOverSceneIdx(null);
-  };
-
-  const handleDropScene = (e: React.DragEvent, targetIndex: number) => {
-    e.preventDefault();
-    setDragOverSceneIdx(null);
-    const fromIndex = draggedSceneIdx;
-    setDraggedSceneIdx(null);
-    if (fromIndex === null || fromIndex === targetIndex) return;
-
-    const nextScenes = [...editorScenes];
-    const [moved] = nextScenes.splice(fromIndex, 1);
-    nextScenes.splice(targetIndex, 0, moved);
-
-    // Recalculate sequential start and end times
-    let curTime = 0;
-    const recalculated = nextScenes.map((sc) => {
-      const dur = Math.max(1, toSeconds(sc.end) - toSeconds(sc.start));
-      const startStr = formatSeconds(curTime);
-      curTime += dur;
-      const endStr = formatSeconds(curTime);
-      return { ...sc, start: startStr, end: endStr };
-    });
-
-    setScenesWithHistory(recalculated);
-    setSceneId(moved.id);
-    seekToTimeline(toSeconds(recalculated[targetIndex].start));
-    setProjectMessage(`✓ Đã chuyển "${moved.title}" sang vị trí ${targetIndex + 1}`);
-    setTimeout(() => setProjectMessage(""), 2500);
-  };
-
-  // Seek on timeline click or scrub
+  // Mouse / Playhead scrub handlers
   const seekToClientX = useCallback(
     (clientX: number) => {
       const viewport = timelineViewportRef.current;
       if (!viewport) return;
-      const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content") || viewport;
-      const rect = contentEl.getBoundingClientRect();
-      const clickX = Math.max(0, Math.min(rect.width, clientX - rect.left));
-      const pct = Math.max(0, Math.min(1, clickX / rect.width));
-      const targetSec = Math.max(0, Math.min(sequenceDuration, pct * sequenceDuration));
+      const rect = viewport.getBoundingClientRect();
+      const contentEl = viewport.querySelector<HTMLElement>(".ts-lanes-content");
+      const totalWidth = (contentEl ? contentEl.clientWidth : rect.width * zoomLevel) || rect.width;
+      const clickX = clientX - rect.left + viewport.scrollLeft;
+      const pct = Math.max(0, Math.min(1, clickX / totalWidth));
+      const targetSec = pct * sequenceDuration;
       seekToTimeline(targetSec);
     },
-    [sequenceDuration, seekToTimeline]
+    [zoomLevel, sequenceDuration, seekToTimeline]
   );
 
   const onTimelineMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 2) return;
+    if (e.button !== 0) return;
     isDraggingPlayhead.current = true;
     seekToClientX(e.clientX);
 
@@ -1296,157 +661,53 @@ export function EditorWorkspace({
     window.addEventListener("mouseup", onMouseUp);
   };
 
-  // Split active scene at playhead position
-  const splitActiveScene = () => {
-    if (trackLocks.video) {
-      setProjectMessage("⚠️ Track Video đang bị khóa. Mở khóa để cắt.");
-      setTimeout(() => setProjectMessage(""), 2500);
-      return;
+  // Export hook
+  const { handleExportFull, handleExportScenes } = useEditorExport({
+    sourceJob,
+    editorScenes,
+    trackMutes,
+    originalAudioVolume,
+    selectedVoice,
+    aspectRatio,
+    removeOriginalBgm,
+    subtitlesVisible,
+    subtitleStyle,
+    sequenceDuration,
+    setIsExportDropdownOpen,
+    setProjectMessage,
+    onNavigate,
+    onAddJob,
+    onUpdateJob,
+    defaultVoiceForLang,
+  });
+
+  // Fullscreen trigger on player container
+  const toggleFullscreen = () => {
+    if (!playerContainerRef.current) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void playerContainerRef.current.requestFullscreen();
     }
-
-    let targetIdx = -1;
-    let localSplitSec = 0;
-
-    for (let i = 0; i < editorScenes.length; i++) {
-      const s = editorScenes[i];
-      const startS = toSeconds(s.start);
-      const endS = toSeconds(s.end);
-      if (playheadSeconds > startS + 0.3 && playheadSeconds < endS - 0.3) {
-        targetIdx = i;
-        localSplitSec = playheadSeconds;
-        break;
-      }
-    }
-
-    if (targetIdx === -1) {
-      setProjectMessage("Di chuyển con trỏ Playhead vào giữa một phân cảnh (cách 2 đầu > 0.3s) để tách.");
-      setTimeout(() => setProjectMessage(""), 3000);
-      return;
-    }
-
-    const orig = editorScenes[targetIdx];
-    const splitTimeStr = formatSeconds(localSplitSec);
-
-    const sceneA: EditorScene = {
-      ...orig,
-      id: `${orig.id}-part1`,
-      end: splitTimeStr,
-      title: `${orig.title} (Đoạn 1)`,
-    };
-    const sceneB: EditorScene = {
-      ...orig,
-      id: `${orig.id}-part2`,
-      start: splitTimeStr,
-      title: `${orig.title} (Đoạn 2)`,
-    };
-
-    const nextScenes = [...editorScenes];
-    nextScenes.splice(targetIdx, 1, sceneA, sceneB);
-    setScenesWithHistory(nextScenes);
-    setSceneId(sceneB.id);
-    setProjectMessage(`✓ Đã tách phân cảnh tại mốc ${splitTimeStr}`);
-    setTimeout(() => setProjectMessage(""), 2500);
   };
 
-  // Delete active scene
-  const deleteActiveScene = () => {
-    if (editorScenes.length <= 1) {
-      setProjectMessage("Cần giữ lại ít nhất 1 cảnh trên timeline.");
-      setTimeout(() => setProjectMessage(""), 2500);
-      return;
+  // Right-click context menu handler
+  const handleClipContextMenu = (e: React.MouseEvent, scId?: string, trackType = "clip") => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (scId) {
+      setSceneId(scId);
     }
-    const nextScenes = editorScenes.filter((s) => s.id !== activeSceneId);
-    setScenesWithHistory(nextScenes);
-    setSceneId(nextScenes[0].id);
-    setProjectMessage("✓ Đã xóa cảnh khỏi timeline.");
-    setTimeout(() => setProjectMessage(""), 2500);
-  };
-
-  // Add new scene segment
-  const addNewSceneSegment = () => {
-    const lastScene = editorScenes[editorScenes.length - 1];
-    const newStart = lastScene ? lastScene.end : "00:00";
-    const startNum = toSeconds(newStart);
-    const newEnd = formatSeconds(startNum + 5);
-    const newScene: EditorScene = {
-      id: `scene-custom-${Date.now()}`,
-      start: newStart,
-      end: newEnd,
-      title: `Cảnh ${editorScenes.length + 1}: Bổ sung`,
-      detail: "Phân cảnh mới thêm vào timeline",
-      subtitle: "Nội dung lời thoại bổ sung cho phân cảnh mới.",
-      accent: editorScenes.length % 2 === 0 ? "cyan" : "purple",
-    };
-    const nextScenes = [...editorScenes, newScene];
-    setScenesWithHistory(nextScenes);
-    setSceneId(newScene.id);
-    seekToTimeline(startNum);
-    setProjectMessage(`✓ Đã thêm phân cảnh mới: "${newScene.title}"`);
-    setTimeout(() => setProjectMessage(""), 2500);
-  };
-
-  // Auto-align 1:1 Voice, Visuals, and Subtitles matching word pacing
-  const handleAutoAlignVoiceAndVisuals = () => {
-    if (!editorScenes.length) {
-      setProjectMessage("⚠️ Không có phân cảnh nào trên timeline để căn chỉnh.");
-      setTimeout(() => setProjectMessage(""), 2500);
-      return;
-    }
-    let cursor = 0;
-    const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-    const nextScenes = editorScenes.map((s) => {
-      const rawText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "");
-      const words = rawText.split(/\s+/).filter(Boolean).length;
-      const sceneDur = Math.max(3.0, Math.round((words / (3.65 * speed)) * 10) / 10);
-      const startSec = cursor;
-      const endSec = cursor + sceneDur;
-      cursor = endSec;
-
-      const srcStartSec = toSeconds(s.sourceStart || s.start);
-      const srcEndSec = srcStartSec + sceneDur;
-
-      return {
-        ...s,
-        start: formatSeconds(startSec),
-        end: formatSeconds(endSec),
-        timeStart: startSec,
-        timeEnd: endSec,
-        voiceStart: formatSeconds(startSec, true),
-        voiceEnd: formatSeconds(endSec, true),
-        captionStart: formatSeconds(startSec, true),
-        captionEnd: formatSeconds(endSec, true),
-        sourceStart: formatSeconds(srcStartSec),
-        sourceEnd: formatSeconds(srcEndSec),
-        sourceTimeStart: srcStartSec,
-        sourceTimeEnd: srcEndSec,
-        subtitle: rawText,
-        voiceover: rawText,
-        translation: rawText,
-      };
+    setContextMenu({
+      visible: true,
+      x: Math.min(window.innerWidth - 220, e.clientX),
+      y: Math.min(window.innerHeight - 300, e.clientY),
+      sceneId: scId || activeSceneId,
+      trackType,
     });
-
-    setScenesWithHistory(nextScenes);
-    if (onUpdateJob && sourceJob?.id) {
-      onUpdateJob(sourceJob.id, {
-        analysis: {
-          ...(sourceJob.analysis || {}),
-          summary: sourceJob.analysis?.summary || `Kịch bản phân cảnh (${nextScenes.length} cảnh)`,
-          score: sourceJob.analysis?.score ?? 9.5,
-          tokensUsed: sourceJob.analysis?.tokensUsed ?? 0,
-          creditsUsed: sourceJob.analysis?.creditsUsed ?? 0,
-          scenes: nextScenes.map((sc) => ({
-            ...sc,
-            voiceover: sc.subtitle || sc.voiceover,
-            translation: sc.subtitle || sc.translation,
-          })) as any,
-        },
-      });
-    }
-    setProjectMessage(`🎯 Đã tự động căn khớp 100% thời lượng Voice, Hình ảnh và Phụ đề (${formatSeconds(cursor)})!`);
-    setTimeout(() => setProjectMessage(""), 3500);
   };
 
-  // Native Upload Video/Image File Picker
+  // Native Upload
   const handleUploadNativeMedia = async () => {
     try {
       const path = await getRuntime().pickVideo();
@@ -1481,262 +742,7 @@ export function EditorWorkspace({
     }
   };
 
-  // Export handlers
-  const handleExportFull = () => {
-    setIsExportDropdownOpen(false);
-    if (!sourceJob || !onAddJob) return;
-
-    let timelineCursor = 0;
-    const timelineSubtitleSegments: Array<{ start: number; end: number; text: string }> = [];
-
-    const fullScenes = editorScenes.map((s, idx) => {
-      const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start));
-      const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
-      const srcEnd = srcStart + sceneDur;
-      const tStart = timelineCursor;
-      const tEnd = timelineCursor + sceneDur;
-      timelineCursor += sceneDur;
-
-      const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
-      if (sceneText) {
-        timelineSubtitleSegments.push({
-          start: tStart,
-          end: tEnd,
-          text: sceneText,
-        });
-      }
-
-      return {
-        id: s.id || `scene-${idx + 1}`,
-        start: formatSeconds(tStart),
-        end: formatSeconds(tEnd),
-        sourceStart: formatSeconds(srcStart),
-        sourceEnd: formatSeconds(srcEnd),
-        sourceTimeStart: srcStart,
-        sourceTimeEnd: srcEnd,
-        action_visual: s.action_visual || s.detail,
-        title: s.title,
-        detail: s.detail || "",
-        voiceover: sceneText || s.subtitle || "",
-        translation: sceneText || s.subtitle || "",
-      };
-    });
-
-    const cutClips = editorScenes.map((s) => {
-      const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start));
-      const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start);
-      const srcEnd = srcStart + sceneDur;
-      const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
-      return {
-        sourceStart: srcStart,
-        sourceEnd: srcEnd,
-        duration: sceneDur,
-        text: sceneText || s.subtitle || s.detail,
-        title: s.title,
-      };
-    }).filter((c) => c.sourceEnd > c.sourceStart);
-
-    const isVoiceMuted = Boolean(trackMutes.voice);
-    const isOriginalAudioMuted = Boolean(trackMutes.originalAudio) || originalAudioVolume === 0 || sourceJob.keepOriginalAudio === false;
-    const isCaptionsMuted = Boolean(trackMutes.captions);
-    const effectiveVoice = selectedVoice || sourceJob.narratorVoice || defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender) || "vi-namminh";
-    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === effectiveVoice.toLowerCase());
-    const hasAnyNarration = editorScenes.some((s) => Boolean(s.subtitle?.trim() || s.voiceover?.trim() || s.detail?.trim()));
-    const fullNarrationText = editorScenes.map((s) => stripSceneMetadata(s.subtitle || s.voiceover || s.detail)).filter(Boolean).join(" ");
-
-    const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
-    const totalDuration = timelineCursor || sequenceDuration || sourceJob.durationSeconds || 60;
-
-    // Save timeline state back to source job
-    if (onUpdateJob && sourceJob.id) {
-      onUpdateJob(sourceJob.id, {
-        cutClips,
-        timelineClips: cutClips as any,
-        analysis: {
-          summary: sourceJob.analysis?.summary || `Dự án timeline (${editorScenes.length} phân cảnh)`,
-          score: sourceJob.analysis?.score || 9.5,
-          tokensUsed: sourceJob.analysis?.tokensUsed || 0,
-          creditsUsed: sourceJob.analysis?.creditsUsed || 0,
-          ...(sourceJob.analysis || {}),
-          scenes: fullScenes as any,
-        },
-      });
-    }
-
-    onAddJob({
-      id: `export-full-${Date.now()}`,
-      name: `${effectiveTitle} (Xuất 1 Video Hoàn Chỉnh)`,
-      source: sourceJob.source,
-      sourceType: sourceJob.sourceType,
-      localPath: sourceJob.localPath,
-      durationSeconds: totalDuration,
-      mode: "local-gpu",
-      aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
-      keepOriginalAudio: !isOriginalAudioMuted,
-      interweaveAudio: !isOriginalAudioMuted && originalAudioVolume < 90,
-      originalAudioVolume: isOriginalAudioMuted ? 0 : originalAudioVolume,
-      autoDucking: true,
-      removeOriginalBgm: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
-      isolateVocals: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
-      narratorEnabled: sourceJob.narratorEnabled === false ? false : (!isVoiceMuted && hasAnyNarration),
-      narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
-      narratorVoice: effectiveVoice,
-      subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
-      subtitleStyle: subtitleStyle || "gold",
-      subtitleText: fullNarrationText,
-      narrationText: fullNarrationText,
-      subtitleSegments: timelineSubtitleSegments as any,
-      cutClips,
-      timelineClips: cutClips as any,
-      analysis: {
-        summary: sourceJob.analysis?.summary || `Dự án timeline ghép hoàn chỉnh (${editorScenes.length} phân cảnh)`,
-        scenes: fullScenes as any,
-        voiceScript: fullNarrationText,
-        score: sourceJob.analysis?.score || 9.5,
-        tokensUsed: sourceJob.analysis?.tokensUsed || 0,
-        creditsUsed: sourceJob.analysis?.creditsUsed || 0,
-        ...(sourceJob.analysis || {}),
-      },
-      status: "queued",
-      stage: "queued",
-      progress: 0,
-      createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
-      synced: true,
-    });
-    setProjectMessage("🚀 Đã đưa 1 Video hoàn chỉnh vào hàng đợi Render!");
-    setTimeout(() => onNavigate("render"), 800);
-  };
-
-  const handleExportScenes = () => {
-    setIsExportDropdownOpen(false);
-    if (!sourceJob || !onAddJob) return;
-
-    const isVoiceMuted = Boolean(trackMutes.voice);
-    const isOriginalAudioMuted = Boolean(trackMutes.originalAudio) || originalAudioVolume === 0 || sourceJob.keepOriginalAudio === false;
-    const isCaptionsMuted = Boolean(trackMutes.captions);
-    const effectiveVoice = selectedVoice || sourceJob.narratorVoice || defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender) || "vi-namminh";
-    const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === effectiveVoice.toLowerCase());
-    const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
-
-    editorScenes.forEach((scene, index) => {
-      const sceneDur = Math.max(0.5, toSeconds(scene.end) - toSeconds(scene.start));
-      const srcStartSec = scene.sourceTimeStart ?? toSeconds(scene.sourceStart || scene.start);
-      const srcEndSec = srcStartSec + sceneDur;
-      const sceneText = stripSceneMetadata(scene.subtitle || scene.voiceover || scene.translation || scene.detail || "").trim();
-      onAddJob({
-        id: `export-scene-${Date.now()}-${index + 1}`,
-        name: `${effectiveTitle} · Cảnh ${index + 1}: ${scene.title}`,
-        source: sourceJob.source,
-        sourceType: sourceJob.sourceType,
-        localPath: sourceJob.localPath,
-        durationSeconds: sceneDur,
-        mode: "local-gpu",
-        aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
-        keepOriginalAudio: !isOriginalAudioMuted,
-        interweaveAudio: !isOriginalAudioMuted && originalAudioVolume < 90,
-        originalAudioVolume: isOriginalAudioMuted ? 0 : originalAudioVolume,
-        autoDucking: true,
-        removeOriginalBgm: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
-        isolateVocals: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
-        narratorEnabled: sourceJob.narratorEnabled === false ? false : (!isVoiceMuted && Boolean(sceneText)),
-        narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
-        narratorVoice: effectiveVoice,
-        subtitlesEnabled: !isCaptionsMuted && subtitlesVisible,
-        subtitleStyle: subtitleStyle || "gold",
-        subtitleText: sceneText,
-        narrationText: sceneText,
-        clipStartSeconds: srcStartSec,
-        clipEndSeconds: srcEndSec,
-        cutClips: [
-          {
-            sourceStart: srcStartSec,
-            sourceEnd: srcEndSec,
-            duration: sceneDur,
-            text: sceneText,
-            title: scene.title,
-          },
-        ],
-        subtitleSegments: sceneText
-          ? [{ start: 0, end: sceneDur, text: sceneText }]
-          : [],
-        analysis: {
-          summary: sourceJob.analysis?.summary || `Phân cảnh ${index + 1}: ${scene.title}`,
-          voiceScript: sceneText,
-          scenes: [
-            {
-              id: scene.id,
-              start: "00:00",
-              end: formatSeconds(sceneDur),
-              sourceStart: formatSeconds(srcStartSec),
-              sourceEnd: formatSeconds(srcEndSec),
-              sourceTimeStart: srcStartSec,
-              sourceTimeEnd: srcEndSec,
-              title: scene.title,
-              detail: scene.detail || "",
-              voiceover: sceneText,
-              translation: sceneText,
-            },
-          ],
-          score: sourceJob.analysis?.score || 9.5,
-          tokensUsed: sourceJob.analysis?.tokensUsed || 0,
-          creditsUsed: sourceJob.analysis?.creditsUsed || 0,
-          ...(sourceJob.analysis || {}),
-        },
-        status: "queued",
-        stage: "queued",
-        progress: 0,
-        createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
-        synced: true,
-      });
-    });
-    setProjectMessage(`🚀 Đã thêm ${editorScenes.length} phân cảnh riêng lẻ vào hàng đợi Render!`);
-    setTimeout(() => onNavigate("render"), 800);
-  };
-
-  // Fullscreen trigger on player container
-  const toggleFullscreen = () => {
-    if (!playerContainerRef.current) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void playerContainerRef.current.requestFullscreen();
-    }
-  };
-
-  // Right-click context menu handler (Positioned directly at mouse pointer)
-  const handleClipContextMenu = (e: React.MouseEvent, sceneId?: string, trackType = "clip") => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (sceneId) {
-      setSceneId(sceneId);
-    }
-    const menuW = 230;
-    const menuH = 290;
-    let x = e.clientX;
-    let y = e.clientY;
-
-    // Smart anchor: if opening downwards overflows window bottom, open upwards from cursor
-    if (y + menuH > window.innerHeight - 8) {
-      y = e.clientY - menuH;
-    }
-    // If opening rightwards overflows window right, open to the left of cursor
-    if (x + menuW > window.innerWidth - 8) {
-      x = e.clientX - menuW;
-    }
-
-    x = Math.max(8, Math.min(x, window.innerWidth - menuW - 8));
-    y = Math.max(8, Math.min(y, window.innerHeight - menuH - 8));
-
-    setContextMenu({
-      visible: true,
-      x,
-      y,
-      sceneId: sceneId || activeSceneId,
-      trackType,
-    });
-  };
-
-  // Keyboard Shortcuts & Click Outside
+  // Global click & keyboard shortcuts
   useEffect(() => {
     const handleClick = () => {
       setContextMenu(null);
@@ -1794,7 +800,7 @@ export function EditorWorkspace({
     };
   }, [activeScene, copiedScene, editorScenes, historyIdx, scenesHistory]);
 
-  // Dynamic Scene under Playhead for Real-Time Subtitles & Playback
+  // Subtitles word highlighter
   const currentPlaybackScene = useMemo(() => {
     if (!effectiveScenes.length) return null;
     return (
@@ -1812,10 +818,7 @@ export function EditorWorkspace({
     );
   }, [effectiveScenes, playheadSeconds, sequenceDuration]);
 
-  // When playing or scrubbing, subtitle overlay tracks the playhead scene
   const activeDisplayScene = currentPlaybackScene || activeScene;
-
-  // Subtitle Karaoke Word Highlight
   const currentRawSub = activeDisplayScene?.subtitle || activeDisplayScene?.voiceover || activeDisplayScene?.translation || "";
   const currentCleanSub = stripSceneMetadata(currentRawSub);
   const subtitleWords = currentCleanSub.split(/\s+/).filter(Boolean);
@@ -1833,10 +836,7 @@ export function EditorWorkspace({
     if (playheadSeconds >= subStartSec && playheadSeconds <= subEndSec) {
       const currentOffset = playheadSeconds - subStartSec;
       const progressRatio = Math.max(0, Math.min(1.0, currentOffset / subDur));
-      activeWordIdx = Math.min(
-        subtitleWords.length - 1,
-        Math.floor(progressRatio * subtitleWords.length)
-      );
+      activeWordIdx = Math.min(subtitleWords.length - 1, Math.floor(progressRatio * subtitleWords.length));
     } else if (playheadSeconds > subEndSec) {
       activeWordIdx = subtitleWords.length;
     } else {
@@ -1846,2455 +846,244 @@ export function EditorWorkspace({
 
   const activeFilterObj = FILTER_PRESETS.find((f) => f.id === selectedFilter) || FILTER_PRESETS[0];
   const activeMaskObj = MASK_PRESETS.find((m) => m.id === selectedMask) || MASK_PRESETS[0];
+  const mediaUrl = sourceJob?.localPath ? fileUrl(sourceJob.localPath) : undefined;
 
   return (
     <div className="timeline-studio-app page-enter">
       {/* 1. TOP GLOBAL HEADER BAR WITH WORKFLOW NAVIGATION */}
-      <header className="ts-top-header">
-        <div className="ts-header-left">
-
-          {/* Project / Video Selector Dropdown */}
-          <div className="ts-project-switcher-container">
-            <button
-              type="button"
-              className="ts-project-switcher-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsJobDropdownOpen((v) => !v);
-              }}
-            >
-              <Icon name="video" size={12} />
-              <span className="ts-project-name">{sourceJob?.name || "Chọn video nguồn"}</span>
-              <span className="ts-project-arrow">⌵</span>
-            </button>
-
-            {isJobDropdownOpen && (
-              <div className="ts-job-dropdown-menu">
-                <div className="ts-job-dropdown-header">DANH SÁCH VIDEO ({sourceCandidates.length})</div>
-                {sourceCandidates.map((job) => (
-                  <button
-                    key={job.id}
-                    type="button"
-                    className={`ts-job-dropdown-item ${job.id === selectedSourceJobId ? "is-active" : ""}`}
-                    onClick={() => {
-                      setSelectedSourceJobId(job.id);
-                      setIsJobDropdownOpen(false);
-                      setProjectMessage(`✓ Đã chuyển sang video: ${job.name}`);
-                      setTimeout(() => setProjectMessage(""), 2000);
-                    }}
-                  >
-                    <span>{job.name}</span>
-                    {job.id === selectedSourceJobId && <span className="ts-job-check">✓</span>}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="ts-job-dropdown-add"
-                  onClick={() => {
-                    setIsJobDropdownOpen(false);
-                    handleUploadNativeMedia();
-                  }}
-                >
-                  + Nạp thêm video mới từ máy
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="ts-autosave-badge">
-            <span className="ts-autosave-dot" /> Autosaved · {editorScenes.length} Cảnh ({formatSeconds(sequenceDuration)})
-          </div>
-
-          {projectMessage && (
-            <div className="ts-toast-badge">{projectMessage}</div>
-          )}
-        </div>
-
-        <div className="ts-header-center">
-          <button type="button" className="ts-header-btn" title="Hoàn tác (Ctrl+Z)" onClick={undoTimeline}>
-            <Icon name="undo" size={13} /> Undo
-          </button>
-          <button type="button" className="ts-header-btn" title="Làm lại (Ctrl+Y)" onClick={redoTimeline}>
-            <Icon name="redo" size={13} /> Redo
-          </button>
-          <button
-            type="button"
-            className="ts-header-btn"
-            style={{ color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)", fontWeight: 600 }}
-            title="Tự động tính toán & căn chỉnh thời lượng từng phân cảnh khớp 100% với tốc độ đọc Voice và Subtitle"
-            onClick={handleAutoAlignVoiceAndVisuals}
-          >
-            🎯 Khớp Voice & Hình
-          </button>
-          <select
-            className="ts-aspect-select"
-            value={aspectRatio}
-            onChange={(e) => setAspectRatio(e.target.value as "9:16" | "1:1" | "16:9" | "4:5")}
-          >
-            <option value="9:16">9:16 (TikTok/Shorts/Reels)</option>
-            <option value="16:9">16:9 (YouTube Widescreen)</option>
-            <option value="1:1">1:1 (Instagram/Facebook)</option>
-            <option value="4:5">4:5 (Instagram Portrait)</option>
-          </select>
-        </div>
-
-        <div className="ts-header-right" style={{ position: "relative" }}>
-          <button
-            type="button"
-            className="ts-header-btn"
-            onClick={() => setPlaying((p) => !p)}
-          >
-            <Icon name={playing ? "pause" : "play"} size={12} /> {playing ? "Dừng" : "Preview"}
-          </button>
-
-          <button
-            type="button"
-            className="ts-export-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsExportDropdownOpen((v) => !v);
-            }}
-          >
-            ⚡ Export video ⌵
-          </button>
-
-          {isExportDropdownOpen && (
-            <div className="ts-export-dropdown-menu">
-              <button type="button" className="ts-export-menu-item highlight" onClick={handleExportFull}>
-                ⚡ Xuất 1 Video Hoàn Chỉnh (Ghép đầy đủ)
-              </button>
-              <button type="button" className="ts-export-menu-item" onClick={handleExportScenes}>
-                ✂️ Tách Từng Phân Cảnh Riêng ({editorScenes.length} video)
-              </button>
-              <button
-                type="button"
-                className="ts-export-menu-item"
-                onClick={() => {
-                  setIsExportDropdownOpen(false);
-                  setProjectMessage("✓ Đã sao chép toàn bộ phụ đề .SRT vào clipboard");
-                  setTimeout(() => setProjectMessage(""), 2500);
-                }}
-              >
-                📄 Xuất file phụ đề rời (.SRT)
-              </button>
-            </div>
-          )}
-
-          <button type="button" className="ts-header-gear" onClick={() => setIsConfigModalOpen(true)} title="Cài đặt dự án">
-            <Icon name="sliders" size={14} />
-          </button>
-        </div>
-      </header>
+      <EditorHeader
+        sourceJob={sourceJob}
+        sourceCandidates={sourceCandidates}
+        selectedSourceJobId={selectedSourceJobId}
+        setSelectedSourceJobId={setSelectedSourceJobId}
+        isJobDropdownOpen={isJobDropdownOpen}
+        setIsJobDropdownOpen={setIsJobDropdownOpen}
+        editorScenesCount={editorScenes.length}
+        sequenceDuration={sequenceDuration}
+        projectMessage={projectMessage}
+        setProjectMessage={setProjectMessage}
+        handleUploadNativeMedia={handleUploadNativeMedia}
+        undoTimeline={undoTimeline}
+        redoTimeline={redoTimeline}
+        handleAutoAlignVoiceAndVisuals={handleAutoAlignVoiceAndVisuals}
+        aspectRatio={aspectRatio}
+        setAspectRatio={setAspectRatio}
+        playing={playing}
+        setPlaying={setPlaying}
+        isExportDropdownOpen={isExportDropdownOpen}
+        setIsExportDropdownOpen={setIsExportDropdownOpen}
+        handleExportFull={handleExportFull}
+        handleExportScenes={handleExportScenes}
+        setIsConfigModalOpen={setIsConfigModalOpen}
+      />
 
       {/* 2. MAIN 4-COLUMN RESIZABLE / RESPONSIVE WORKSPACE */}
       <div className="ts-workspace-body">
-        {/* COLUMN 1A: LEFT VERTICAL DOCK BAR */}
-        <aside className="ts-vertical-dock">
-          <button
-            type="button"
-            className={`ts-dock-item ${dockTab === "media" ? "is-active" : ""}`}
-            onClick={() => setDockTab("media")}
-            title="Phương tiện & Tài nguyên"
-          >
-            <div className="ts-dock-icon">
-              <Icon name="folder" size={16} />
-            </div>
-            <span>Media</span>
-          </button>
-
-          <button
-            type="button"
-            className={`ts-dock-item ${dockTab === "captions" ? "is-active" : ""}`}
-            onClick={() => setDockTab("captions")}
-            title="Phụ đề & Lời thoại"
-          >
-            <div className="ts-dock-icon">
-              <Icon name="captions" size={16} />
-            </div>
-            <span>Captions</span>
-          </button>
-
-          <button
-            type="button"
-            className={`ts-dock-item ${dockTab === "smart" ? "is-active" : ""}`}
-            onClick={() => setDockTab("smart")}
-            title="AI Thông minh"
-          >
-            <div className="ts-dock-icon">
-              <Icon name="spark" size={16} />
-            </div>
-            <span>Smart AI</span>
-          </button>
-
-          <button
-            type="button"
-            className={`ts-dock-item ${dockTab === "audio" ? "is-active" : ""}`}
-            onClick={() => setDockTab("audio")}
-            title="Âm thanh, Giọng đọc & Nhạc nền"
-          >
-            <div className="ts-dock-icon">
-              <Icon name="music" size={16} />
-            </div>
-            <span>Audio</span>
-          </button>
-
-          <button
-            type="button"
-            className={`ts-dock-item ${dockTab === "effects" ? "is-active" : ""}`}
-            onClick={() => setDockTab("effects")}
-            title="Bộ lọc & Hiệu ứng hình ảnh"
-          >
-            <div className="ts-dock-icon">
-              <Icon name="layers" size={16} />
-            </div>
-            <span>Effects</span>
-          </button>
-
-          <button
-            type="button"
-            className={`ts-dock-item ${dockTab === "stickers" ? "is-active" : ""}`}
-            onClick={() => setDockTab("stickers")}
-            title="Nhãn dán & CTA"
-          >
-            <div className="ts-dock-icon">
-              <Icon name="chat" size={16} />
-            </div>
-            <span>Stickers</span>
-          </button>
-        </aside>
-
-        {/* COLUMN 1B: LEFT DRAWER PANEL */}
-        <section className="ts-drawer-panel">
-          {/* TAB: MEDIA */}
-          {dockTab === "media" && (
-            <>
-              <div className="ts-drawer-pill-tabs">
-                <button
-                  type="button"
-                  className={`ts-pill-btn ${librarySubTab === "upload" ? "is-active" : ""}`}
-                  onClick={() => setLibrarySubTab("upload")}
-                >
-                  Upload
-                </button>
-                <button
-                  type="button"
-                  className={`ts-pill-btn ${librarySubTab === "library" ? "is-active" : ""}`}
-                  onClick={() => setLibrarySubTab("library")}
-                >
-                  Library
-                </button>
-                <button
-                  type="button"
-                  className={`ts-pill-btn ${librarySubTab === "assets" ? "is-active" : ""}`}
-                  onClick={() => setLibrarySubTab("assets")}
-                >
-                  My assets ({editorScenes.length})
-                </button>
-              </div>
-
-              <div className="ts-drawer-body">
-                {/* SUBTAB 1: UPLOAD */}
-                {librarySubTab === "upload" && (
-                <div className="ts-upload-subtab-view">
-                  <div className="ts-upload-dropzone" onClick={handleUploadNativeMedia}>
-                    <Icon name="video" size={30} />
-                    <strong>Tải file từ máy tính</strong>
-                    <small>Hỗ trợ MP4, MOV, MKV, MP3, WAV, PNG, JPG</small>
-                    <button type="button" className="ts-upload-call-btn">
-                      📁 Mở File Picker...
-                    </button>
-                  </div>
-
-                  <div className="ts-uploaded-files-list">
-                    <strong className="ts-drawer-section-title">Video nguồn đang dùng:</strong>
-                    <div className="ts-uploaded-file-row is-current-source">
-                      <span className="ts-uploaded-name">🎥 {sourceJob?.name || "Video hiện tại"}</span>
-                      <span className="ts-source-badge">Đang mở</span>
-                    </div>
-
-                    {uploadedFiles.length > 0 && (
-                      <>
-                        <strong className="ts-drawer-section-title" style={{ marginTop: "8px" }}>
-                          Đã tải lên ({uploadedFiles.length})
-                        </strong>
-                        {uploadedFiles.map((f) => (
-                          <div key={f.id} className="ts-uploaded-file-row">
-                            <span className="ts-uploaded-name">{f.name}</span>
-                            <button
-                              type="button"
-                              className="ts-chip-btn"
-                              onClick={() => {
-                                setSelectedSourceJobId(f.id);
-                                setProjectMessage(`✓ Đã nạp ${f.name}`);
-                                setTimeout(() => setProjectMessage(""), 1500);
-                              }}
-                            >
-                              Dùng
-                            </button>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* SUBTAB 2: LIBRARY */}
-              {librarySubTab === "library" && (
-                <div className="ts-library-subtab-view">
-                  {/* Category Chips */}
-                  <div className="ts-drawer-filter-chips">
-                    <button
-                      type="button"
-                      className={`ts-chip-btn ${assetFilter === "all" ? "is-active" : ""}`}
-                      onClick={() => setAssetFilter("all")}
-                    >
-                      Tất cả
-                    </button>
-                    <button
-                      type="button"
-                      className={`ts-chip-btn ${assetFilter === "images" ? "is-active" : ""}`}
-                      onClick={() => setAssetFilter("images")}
-                    >
-                      Ảnh
-                    </button>
-                    <button
-                      type="button"
-                      className={`ts-chip-btn ${assetFilter === "videos" ? "is-active" : ""}`}
-                      onClick={() => setAssetFilter("videos")}
-                    >
-                      B-Roll
-                    </button>
-                    <button
-                      type="button"
-                      className={`ts-chip-btn ${assetFilter === "music" ? "is-active" : ""}`}
-                      onClick={() => setAssetFilter("music")}
-                    >
-                      Nhạc
-                    </button>
-                    <button
-                      type="button"
-                      className={`ts-chip-btn ${assetFilter === "sfx" ? "is-active" : ""}`}
-                      onClick={() => setAssetFilter("sfx")}
-                    >
-                      SFX
-                    </button>
-                  </div>
-
-                  {/* Search */}
-                  <div className="ts-drawer-search-box">
-                    <input
-                      type="text"
-                      placeholder="Tìm kiếm tài nguyên B-Roll, Stock..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="ts-drawer-provider-label">
-                    Provided by JACS Studio Media Cloud
-                  </div>
-
-                  {/* Asset Cards Grid */}
-                  <div className="ts-drawer-cards-grid">
-                    {(assetFilter === "all" || assetFilter === "images") &&
-                      SAMPLE_LIBRARY_IMAGES.filter((img) => !searchQuery || img.title.toLowerCase().includes(searchQuery.toLowerCase())).map((img) => (
-                        <div
-                          key={img.id}
-                          className="ts-asset-grid-card"
-                          onClick={() => {
-                            setProjectMessage(`✓ Đã chèn ảnh minh họa: ${img.title}`);
-                            setTimeout(() => setProjectMessage(""), 2000);
-                          }}
-                        >
-                          <div className="ts-asset-thumb" style={{ background: img.color }}>
-                            <span className="ts-asset-badge-tag">Image</span>
-                          </div>
-                          <strong className="ts-asset-title">{img.title}</strong>
-                          <small className="ts-asset-meta">{img.meta}</small>
-                        </div>
-                      ))}
-
-                    {(assetFilter === "all" || assetFilter === "videos") &&
-                      SAMPLE_LIBRARY_VIDEOS.filter((vid) => !searchQuery || vid.title.toLowerCase().includes(searchQuery.toLowerCase())).map((vid) => (
-                        <div
-                          key={vid.id}
-                          className="ts-asset-grid-card"
-                          onClick={() => {
-                            setProjectMessage(`✓ Đã nạp B-roll: ${vid.title}`);
-                            setTimeout(() => setProjectMessage(""), 2000);
-                          }}
-                        >
-                          <div className="ts-asset-thumb" style={{ background: vid.color }}>
-                            <span className="ts-asset-badge-tag">Video</span>
-                          </div>
-                          <strong className="ts-asset-title">{vid.title}</strong>
-                          <small className="ts-asset-meta">{vid.meta}</small>
-                        </div>
-                      ))}
-
-                    {(assetFilter === "all" || assetFilter === "music") &&
-                      SAMPLE_LIBRARY_MUSIC.filter((mus) => !searchQuery || mus.title.toLowerCase().includes(searchQuery.toLowerCase())).map((mus) => (
-                        <div
-                          key={mus.id}
-                          className="ts-asset-grid-card"
-                          onClick={() => {
-                            setSelectedBgm(mus.id);
-                            setProjectMessage(`✓ Đã đổi nhạc nền: ${mus.title}`);
-                            setTimeout(() => setProjectMessage(""), 2000);
-                          }}
-                        >
-                          <div className="ts-asset-thumb" style={{ background: mus.color }}>
-                            <span className="ts-asset-badge-tag">Audio</span>
-                          </div>
-                          <strong className="ts-asset-title">{mus.title}</strong>
-                          <small className="ts-asset-meta">{mus.meta}</small>
-                        </div>
-                      ))}
-
-                    {(assetFilter === "all" || assetFilter === "sfx") &&
-                      SAMPLE_LIBRARY_SFX.filter((sfx) => !searchQuery || sfx.title.toLowerCase().includes(searchQuery.toLowerCase())).map((sfx) => (
-                        <div
-                          key={sfx.id}
-                          className="ts-asset-grid-card"
-                          onClick={() => {
-                            setProjectMessage(`✓ Đã chèn hiệu ứng: ${sfx.title}`);
-                            setTimeout(() => setProjectMessage(""), 1500);
-                          }}
-                        >
-                          <div className="ts-asset-thumb" style={{ background: sfx.color }}>
-                            <span className="ts-asset-badge-tag">SFX</span>
-                          </div>
-                          <strong className="ts-asset-title">{sfx.title}</strong>
-                          <small className="ts-asset-meta">{sfx.meta}</small>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* SUBTAB 3: MY ASSETS */}
-              {librarySubTab === "assets" && (
-                <div className="ts-myassets-subtab-view">
-                  <div className="ts-myassets-header">
-                    <strong className="ts-drawer-section-title">Danh sách phân cảnh ({editorScenes.length})</strong>
-                    <button type="button" className="ts-chip-btn is-active" onClick={addNewSceneSegment}>
-                      + Thêm cảnh
-                    </button>
-                  </div>
-
-                  <div className="ts-myassets-list">
-                    {editorScenes.map((sc, idx) => {
-                      const previewFrames = sourceJob?.analysis?.previewFrames || [];
-                      const frameImg = previewFrames[idx % (previewFrames.length || 1)]?.imageDataUrl;
-                      const isSelected = sc.id === activeSceneId;
-
-                      return (
-                        <div
-                          key={sc.id}
-                          className={`ts-myasset-row-card ${isSelected ? "is-selected" : ""}`}
-                          onClick={() => {
-                            setSceneId(sc.id);
-                            seekToTimeline(toSeconds(sc.start));
-                          }}
-                        >
-                          <div className="ts-myasset-thumb" style={{ background: "#1e293b" }}>
-                            {frameImg ? (
-                              <img src={frameImg} alt="thumb" className="ts-myasset-thumb-img" />
-                            ) : (
-                              <span>🎬</span>
-                            )}
-                            <span className="ts-myasset-badge">Cảnh {idx + 1}</span>
-                          </div>
-
-                          <div className="ts-myasset-info">
-                            <strong className="ts-myasset-title">{sc.title}</strong>
-                            <span className="ts-myasset-time">{sc.start} - {sc.end}</span>
-                            <p className="ts-myasset-sub">{sc.subtitle || "(Chưa có lời thoại)"}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              </div>
-            </>
-          )}
-
-          {/* TAB: CAPTIONS */}
-          {dockTab === "captions" && (
-            <div className="ts-captions-tab-content">
-              <div className="ts-captions-header-row">
-                <strong style={{ fontSize: "12px", color: "#ffffff" }}>Kiểu Phụ Đề & Lời Thoại</strong>
-                <button
-                  type="button"
-                  className={`ts-chip-btn ${subtitlesVisible ? "is-active" : ""}`}
-                  onClick={() => setSubtitlesVisible((v) => !v)}
-                >
-                  {subtitlesVisible ? "👁 Đang hiện" : "Ẩn phụ đề"}
-                </button>
-              </div>
-
-              <button
-                type="button"
-                className="ts-auto-caption-btn"
-                onClick={() => {
-                  setProjectMessage("⚡ Đã tự động tạo và định dạng phụ đề Karaoke!");
-                  setTimeout(() => setProjectMessage(""), 2500);
-                }}
-              >
-                ⚡ Tự động tạo phụ đề AI (Auto-Captions)
-              </button>
-
-              <div className="ts-caption-style-picker">
-                <span className="ts-drawer-section-title">Chọn Style Phụ Đề:</span>
-                <div className="ts-caption-styles-grid">
-                  <button
-                    type="button"
-                    className={`ts-style-card ${subtitleStyle === "gold" ? "is-active" : ""}`}
-                    onClick={() => setSubtitleStyle("gold")}
-                  >
-                    <span style={{ color: "#fde047", fontWeight: 900 }}>Vàng Review</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-style-card ${subtitleStyle === "neon" ? "is-active" : ""}`}
-                    onClick={() => setSubtitleStyle("neon")}
-                  >
-                    <span style={{ color: "#38bdf8", fontWeight: 900 }}>Neon Cyber</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-style-card ${subtitleStyle === "white" ? "is-active" : ""}`}
-                    onClick={() => setSubtitleStyle("white")}
-                  >
-                    <span style={{ color: "#ffffff", fontWeight: 900 }}>Trắng Tối Giản</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-style-card ${subtitleStyle === "box" ? "is-active" : ""}`}
-                    onClick={() => setSubtitleStyle("box")}
-                  >
-                    <span style={{ background: "#000", color: "#fff", padding: "1px 4px", borderRadius: "3px" }}>Khung Đen</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="ts-caption-options-row">
-                <div>
-                  <span className="ts-drawer-section-title">Kích thước:</span>
-                  <select
-                    className="ts-select-box"
-                    value={subtitleSize}
-                    onChange={(e) => setSubtitleSize(e.target.value as "sm" | "md" | "lg" | "xl")}
-                  >
-                    <option value="sm">Nhỏ (12px)</option>
-                    <option value="md">Vừa (14px)</option>
-                    <option value="lg">Lớn (18px)</option>
-                    <option value="xl">Rất lớn (22px)</option>
-                  </select>
-                </div>
-                <div>
-                  <span className="ts-drawer-section-title">Vị trí:</span>
-                  <select
-                    className="ts-select-box"
-                    value={subtitlePosition}
-                    onChange={(e) => setSubtitlePosition(e.target.value as "bottom" | "center" | "top")}
-                  >
-                    <option value="bottom">Dưới đáy</option>
-                    <option value="center">Chính giữa</option>
-                    <option value="top">Trên đỉnh</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="ts-captions-cues-list">
-                <span className="ts-drawer-section-title">Danh sách câu thoại ({editorScenes.length}):</span>
-                {editorScenes.map((sc, idx) => (
-                  <div
-                    key={sc.id}
-                    className={`ts-caption-cue-item ${sc.id === activeSceneId ? "is-active" : ""}`}
-                    onClick={() => {
-                      setSceneId(sc.id);
-                      seekToTimeline(toSeconds(sc.start));
-                    }}
-                  >
-                    <div className="ts-caption-cue-top">
-                      <span className="ts-cue-label">Cảnh {idx + 1}</span>
-                      <span className="ts-cue-time">{sc.start} - {sc.end}</span>
-                      <button
-                        type="button"
-                        className="ts-cue-speak-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          playSceneAudio(sc.subtitle, sc.id);
-                        }}
-                      >
-                        🔊
-                      </button>
-                    </div>
-                    <textarea
-                      rows={2}
-                      value={sc.subtitle || ""}
-                      onChange={(e) => {
-                        const updated = editorScenes.map((item) => (item.id === sc.id ? { ...item, subtitle: e.target.value } : item));
-                        setScenesWithHistory(updated);
-                      }}
-                      className="ts-cue-textarea"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB: SMART AI */}
-          {dockTab === "smart" && (
-            <div className="ts-smart-ai-tab-content">
-              <strong style={{ fontSize: "12px", color: "#2dd4bf" }}>🧠 TÍNH NĂNG AI THÔNG MINH</strong>
-              
-              <button
-                type="button"
-                className="ts-smart-action-card"
-                onClick={() => {
-                  setProjectMessage("✨ Khớp khẩu hình AI: Pacing thoại đã khớp 100% với video!");
-                  setTimeout(() => setProjectMessage(""), 2500);
-                }}
-              >
-                <div className="ts-smart-action-title">
-                  <Icon name="spark" size={14} /> ⚡ Tự động khớp khẩu hình AI
-                </div>
-                <small>Đồng bộ tốc độ đọc voice vừa khít với thời lượng từng phân cảnh</small>
-              </button>
-
-              <button
-                type="button"
-                className="ts-smart-action-card"
-                onClick={() => {
-                  setAspectRatio("9:16");
-                  setProjectMessage("📐 Đã bật Smart Reframe 9:16 tự động giữ chủ thể giữa màn hình");
-                  setTimeout(() => setProjectMessage(""), 2500);
-                }}
-              >
-                <div className="ts-smart-action-title">
-                  <Icon name="video" size={14} /> 📐 Smart Reframe 9:16 Auto-Center
-                </div>
-                <small>Tự động bám theo đối tượng chính khi chuyển đổi định dạng ngang - dọc</small>
-              </button>
-
-              <button
-                type="button"
-                className="ts-smart-action-card"
-                onClick={() => {
-                  playSceneAudio(activeScene.subtitle, activeScene.id);
-                  setProjectMessage("🎙️ Đang tạo và phát voice AI cho phân cảnh...");
-                }}
-              >
-                <div className="ts-smart-action-title">
-                  <Icon name="mic" size={14} /> 🎙️ Sinh giọng lồng tiếng AI chất lượng cao
-                </div>
-                <small>Tổng hợp giọng đọc tự nhiên chuẩn kịch tính và chuyên nghiệp</small>
-              </button>
-
-              <button
-                type="button"
-                className="ts-smart-action-card"
-                onClick={() => {
-                  const updated = editorScenes.map((s, idx) => {
-                    if (idx === 0) {
-                      return {
-                        ...s,
-                        subtitle: `Bí mật chưa từng tiết lộ: ${s.subtitle || "Hãy xem hết video để không bỏ lỡ!"}`,
-                      };
-                    }
-                    return s;
-                  });
-                  setScenesWithHistory(updated);
-                  setProjectMessage("✨ AI đã viết lại câu Hook mở đầu tăng 80% giữ chân người xem!");
-                  setTimeout(() => setProjectMessage(""), 3000);
-                }}
-              >
-                <div className="ts-smart-action-title">
-                  <Icon name="spark" size={14} /> ✨ AI Tối ưu câu Hook mở đầu (3 giây vàng)
-                </div>
-                <small>Tăng tỷ lệ giữ chân người xem ngay từ những giây đầu tiên</small>
-              </button>
-            </div>
-          )}
-
-          {/* TAB: AUDIO & SOUND */}
-          {dockTab === "audio" && (
-            <div className="ts-audio-tab-content">
-              <strong style={{ fontSize: "12px", color: "#38bdf8" }}>🎵 BỘ ĐIỀU CHỈNH ÂM THANH</strong>
-
-              <div className="ts-audio-slider-block">
-                <div className="ts-audio-slider-label">
-                  <span>Âm lượng Nhạc nền (BGM)</span>
-                  <strong>{bgmVolume}%</strong>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={bgmVolume}
-                  onChange={(e) => setBgmVolume(Number(e.target.value))}
-                  style={{ width: "100%", accentColor: "#38bdf8" }}
-                />
-              </div>
-
-              <div className="ts-audio-slider-block">
-                <div className="ts-audio-slider-label">
-                  <span>Âm lượng Giọng đọc AI</span>
-                  <strong>{voiceVolume}%</strong>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={voiceVolume}
-                  onChange={(e) => setVoiceVolume(Number(e.target.value))}
-                  style={{ width: "100%", accentColor: "#10b981" }}
-                />
-              </div>
-
-              <div className="ts-audio-slider-block">
-                <div className="ts-audio-slider-label">
-                  <span>🎧 Âm thanh gốc (Đan nền & Còi/Hiện trường)</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <strong style={{ color: trackMutes.originalAudio ? "#ef4444" : "#f59e0b" }}>
-                      {trackMutes.originalAudio ? "Đang tắt (0%)" : `${originalAudioVolume}% ${originalAudioVolume <= 30 ? "(Đan nền)" : ""}`}
-                    </strong>
-                    <button
-                      type="button"
-                      className={`ts-chip-btn ${trackMutes.originalAudio ? "is-active" : ""}`}
-                      onClick={() => {
-                        setTrackMutes((c) => {
-                          const next = !c.originalAudio;
-                          setProjectMessage(next ? "🔇 Đã tắt âm thanh gốc video" : "🔊 Đã bật âm thanh gốc video");
-                          setTimeout(() => setProjectMessage(""), 2000);
-                          return { ...c, originalAudio: next };
-                        });
-                      }}
-                      style={{ padding: "1px 6px", fontSize: "9.5px", color: trackMutes.originalAudio ? "#ef4444" : "#2dd4bf" }}
-                    >
-                      {trackMutes.originalAudio ? "🔇 Bật lại" : "🔊 Tắt"}
-                    </button>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "4px", marginBottom: "6px", marginTop: "2px" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTrackMutes((c) => ({ ...c, originalAudio: true }));
-                      setOriginalAudioVolume(0);
-                    }}
-                    style={{
-                      flex: 1,
-                      fontSize: "9.5px",
-                      padding: "2px 4px",
-                      borderRadius: "4px",
-                      border: trackMutes.originalAudio || originalAudioVolume === 0 ? "1px solid #ef4444" : "1px solid rgba(255,255,255,0.1)",
-                      background: trackMutes.originalAudio || originalAudioVolume === 0 ? "rgba(239, 68, 68, 0.2)" : "rgba(255,255,255,0.04)",
-                      color: trackMutes.originalAudio || originalAudioVolume === 0 ? "#fca5a5" : "#94a3b8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    🔇 Tắt hẳn
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTrackMutes((c) => ({ ...c, originalAudio: false }));
-                      setOriginalAudioVolume(20);
-                      setProjectMessage("🎧 Đã đặt mức Đan tiếng gốc: 20% âm lượng nền");
-                      setTimeout(() => setProjectMessage(""), 2000);
-                    }}
-                    style={{
-                      flex: 1.4,
-                      fontSize: "9.5px",
-                      padding: "2px 4px",
-                      borderRadius: "4px",
-                      border: !trackMutes.originalAudio && originalAudioVolume === 20 ? "1px solid #f59e0b" : "1px solid rgba(255,255,255,0.1)",
-                      background: !trackMutes.originalAudio && originalAudioVolume === 20 ? "rgba(245, 158, 11, 0.25)" : "rgba(255,255,255,0.04)",
-                      color: !trackMutes.originalAudio && originalAudioVolume === 20 ? "#fbbf24" : "#94a3b8",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    🎧 Đan nền (20%)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTrackMutes((c) => ({ ...c, originalAudio: false }));
-                      setOriginalAudioVolume(100);
-                    }}
-                    style={{
-                      flex: 1,
-                      fontSize: "9.5px",
-                      padding: "2px 4px",
-                      borderRadius: "4px",
-                      border: !trackMutes.originalAudio && originalAudioVolume === 100 ? "1px solid #10b981" : "1px solid rgba(255,255,255,0.1)",
-                      background: !trackMutes.originalAudio && originalAudioVolume === 100 ? "rgba(16, 185, 129, 0.2)" : "rgba(255,255,255,0.04)",
-                      color: !trackMutes.originalAudio && originalAudioVolume === 100 ? "#6ee7b7" : "#94a3b8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    🔊 Đầy đủ (100%)
-                  </button>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={trackMutes.originalAudio ? 0 : originalAudioVolume}
-                  onChange={(e) => {
-                    setOriginalAudioVolume(Number(e.target.value));
-                    if (trackMutes.originalAudio) {
-                      setTrackMutes((c) => ({ ...c, originalAudio: false }));
-                    }
-                  }}
-                  style={{ width: "100%", accentColor: "#f59e0b" }}
-                />
-              </div>
-
-              <div className="ts-audio-slider-block" style={{ marginTop: "6px", padding: "10px", borderRadius: "8px", background: removeOriginalBgm ? "rgba(168, 85, 247, 0.16)" : "rgba(255,255,255,0.03)", border: removeOriginalBgm ? "1px solid rgba(168, 85, 247, 0.55)" : "1px solid rgba(255,255,255,0.06)" }}>
-                <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", cursor: "pointer", userSelect: "none" }}>
-                  <input
-                    type="checkbox"
-                    checked={removeOriginalBgm}
-                    onChange={(e) => {
-                      const val = e.target.checked;
-                      setRemoveOriginalBgm(val);
-                      setProjectMessage(val ? "🎼 Đã bật AI Tách Nhạc Nền (Giữ lời thoại & còi hú)" : "🎼 Đã tắt AI Tách Nhạc Nền");
-                      setTimeout(() => setProjectMessage(""), 2000);
-                    }}
-                    style={{ accentColor: "#a855f7", width: "16px", height: "16px", marginTop: "2px", cursor: "pointer" }}
-                  />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "11.5px", fontWeight: 700, color: removeOriginalBgm ? "#c084fc" : "#e2e8f0", display: "block" }}>
-                        🎼 AI Vocal & SFX Remover (Tách Nhạc Nền)
-                      </span>
-                      {removeOriginalBgm && isIsolatingStem && (
-                        <span style={{ fontSize: "9.5px", background: "rgba(245, 158, 11, 0.2)", border: "1px solid #f59e0b", color: "#fbbf24", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>
-                          ⚡ {stemProgress > 0 ? `${stemProgress}%` : "Đang xử lý..."}
-                        </span>
-                      )}
-                      {removeOriginalBgm && !isIsolatingStem && isolatedStemPath && (
-                        <span style={{ fontSize: "9px", background: "#10b981", color: "#fff", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
-                          ✓ 100% SẠCH NHẠC NỀN
-                        </span>
-                      )}
-                      {removeOriginalBgm && !isIsolatingStem && !isolatedStemPath && (
-                        <span style={{ fontSize: "9px", background: "#a855f7", color: "#fff", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
-                          AI ĐANG LỌC
-                        </span>
-                      )}
-                    </div>
-
-                    {removeOriginalBgm && isIsolatingStem && (
-                      <div style={{ marginTop: "6px", marginBottom: "4px", background: "rgba(0,0,0,0.3)", padding: "6px 8px", borderRadius: "6px", border: "1px solid rgba(245,158,11,0.2)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                          <span style={{ fontSize: "9.5px", color: "#fcd34d", fontWeight: 600 }}>
-                            {stemStage || `Đang bóc tách: ${stemProgress}%`}
-                          </span>
-                          <span style={{ fontSize: "9px", color: "#94a3b8" }}>
-                            {stemProgress > 5
-                              ? `Còn ~${Math.max(2, Math.round(((100 - stemProgress) / stemProgress) * (sourceJob?.durationSeconds ? Math.min(120, sourceJob.durationSeconds / 15) : 45)))}s`
-                              : "Ước tính ~1-2p"}
-                          </span>
-                        </div>
-                        <div style={{ width: "100%", height: "5px", background: "rgba(255,255,255,0.1)", borderRadius: "3px", overflow: "hidden" }}>
-                          <div
-                            style={{
-                              width: `${Math.max(4, stemProgress)}%`,
-                              height: "100%",
-                              background: "linear-gradient(90deg, #f59e0b 0%, #a855f7 100%)",
-                              borderRadius: "3px",
-                              transition: "width 0.25s ease-out",
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <span style={{ fontSize: "10px", color: "#94a3b8", display: "block", marginTop: "2px", lineHeight: "1.4" }}>
-                      Triệt tiêu 100% nhạc nền stereo, bảo toàn trọn vẹn lời thoại nhân vật, còi hú cảnh sát, tiếng súng & hiện trường
-                    </span>
-                  </div>
-                </label>
-              </div>
-
-              <div className="ts-audio-slider-block">
-                <div className="ts-audio-slider-label">
-                  <span>Tốc độ đọc giọng AI</span>
-                  <strong>{voiceSpeed}x</strong>
-                </div>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="1.5"
-                  step="0.05"
-                  value={voiceSpeed}
-                  onChange={(e) => setVoiceSpeed(Number(e.target.value))}
-                  style={{ width: "100%", accentColor: "#a855f7" }}
-                />
-              </div>
-
-              <div className="ts-audio-slider-block">
-                <div className="ts-audio-slider-label">
-                  <span>Giọng lồng tiếng mặc định</span>
-                </div>
-                <select
-                  value={selectedVoice}
-                  onChange={(e) => setSelectedVoice(e.target.value)}
-                  className="ts-select-box"
-                >
-                  {VOICE_PACKS.map((vp) => (
-                    <option key={vp.id} value={vp.id}>{vp.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="ts-audio-library-block">
-                <span className="ts-drawer-section-title">Nhạc nền có sẵn:</span>
-                <div className="ts-audio-items-list">
-                  {SAMPLE_LIBRARY_MUSIC.map((mus) => (
-                    <div
-                      key={mus.id}
-                      className={`ts-audio-item-row ${selectedBgm === mus.id ? "is-selected" : ""}`}
-                    >
-                      <div>
-                        <strong>{mus.title}</strong>
-                        <small>{mus.meta}</small>
-                      </div>
-                      <button
-                        type="button"
-                        className="ts-chip-btn is-active"
-                        onClick={() => {
-                          setSelectedBgm(mus.id);
-                          setProjectMessage(`✓ Đã áp dụng: ${mus.title}`);
-                          setTimeout(() => setProjectMessage(""), 2000);
-                        }}
-                      >
-                        {selectedBgm === mus.id ? "Đang chọn" : "+ Áp dụng"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="ts-audio-library-block">
-                <span className="ts-drawer-section-title">Hiệu ứng âm thanh (SFX):</span>
-                <div className="ts-audio-items-list">
-                  {SAMPLE_LIBRARY_SFX.map((sfx) => (
-                    <div key={sfx.id} className="ts-audio-item-row">
-                      <div>
-                        <strong>{sfx.title}</strong>
-                        <small>{sfx.meta}</small>
-                      </div>
-                      <button
-                        type="button"
-                        className="ts-chip-btn"
-                        onClick={() => {
-                          setProjectMessage(`✓ Đã chèn hiệu ứng: ${sfx.title}`);
-                          setTimeout(() => setProjectMessage(""), 1500);
-                        }}
-                      >
-                        + Chèn
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB: EFFECTS */}
-          {dockTab === "effects" && (
-            <div className="ts-effects-tab-content">
-              <strong style={{ fontSize: "12px", color: "#ffffff" }}>✨ BỘ LỌC HÌNH ẢNH</strong>
-              <div className="ts-effects-grid">
-                {FILTER_PRESETS.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className={`ts-filter-btn ${selectedFilter === f.id ? "is-active" : ""}`}
-                    onClick={() => {
-                      setSelectedFilter(f.id);
-                      setProjectMessage(`✓ Đã áp dụng bộ lọc: ${f.name}`);
-                      setTimeout(() => setProjectMessage(""), 1500);
-                    }}
-                  >
-                    <div className="ts-filter-preview-box" />
-                    <span>{f.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB: STICKERS */}
-          {dockTab === "stickers" && (
-            <div className="ts-stickers-tab-content">
-              <strong style={{ fontSize: "12px", color: "#ffffff" }}>🏷️ NHÃN DÁN CTA</strong>
-              <div className="ts-stickers-list">
-                {STICKER_PRESETS.map((stk) => (
-                  <div key={stk.id} className="ts-sticker-item-row">
-                    <strong style={{ fontSize: "11px", color: stk.color }}>{stk.label}</strong>
-                    <button
-                      type="button"
-                      className="ts-chip-btn is-active"
-                      onClick={() => {
-                        setActiveStickers((prev) => [
-                          ...prev,
-                          { id: `stk-${Date.now()}`, label: stk.label, x: 50, y: 15 },
-                        ]);
-                        setProjectMessage(`✓ Đã gắn nhãn dán: ${stk.label}`);
-                        setTimeout(() => setProjectMessage(""), 1500);
-                      }}
-                    >
-                      + Gắn
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* COLUMN 2: CENTER VIDEO STAGE & PLAYER CONTROLS */}
-        <main className="ts-stage-column">
-          <div className="ts-video-viewport">
-            <div
-              ref={playerContainerRef}
-              className={`ts-player-box ts-ratio-${aspectRatio.replace(":", "-")}`}
-              style={{
-                transform: fitMode === "100" ? "scale(1)" : fitMode === "75" ? "scale(0.75)" : fitMode === "50" ? "scale(0.5)" : "none",
-                transition: "transform 0.15s ease",
-              }}
-            >
-              {mediaUrl ? (
-                <video
-                  ref={videoRef}
-                  src={mediaUrl}
-                  className="ts-video-element"
-                  style={{
-                    transform: `scale(${scaleVal / 100}) translate(${posX}px, ${posY}px) rotate(${rotationVal}deg)`,
-                    opacity: opacityVal / 100,
-                    filter: activeFilterObj.css,
-                    clipPath: activeMaskObj.clip,
-                    transition: "filter 0.15s ease, clip-path 0.15s ease, opacity 0.15s ease",
-                  }}
-                  muted={muted || Boolean(trackMutes.originalAudio) || originalAudioVolume === 0}
-                  onLoadedMetadata={(e) => {
-                    const d = e.currentTarget.duration;
-                    if (d && !isNaN(d) && d > 0) {
-                      setMediaDuration(d);
-                    }
-                  }}
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => {
-                    if (!isDraggingPlayhead.current) {
-                      setPlaying(false);
-                    }
-                  }}
-                  onEnded={() => {
-                    if (isLooping) {
-                      seekToTimeline(0);
-                      if (videoRef.current) {
-                        void videoRef.current.play().catch(() => undefined);
-                      }
-                    } else {
-                      setPlaying(false);
-                    }
-                  }}
-                />
-              ) : (
-                <div className="ts-video-placeholder">
-                  <Icon name="video" size={32} />
-                  <strong>Chưa có Video Nguồn</strong>
-                  <small>Chọn video từ danh sách hoặc tải file mới</small>
-                </div>
-              )}
-
-              {/* Auxiliary AI Isolated Stem Audio element for realtime preview */}
-              <audio
-                ref={stemAudioRef}
-                src={isolatedStemPath ? fileUrl(isolatedStemPath) : undefined}
-                preload="auto"
-                style={{ display: "none" }}
-              />
-
-              {/* Active Sticker Badges on Video */}
-              {activeStickers.length > 0 && (
-                <div className="ts-stickers-overlay">
-                  {activeStickers.map((stk) => (
-                    <div key={stk.id} className="ts-active-sticker-badge">
-                      <span>{stk.label}</span>
-                      <button
-                        type="button"
-                        className="ts-sticker-del-btn"
-                        onClick={() => setActiveStickers((prev) => prev.filter((item) => item.id !== stk.id))}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Word-by-word Subtitle Overlay on Player */}
-              {subtitlesVisible && subtitleWords.length > 0 && (
-                <div className={`ts-subtitle-overlay-box pos-${subtitlePosition}`}>
-                  <div className={`ts-subtitle-overlay-text size-${subtitleSize} style-${subtitleStyle}`}>
-                    {subtitleWords.map((word, wIdx) => {
-                      const isSpoken = activeWordIdx >= 0 && wIdx <= activeWordIdx;
-                      const isCurrent = wIdx === activeWordIdx;
-
-                      return (
-                        <span
-                          key={`${activeDisplayScene?.id || "sub"}-${wIdx}`}
-                          className={`ts-sub-word ${isCurrent ? "is-current" : isSpoken ? "is-spoken" : "is-pending"}`}
-                        >
-                          {word}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Under-Player Scrub Bar & Action Controls */}
-          <div className="ts-player-controls-bar">
-            {/* Scrubber Bar */}
-            <div
-              className="ts-player-scrub-track"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                const targetSec = pct * sequenceDuration;
-                seekToTimeline(targetSec);
-              }}
-            >
-              <div
-                ref={scrubProgressElRef}
-                className="ts-player-scrub-progress"
-                style={{ width: `${(playheadSeconds / sequenceDuration) * 100}%` }}
-              />
-              <div
-                ref={scrubThumbElRef}
-                className="ts-player-scrub-thumb"
-                style={{ left: `${(playheadSeconds / sequenceDuration) * 100}%` }}
-              />
-            </div>
-
-            {/* Bottom Row Buttons */}
-            <div className="ts-player-bottom-buttons">
-              <span ref={timecodeElRef} className="ts-player-timecode">
-                {formatTimecodePrecise(playheadSeconds)} / {formatTimecodePrecise(sequenceDuration)}
-              </span>
-
-              <div className="ts-player-transport-actions">
-                <button
-                  type="button"
-                  className="ts-transport-btn"
-                  title="Về đầu (Home)"
-                  onClick={() => seekToTimeline(0)}
-                >
-                  <span style={{ fontSize: "11px", fontWeight: 800 }}>|◀</span>
-                </button>
-                <button
-                  type="button"
-                  className="ts-transport-btn"
-                  title="Lùi 1s (Left Arrow)"
-                  onClick={() => seekToTimeline(Math.max(0, playheadSeconds - 1))}
-                >
-                  <Icon name="chevron-left" size={13} />
-                </button>
-                <button
-                  type="button"
-                  className="ts-transport-play-btn"
-                  title="Phát / Dừng (Space)"
-                  onClick={() => setPlaying((p) => !p)}
-                >
-                  <Icon name={playing ? "pause" : "play"} size={15} />
-                </button>
-                <button
-                  type="button"
-                  className="ts-transport-btn"
-                  title="Tiến 1s (Right Arrow)"
-                  onClick={() => seekToTimeline(Math.min(sequenceDuration, playheadSeconds + 1))}
-                >
-                  <Icon name="chevron-right" size={13} />
-                </button>
-                <button
-                  type="button"
-                  className="ts-transport-btn"
-                  title="Về cuối (End)"
-                  onClick={() => seekToTimeline(sequenceDuration)}
-                >
-                  <span style={{ fontSize: "11px", fontWeight: 800 }}>▶|</span>
-                </button>
-                <button
-                  type="button"
-                  className={`ts-transport-btn ${isLooping ? "is-active" : ""}`}
-                  title={isLooping ? "Đang bật lặp lại" : "Lặp lại (Loop)"}
-                  onClick={() => setIsLooping((l) => !l)}
-                >
-                  <Icon name="refresh" size={12} />
-                </button>
-                <button
-                  type="button"
-                  className={`ts-transport-btn ${muted ? "is-active" : ""}`}
-                  title={muted ? "Bật tổng âm lượng" : "Tắt tổng âm lượng (Master Mute)"}
-                  onClick={() => setMuted((m) => !m)}
-                >
-                  <Icon name={muted ? "volume-mute" : "volume"} size={12} />
-                </button>
-                <button
-                  type="button"
-                  className={`ts-transport-btn ${trackMutes.originalAudio ? "is-active" : ""}`}
-                  title={trackMutes.originalAudio ? "Âm thanh gốc: ĐANG TẮT (Nhấn để bật lại)" : "Âm thanh gốc: ĐANG BẬT (Nhấn để tắt tiếng gốc)"}
-                  onClick={() => {
-                    setTrackMutes((c) => {
-                      const next = !c.originalAudio;
-                      setProjectMessage(next ? "🔇 Đã tắt âm thanh gốc video" : "🔊 Đã bật âm thanh gốc video");
-                      setTimeout(() => setProjectMessage(""), 2000);
-                      return { ...c, originalAudio: next };
-                    });
-                  }}
-                  style={{
-                    color: trackMutes.originalAudio ? "#ef4444" : "#94a3b8",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "2px",
-                    padding: "2px 5px",
-                    borderRadius: "4px",
-                    background: trackMutes.originalAudio ? "rgba(239, 68, 68, 0.12)" : "transparent",
-                    border: trackMutes.originalAudio ? "1px solid rgba(239, 68, 68, 0.35)" : "none",
-                  }}
-                >
-                  <Icon name={trackMutes.originalAudio ? "volume-mute" : "volume"} size={11} />
-                  <span style={{ fontSize: "9.5px", fontWeight: 700 }}>Gốc</span>
-                </button>
-              </div>
-
-              <div className="ts-player-fit-actions">
-                <select
-                  value={fitMode}
-                  onChange={(e) => setFitMode(e.target.value as "fit" | "100" | "75" | "50")}
-                  className="ts-fit-select"
-                >
-                  <option value="fit">Fit ⌵</option>
-                  <option value="100">100%</option>
-                  <option value="75">75%</option>
-                  <option value="50">50%</option>
-                </select>
-                <button
-                  type="button"
-                  className="ts-transport-btn"
-                  title="Toàn màn hình"
-                  onClick={toggleFullscreen}
-                >
-                  <Icon name="maximize" size={12} />
-                </button>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        {/* COLUMN 3: RIGHT PROPERTIES & INSPECTOR PANEL */}
-        <aside className="ts-inspector-panel">
-          <div className="ts-inspector-header">
-            <strong>Thuộc tính & Khẩu hình</strong>
-            <span className="ts-inspector-meta">{activeScene.start} - {activeScene.end}</span>
-          </div>
-
-          {/* Inspector Tabs */}
-          <div className="ts-inspector-tabs">
-            <button
-              type="button"
-              className={`ts-insp-tab ${inspectorTab === "basic" ? "is-active" : ""}`}
-              onClick={() => setInspectorTab("basic")}
-            >
-              Basic
-            </button>
-            <button
-              type="button"
-              className={`ts-insp-tab ${inspectorTab === "mask" ? "is-active" : ""}`}
-              onClick={() => setInspectorTab("mask")}
-            >
-              Mask
-            </button>
-            <button
-              type="button"
-              className={`ts-insp-tab ${inspectorTab === "filters" ? "is-active" : ""}`}
-              onClick={() => setInspectorTab("filters")}
-            >
-              Filters
-            </button>
-            <button
-              type="button"
-              className={`ts-insp-tab ${inspectorTab === "animation" ? "is-active" : ""}`}
-              onClick={() => setInspectorTab("animation")}
-            >
-              Animation
-            </button>
-            <button
-              type="button"
-              className={`ts-insp-tab ${inspectorTab === "script" ? "is-active" : ""}`}
-              onClick={() => setInspectorTab("script")}
-            >
-              Lời thoại
-            </button>
-          </div>
-
-          <div className="ts-inspector-body">
-            {/* TAB: BASIC TRANSFORM & KEYFRAMES */}
-            {inspectorTab === "basic" && (
-              <>
-                {/* Keyframes Section */}
-                <div className="ts-keyframes-section">
-                  <div className="ts-keyframes-title-row">
-                    <span className="ts-keyframe-diamond-active">◆ Keyframes (Điểm neo)</span>
-                    <small>{formatTimecodePrecise(playheadSeconds)}</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="ts-keyframe-add-btn"
-                    onClick={() => {
-                      setProjectMessage("◆ Đã gán keyframe tại vị trí con trỏ hiện tại!");
-                      setTimeout(() => setProjectMessage(""), 2000);
-                    }}
-                  >
-                    ◆ Add all keyframes
-                  </button>
-                </div>
-
-                {/* Sliders Grid */}
-                <div className="ts-sliders-list">
-                  <div className="ts-slider-row">
-                    <span className="ts-slider-label">Scale</span>
-                    <div className="ts-slider-track-wrap">
-                      <input
-                        type="range"
-                        min="50"
-                        max="200"
-                        value={scaleVal}
-                        onChange={(e) => setScaleVal(Number(e.target.value))}
-                      />
-                    </div>
-                    <span className="ts-slider-val">{scaleVal}%</span>
-                    <span className="ts-slider-diamond" onClick={() => setScaleVal(100)} title="Đặt lại về 100%">◇</span>
-                  </div>
-
-                  <div className="ts-slider-row">
-                    <span className="ts-slider-label">Position X</span>
-                    <div className="ts-slider-track-wrap">
-                      <input
-                        type="range"
-                        min="-150"
-                        max="150"
-                        value={posX}
-                        onChange={(e) => setPosX(Number(e.target.value))}
-                      />
-                    </div>
-                    <span className="ts-slider-val">{posX}%</span>
-                    <span className="ts-slider-diamond" onClick={() => setPosX(0)} title="Đặt lại về 0">◇</span>
-                  </div>
-
-                  <div className="ts-slider-row">
-                    <span className="ts-slider-label">Position Y</span>
-                    <div className="ts-slider-track-wrap">
-                      <input
-                        type="range"
-                        min="-150"
-                        max="150"
-                        value={posY}
-                        onChange={(e) => setPosY(Number(e.target.value))}
-                      />
-                    </div>
-                    <span className="ts-slider-val">{posY}%</span>
-                    <span className="ts-slider-diamond" onClick={() => setPosY(0)} title="Đặt lại về 0">◇</span>
-                  </div>
-
-                  <div className="ts-slider-row">
-                    <span className="ts-slider-label">Rotation</span>
-                    <div className="ts-slider-track-wrap">
-                      <input
-                        type="range"
-                        min="-180"
-                        max="180"
-                        value={rotationVal}
-                        onChange={(e) => setRotationVal(Number(e.target.value))}
-                      />
-                    </div>
-                    <span className="ts-slider-val">{rotationVal}°</span>
-                    <span className="ts-slider-diamond" onClick={() => setRotationVal(0)} title="Đặt lại về 0">◇</span>
-                  </div>
-
-                  <div className="ts-slider-row">
-                    <span className="ts-slider-label">Opacity</span>
-                    <div className="ts-slider-track-wrap">
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={opacityVal}
-                        onChange={(e) => setOpacityVal(Number(e.target.value))}
-                      />
-                    </div>
-                    <span className="ts-slider-val">{opacityVal}%</span>
-                    <span className="ts-slider-diamond" onClick={() => setOpacityVal(100)} title="Đặt lại về 100%">◇</span>
-                  </div>
-
-                  <div className="ts-slider-row">
-                    <span className="ts-slider-label">Speed</span>
-                    <div className="ts-slider-track-wrap">
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.1"
-                        value={speedVal}
-                        onChange={(e) => setSpeedVal(Number(e.target.value))}
-                      />
-                    </div>
-                    <span className="ts-slider-val">{speedVal}x</span>
-                    <span className="ts-slider-diamond" onClick={() => setSpeedVal(1.0)} title="Đặt lại về 1.0x">◇</span>
-                  </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-                    <button
-                      type="button"
-                      className="ts-chip-btn"
-                      onClick={() => setInspectorTab("script")}
-                      style={{ color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.3)" }}
-                    >
-                      ✏️ Chỉnh Lời Thoại
-                    </button>
-                    <button
-                      type="button"
-                      className="ts-chip-btn"
-                      onClick={() => {
-                        setScaleVal(100);
-                        setPosX(0);
-                        setPosY(0);
-                        setRotationVal(0);
-                        setOpacityVal(100);
-                        setSpeedVal(1.0);
-                        setProjectMessage("✓ Đã đặt lại tất cả thông số về mặc định");
-                        setTimeout(() => setProjectMessage(""), 1500);
-                      }}
-                    >
-                      🔄 Reset tất cả
-                    </button>
-                  </div>
-                </div>
-
-                {/* Active Scene Quick Summary Card */}
-                <div className="ts-scene-quick-badge">
-                  <div className="ts-quick-badge-title">
-                    <span className="ts-quick-badge-icon">🎬</span>
-                    <strong className="ts-quick-name">{activeScene.title}</strong>
-                  </div>
-                  <p className="ts-quick-dialogue">
-                    {activeScene.subtitle ? `"${activeScene.subtitle}"` : "(Chưa có lời thoại lồng tiếng)"}
-                  </p>
-                </div>
-              </>
-            )}
-
-            {/* TAB: MASK */}
-            {inspectorTab === "mask" && (
-              <div className="ts-mask-tab-content">
-                <span className="ts-drawer-section-title">Chọn Mask Khung Video:</span>
-                <div className="ts-mask-options-grid">
-                  {MASK_PRESETS.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className={`ts-pill-btn ${selectedMask === m.id ? "is-active" : ""}`}
-                      onClick={() => setSelectedMask(m.id)}
-                    >
-                      {m.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* TAB: FILTERS */}
-            {inspectorTab === "filters" && (
-              <div className="ts-filter-tab-content">
-                <span className="ts-drawer-section-title">Chọn Filter Màu Sắc Video:</span>
-                <div className="ts-filter-options-grid">
-                  {FILTER_PRESETS.map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      className={`ts-pill-btn ${selectedFilter === f.id ? "is-active" : ""}`}
-                      onClick={() => setSelectedFilter(f.id)}
-                    >
-                      {f.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* TAB: ANIMATION */}
-            {inspectorTab === "animation" && (
-              <div className="ts-animation-tab-content">
-                <span className="ts-drawer-section-title">Hiệu ứng vào (In Animation):</span>
-                <div className="ts-anim-buttons-row">
-                  <button
-                    type="button"
-                    className={`ts-pill-btn ${inAnimation === "none" ? "is-active" : ""}`}
-                    onClick={() => setInAnimation("none")}
-                  >
-                    None
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-pill-btn ${inAnimation === "fade" ? "is-active" : ""}`}
-                    onClick={() => setInAnimation("fade")}
-                  >
-                    Fade In
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-pill-btn ${inAnimation === "zoom" ? "is-active" : ""}`}
-                    onClick={() => setInAnimation("zoom")}
-                  >
-                    Zoom In
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-pill-btn ${inAnimation === "slide" ? "is-active" : ""}`}
-                    onClick={() => setInAnimation("slide")}
-                  >
-                    Slide In
-                  </button>
-                </div>
-
-                <span className="ts-drawer-section-title" style={{ marginTop: "12px", display: "block" }}>
-                  Hiệu ứng ra (Out Animation):
-                </span>
-                <div className="ts-anim-buttons-row">
-                  <button
-                    type="button"
-                    className={`ts-pill-btn ${outAnimation === "none" ? "is-active" : ""}`}
-                    onClick={() => setOutAnimation("none")}
-                  >
-                    None
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-pill-btn ${outAnimation === "fade" ? "is-active" : ""}`}
-                    onClick={() => setOutAnimation("fade")}
-                  >
-                    Fade Out
-                  </button>
-                  <button
-                    type="button"
-                    className={`ts-pill-btn ${outAnimation === "zoom" ? "is-active" : ""}`}
-                    onClick={() => setOutAnimation("zoom")}
-                  >
-                    Zoom Out
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* TAB: SCRIPT & VOICE SYNTHESIZER */}
-            {inspectorTab === "script" && (
-              <div className="ts-scene-editor-box">
-                <div className="ts-scene-editor-topline">
-                  <input
-                    type="text"
-                    value={activeScene.title}
-                    onChange={(e) => {
-                      const updated = editorScenes.map((s) => (s.id === activeSceneId ? { ...s, title: e.target.value } : s));
-                      setScenesWithHistory(updated);
-                    }}
-                    className="ts-scene-title-edit"
-                  />
-                  <button
-                    type="button"
-                    className="ts-voice-test-btn"
-                    onClick={() =>
-                      speakingSceneId === activeScene.id
-                        ? stopSceneAudio()
-                        : playSceneAudio(activeScene.subtitle, activeScene.id)
-                    }
-                  >
-                    {speakingSceneId === activeScene.id ? "⏹️ Dừng" : "🔊 Nghe thử TTS"}
-                  </button>
-                </div>
-
-                <div className="ts-scene-time-row">
-                  <span>Bắt đầu:</span>
-                  <input
-                    type="text"
-                    value={activeScene.start}
-                    onChange={(e) => {
-                      const updated = editorScenes.map((s) => (s.id === activeSceneId ? { ...s, start: e.target.value } : s));
-                      setScenesWithHistory(updated);
-                    }}
-                    className="ts-scene-time-input"
-                  />
-                  <span>Kết thúc:</span>
-                  <input
-                    type="text"
-                    value={activeScene.end}
-                    onChange={(e) => {
-                      const updated = editorScenes.map((s) => (s.id === activeSceneId ? { ...s, end: e.target.value } : s));
-                      setScenesWithHistory(updated);
-                    }}
-                    className="ts-scene-time-input"
-                  />
-                </div>
-
-                <textarea
-                  rows={4}
-                  value={activeScene.subtitle || ""}
-                  onChange={(e) => {
-                    const newText = e.target.value;
-                    const wordCount = newText.split(/\s+/).filter(Boolean).length;
-                    const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-                    const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
-                    const nextScenes = editorScenes.map((s) => {
-                      if (s.id !== activeSceneId) return s;
-                      const vStart = toSeconds(s.voiceStart || s.start);
-                      const vEnd = vStart + voiceEstSec;
-                      return {
-                        ...s,
-                        subtitle: newText,
-                        voiceover: newText,
-                        translation: newText,
-                        voiceEnd: formatSeconds(vEnd, true),
-                        captionEnd: formatSeconds(vEnd, true),
-                      };
-                    });
-                    setScenesWithHistory(nextScenes);
-                    if (onUpdateJob && sourceJob?.id) {
-                      onUpdateJob(sourceJob.id, {
-                        analysis: {
-                          ...(sourceJob.analysis || {}),
-                          summary: sourceJob.analysis?.summary || `Kịch bản phân cảnh (${nextScenes.length} cảnh)`,
-                          score: sourceJob.analysis?.score ?? 9.5,
-                          tokensUsed: sourceJob.analysis?.tokensUsed ?? 0,
-                          creditsUsed: sourceJob.analysis?.creditsUsed ?? 0,
-                          scenes: nextScenes.map((sc) => ({
-                            ...sc,
-                            voiceover: sc.subtitle || sc.voiceover,
-                            translation: sc.subtitle || sc.translation,
-                          })) as any,
-                        },
-                      });
-                    }
-                  }}
-                  placeholder="Nhập lời thoại AI lồng tiếng cho phân cảnh này..."
-                  className="ts-scene-script-input"
-                />
-
-                <div className="ts-scene-script-footer">
-                  <small>{(activeScene.subtitle || "").length} ký tự</small>
-                  <button
-                    type="button"
-                    className="ts-refine-hook-btn"
-                    onClick={() => {
-                      const polished = `Khám phá ngay: ${activeScene.subtitle || "Điểm nhấn không thể bỏ qua!"}`;
-                      const wordCount = polished.split(/\s+/).filter(Boolean).length;
-                      const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-                      const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
-                      const updated = editorScenes.map((s) => {
-                        if (s.id !== activeSceneId) return s;
-                        const vStart = toSeconds(s.voiceStart || s.start);
-                        const vEnd = vStart + voiceEstSec;
-                        return {
-                          ...s,
-                          subtitle: polished,
-                          voiceover: polished,
-                          translation: polished,
-                          voiceEnd: formatSeconds(vEnd, true),
-                          captionEnd: formatSeconds(vEnd, true),
-                        };
-                      });
-                      setScenesWithHistory(updated);
-                      if (onUpdateJob && sourceJob?.id) {
-                        onUpdateJob(sourceJob.id, {
-                          analysis: {
-                            ...(sourceJob.analysis || {}),
-                            summary: sourceJob.analysis?.summary || `Kịch bản phân cảnh (${updated.length} cảnh)`,
-                            score: sourceJob.analysis?.score ?? 9.5,
-                            tokensUsed: sourceJob.analysis?.tokensUsed ?? 0,
-                            creditsUsed: sourceJob.analysis?.creditsUsed ?? 0,
-                            scenes: updated.map((sc) => ({
-                              ...sc,
-                              voiceover: sc.subtitle || sc.voiceover,
-                              translation: sc.subtitle || sc.translation,
-                            })) as any,
-                          },
-                        });
-                      }
-                      setProjectMessage("✨ AI đã tối ưu câu thoại của cảnh này!");
-                      setTimeout(() => setProjectMessage(""), 2000);
-                    }}
-                  >
-                    ✨ AI Tối ưu câu này
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </aside>
+        <EditorLeftDock
+          dockTab={dockTab}
+          setDockTab={setDockTab}
+          librarySubTab={librarySubTab}
+          setLibrarySubTab={setLibrarySubTab}
+          editorScenes={editorScenes}
+          activeSceneId={activeSceneId}
+          activeScene={activeScene}
+          sourceJob={sourceJob}
+          uploadedFiles={uploadedFiles}
+          setSelectedSourceJobId={setSelectedSourceJobId}
+          handleUploadNativeMedia={handleUploadNativeMedia}
+          setProjectMessage={setProjectMessage}
+          assetFilter={assetFilter}
+          setAssetFilter={setAssetFilter}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          addNewSceneSegment={addNewSceneSegment}
+          setSceneId={setSceneId}
+          seekToTimeline={seekToTimeline}
+          subtitlesVisible={subtitlesVisible}
+          setSubtitlesVisible={setSubtitlesVisible}
+          subtitleStyle={subtitleStyle}
+          setSubtitleStyle={setSubtitleStyle}
+          subtitleSize={subtitleSize}
+          setSubtitleSize={setSubtitleSize}
+          subtitlePosition={subtitlePosition}
+          setSubtitlePosition={setSubtitlePosition}
+          playSceneAudio={playSceneAudio}
+          setScenesWithHistory={setScenesWithHistory}
+          setAspectRatio={setAspectRatio}
+          bgmVolume={bgmVolume}
+          setBgmVolume={setBgmVolume}
+          voiceVolume={voiceVolume}
+          setVoiceVolume={setVoiceVolume}
+          trackMutes={trackMutes}
+          setTrackMutes={setTrackMutes}
+          originalAudioVolume={originalAudioVolume}
+          setOriginalAudioVolume={setOriginalAudioVolume}
+          removeOriginalBgm={removeOriginalBgm}
+          setRemoveOriginalBgm={setRemoveOriginalBgm}
+          isIsolatingStem={isIsolatingStem}
+          stemProgress={stemProgress}
+          stemStage={stemStage}
+          isolatedStemPath={isolatedStemPath}
+          voiceSpeed={voiceSpeed}
+          setVoiceSpeed={setVoiceSpeed}
+          selectedVoice={selectedVoice}
+          setSelectedVoice={setSelectedVoice}
+          selectedBgm={selectedBgm}
+          setSelectedBgm={setSelectedBgm}
+          selectedFilter={selectedFilter}
+          setSelectedFilter={setSelectedFilter}
+          setActiveStickers={setActiveStickers}
+        />
+
+        <EditorStagePlayer
+          playerContainerRef={playerContainerRef}
+          videoRef={videoRef}
+          stemAudioRef={stemAudioRef}
+          scrubProgressElRef={scrubProgressElRef}
+          scrubThumbElRef={scrubThumbElRef}
+          timecodeElRef={timecodeElRef}
+          isDraggingPlayhead={isDraggingPlayhead}
+          aspectRatio={aspectRatio}
+          fitMode={fitMode}
+          setFitMode={setFitMode}
+          mediaUrl={mediaUrl}
+          scaleVal={scaleVal}
+          posX={posX}
+          posY={posY}
+          rotationVal={rotationVal}
+          opacityVal={opacityVal}
+          activeFilterObj={activeFilterObj}
+          activeMaskObj={activeMaskObj}
+          muted={muted}
+          setMuted={setMuted}
+          trackMutes={trackMutes}
+          setTrackMutes={setTrackMutes}
+          originalAudioVolume={originalAudioVolume}
+          setMediaDuration={setMediaDuration}
+          playing={playing}
+          setPlaying={setPlaying}
+          isLooping={isLooping}
+          setIsLooping={setIsLooping}
+          seekToTimeline={seekToTimeline}
+          isolatedStemPath={isolatedStemPath}
+          activeStickers={activeStickers}
+          setActiveStickers={setActiveStickers}
+          subtitlesVisible={subtitlesVisible}
+          subtitleWords={subtitleWords}
+          subtitlePosition={subtitlePosition}
+          subtitleSize={subtitleSize}
+          subtitleStyle={subtitleStyle}
+          activeWordIdx={activeWordIdx}
+          activeDisplayScene={activeDisplayScene}
+          sequenceDuration={sequenceDuration}
+          playheadSeconds={playheadSeconds}
+          setProjectMessage={setProjectMessage}
+          toggleFullscreen={toggleFullscreen}
+        />
+
+        <EditorInspector
+          activeScene={activeScene}
+          activeSceneId={activeSceneId}
+          editorScenes={editorScenes}
+          setScenesWithHistory={setScenesWithHistory}
+          inspectorTab={inspectorTab}
+          setInspectorTab={setInspectorTab}
+          playheadSeconds={playheadSeconds}
+          scaleVal={scaleVal}
+          setScaleVal={setScaleVal}
+          posX={posX}
+          setPosX={setPosX}
+          posY={posY}
+          setPosY={setPosY}
+          rotationVal={rotationVal}
+          setRotationVal={setRotationVal}
+          opacityVal={opacityVal}
+          setOpacityVal={setOpacityVal}
+          speedVal={speedVal}
+          setSpeedVal={setSpeedVal}
+          selectedMask={selectedMask}
+          setSelectedMask={setSelectedMask}
+          selectedFilter={selectedFilter}
+          setSelectedFilter={setSelectedFilter}
+          inAnimation={inAnimation}
+          setInAnimation={setInAnimation}
+          outAnimation={outAnimation}
+          setOutAnimation={setOutAnimation}
+          speakingSceneId={speakingSceneId}
+          playSceneAudio={playSceneAudio}
+          stopSceneAudio={stopSceneAudio}
+          voiceSpeed={voiceSpeed}
+          sourceJob={sourceJob}
+          onUpdateJob={onUpdateJob}
+          setProjectMessage={setProjectMessage}
+        />
       </div>
 
       {/* 3. BOTTOM MULTI-TRACK STAGGERED CAPCUT-STYLE TIMELINE */}
-      <footer className="ts-timeline-footer">
-        {/* Timeline Action Bar */}
-        <div className="ts-timeline-toolbar">
-          <div className="ts-tl-toolbar-left">
-            <button type="button" className="ts-tool-icon-btn" title="Hoàn tác (Ctrl+Z)" onClick={undoTimeline}>
-              <Icon name="undo" size={13} />
-            </button>
-            <button type="button" className="ts-tool-icon-btn" title="Làm lại (Ctrl+Y)" onClick={redoTimeline}>
-              <Icon name="redo" size={13} />
-            </button>
-            <button type="button" className="ts-tool-icon-btn" title="Xóa cảnh (Del)" onClick={deleteActiveScene}>
-              <Icon name="trash" size={13} />
-            </button>
-            <button
-              type="button"
-              className="ts-tool-icon-btn"
-              title="Cắt đầu In ([)"
-              onClick={() => {
-                const cur = toSeconds(activeScene.start);
-                const nextStart = Math.max(0, cur - 0.5);
-                const updated = editorScenes.map((s) => s.id === activeSceneId ? { ...s, start: formatSeconds(nextStart) } : s);
-                setScenesWithHistory(updated);
-              }}
-            >
-              <span style={{ fontWeight: 800 }}>[</span>
-            </button>
-            <button type="button" className="ts-tool-icon-btn" title="Tách cảnh tại Playhead (S)" onClick={splitActiveScene}>
-              <Icon name="scissors" size={13} />
-            </button>
-            <button
-              type="button"
-              className="ts-tool-icon-btn"
-              title="Nhân bản cảnh (Ctrl+D)"
-              onClick={() => {
-                const copyId = `scene-dup-${Date.now()}`;
-                const dup: EditorScene = { ...activeScene, id: copyId, title: `${activeScene.title} (Nhân bản)` };
-                setScenesWithHistory([...editorScenes, dup]);
-                setSceneId(copyId);
-                setProjectMessage(`✓ Đã nhân bản: "${dup.title}"`);
-                setTimeout(() => setProjectMessage(""), 2000);
-              }}
-            >
-              <Icon name="copy" size={13} />
-            </button>
-            <button
-              type="button"
-              className="ts-tool-icon-btn"
-              title="Khớp khẩu hình AI"
-              onClick={() => {
-                setProjectMessage("✨ Khớp khẩu hình AI thành công!");
-                setTimeout(() => setProjectMessage(""), 2000);
-              }}
-            >
-              <Icon name="spark" size={13} />
-            </button>
-          </div>
-
-          <div className="ts-tl-toolbar-center">
-            <button
-              type="button"
-              className="ts-play-space-btn"
-              onClick={() => setPlaying((p) => !p)}
-            >
-              <Icon name={playing ? "pause" : "play"} size={13} /> {playing ? "Pause Space" : "Play Space"}
-            </button>
-            <button type="button" className="ts-segment-btn" onClick={addNewSceneSegment}>
-              ⊕ Thêm cảnh
-            </button>
-            <button type="button" className="ts-segment-btn" onClick={splitActiveScene}>
-              ✂ Tách cảnh
-            </button>
-            <button type="button" className="ts-segment-btn" onClick={deleteActiveScene}>
-              🗑️ Xóa cảnh
-            </button>
-          </div>
-
-          <div className="ts-tl-toolbar-right">
-            <button
-              type="button"
-              className="ts-tool-icon-btn"
-              title="Phóng to timeline (+)"
-              onClick={() => setZoomLevel((z) => Math.min(3, z + 0.25))}
-            >
-              <Icon name="zoom-in" size={13} />
-            </button>
-            <span className="ts-tl-tick-label">{Math.round(zoomLevel * 100)}%</span>
-            <button
-              type="button"
-              className="ts-tool-icon-btn"
-              title="Thu nhỏ timeline (-)"
-              onClick={() => setZoomLevel((z) => Math.max(1, z - 0.25))}
-            >
-              <Icon name="zoom-out" size={13} />
-            </button>
-            <div className="ts-tl-zoom-wrap">
-              <input
-                type="range"
-                min="1"
-                max="3"
-                step="0.2"
-                value={zoomLevel}
-                onChange={(e) => setZoomLevel(Number(e.target.value))}
-              />
-            </div>
-            <button
-              type="button"
-              className="ts-tool-icon-btn"
-              title="Vừa màn hình (Fit)"
-              onClick={() => setZoomLevel(1)}
-            >
-              ↔
-            </button>
-          </div>
-        </div>
-
-        {/* Tracks Multi-Lane Layout with Staggered Audio Lanes */}
-        <div className="ts-timeline-lanes-container">
-          {/* Left Track Headers */}
-          <div className="ts-lanes-headers-col">
-            <div className="ts-lane-header-ruler-space">
-              <span>TRACKS</span>
-            </div>
-
-            {/* Track 1: Captions (Red / Coral) */}
-            <div className="ts-lane-header-row header-captions">
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackMutes.captions ? "Hiện Phụ đề" : "Ẩn Phụ đề"}
-                onClick={() => setTrackMutes((c) => ({ ...c, captions: !c.captions }))}
-              >
-                <Icon name="captions" size={11} />
-              </button>
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackLocks.captions ? "Mở khóa" : "Khóa track"}
-                onClick={() => setTrackLocks((c) => ({ ...c, captions: !c.captions }))}
-              >
-                <Icon name={trackLocks.captions ? "lock" : "unlock"} size={11} />
-              </button>
-              <span className="ts-lane-title">T Phụ đề</span>
-            </div>
-
-            {/* Track 2: Visuals (Teal / Cyan) */}
-            <div className="ts-lane-header-row header-visuals">
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackMutes.video ? "Hiện Video" : "Ẩn Video"}
-                onClick={() => setTrackMutes((c) => ({ ...c, video: !c.video }))}
-              >
-                <Icon name="video" size={11} />
-              </button>
-              <button
-                type="button"
-                className={`ts-lane-btn ${trackMutes.originalAudio ? "is-muted-orig-lane" : ""}`}
-                title={trackMutes.originalAudio ? "Bật âm thanh gốc Video" : "Tắt âm thanh gốc Video (Mute Original Audio)"}
-                onClick={() => {
-                  setTrackMutes((c) => {
-                    const next = !c.originalAudio;
-                    setProjectMessage(next ? "🔇 Đã tắt âm thanh gốc video" : "🔊 Đã bật âm thanh gốc video");
-                    setTimeout(() => setProjectMessage(""), 2000);
-                    return { ...c, originalAudio: next };
-                  });
-                }}
-                style={{ color: trackMutes.originalAudio ? "#ef4444" : "#2dd4bf" }}
-              >
-                <Icon name={trackMutes.originalAudio ? "volume-mute" : "volume"} size={11} />
-              </button>
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackLocks.video ? "Mở khóa" : "Khóa track"}
-                onClick={() => setTrackLocks((c) => ({ ...c, video: !c.video }))}
-              >
-                <Icon name={trackLocks.video ? "lock" : "unlock"} size={11} />
-              </button>
-              <span className="ts-lane-title">🎬 Visuals</span>
-            </div>
-
-            {/* Track 3: Unified Voice Narration Track */}
-            <div className="ts-lane-header-row header-audio">
-              <button
-                type="button"
-                className={`ts-lane-btn ${trackMutes.voice ? "is-muted" : ""}`}
-                title={trackMutes.voice ? "Bật tiếng Thuyết minh" : "Tắt tiếng Thuyết minh (Mute Voice)"}
-                onClick={() => {
-                  setTrackMutes((c) => {
-                    const next = !c.voice;
-                    setProjectMessage(next ? "🔇 Đã tắt Voice thuyết minh khi xuất" : "🎙️ Đã bật Voice thuyết minh khi xuất");
-                    setTimeout(() => setProjectMessage(""), 2000);
-                    return { ...c, voice: next, voice1: next, voice2: next, voice3: next };
-                  });
-                }}
-                style={{ color: trackMutes.voice ? "#ef4444" : "#a855f7" }}
-              >
-                <Icon name={trackMutes.voice ? "volume-mute" : "mic"} size={11} />
-              </button>
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackLocks.voice ? "Mở khóa" : "Khóa track"}
-                onClick={() => setTrackLocks((c) => ({ ...c, voice: !c.voice }))}
-              >
-                <Icon name={trackLocks.voice ? "lock" : "unlock"} size={11} />
-              </button>
-              <span className="ts-lane-title">🎵 Voice (Thuyết minh)</span>
-            </div>
-
-            {/* Track 6: BGM & Music */}
-            <div className="ts-lane-header-row header-bgm">
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackMutes.bgm ? "Bật nhạc nền" : "Tắt nhạc nền"}
-                onClick={() => setTrackMutes((c) => ({ ...c, bgm: !c.bgm }))}
-              >
-                <Icon name={trackMutes.bgm ? "volume-mute" : "volume"} size={11} />
-              </button>
-              <button
-                type="button"
-                className="ts-lane-btn"
-                title={trackLocks.bgm ? "Mở khóa" : "Khóa track"}
-                onClick={() => setTrackLocks((c) => ({ ...c, bgm: !c.bgm }))}
-              >
-                <Icon name={trackLocks.bgm ? "lock" : "unlock"} size={11} />
-              </button>
-              <span className="ts-lane-title">🎵 BGM & SFX</span>
-            </div>
-          </div>
-
-          {/* Right Scrollable Viewport */}
-          <div
-            className="ts-lanes-viewport"
-            ref={timelineViewportRef}
-            onMouseDown={onTimelineMouseDown}
-            onContextMenu={(e) => handleClipContextMenu(e, undefined, "timeline")}
-          >
-            <div
-              className="ts-lanes-content"
-              style={{ width: `${zoomLevel * 100}%` }}
-            >
-              {/* Precision Time Ruler with .50 ticks */}
-              <div
-                className="ts-time-ruler"
-                onMouseDown={onTimelineMouseDown}
-                title="Nhấn hoặc kéo chuột để di chuyển Playhead"
-              >
-                {Array.from({ length: 25 }, (_, index) => (sequenceDuration * index) / 24).map(
-                  (secs, idx) => {
-                    const isMajor = idx % 2 === 0;
-                    return (
-                      <span
-                        key={idx}
-                        className={`ts-ruler-tick ${isMajor ? "major" : ""}`}
-                        style={{ left: `${(secs / sequenceDuration) * 100}%` }}
-                      >
-                        {isMajor ? formatSeconds(secs) : `${formatSeconds(secs)}.50`}
-                      </span>
-                    );
-                  }
-                )}
-              </div>
-
-              {/* Playhead Marker & Line */}
-              {effectiveScenes.length > 0 && (
-                <div
-                  ref={playheadLineElRef}
-                  className="ts-timeline-playhead"
-                  style={{
-                    left: `${Math.min(100, Math.max(0, (playheadSeconds / sequenceDuration) * 100))}%`,
-                  }}
-                  onMouseDown={onTimelineMouseDown}
-                  title="Kéo con trỏ Playhead"
-                >
-                  <div className="ts-playhead-pointer">▽</div>
-                </div>
-              )}
-
-              {/* Empty Timeline Guidance */}
-              {effectiveScenes.length === 0 && (
-                <div className="ts-empty-timeline-hint">
-                  <span style={{ fontSize: "28px" }}>🎬</span>
-                  <strong>Chưa có video nguồn hoặc phân cảnh</strong>
-                  <small>Chọn video ở menu góc trên bên trái hoặc chuyển sang bước <strong>1. Phân tích</strong> để tạo timeline tự động</small>
-                </div>
-              )}
-
-              {/* TRACK 1: CAPTIONS TRACK (Coral Red Segment Pill Blocks) */}
-              <div className="ts-track-lane lane-captions-coral">
-                {clipLayouts.map((item) => {
-                  const isSelected = item.scene.id === activeSceneId;
-                  const isDragOver = dragOverSceneIdx === item.index;
-                  const isDragging = draggedSceneIdx === item.index;
-                  const subText = item.scene.subtitle || `[Caption] Phân cảnh ${item.index + 1}`;
-
-                  return (
-                    <div
-                      key={`cap-${item.scene.id}-${item.index}`}
-                      className={`ts-clip-card clip-captions-coral ${isSelected ? "is-selected" : ""} ${isDragOver ? "is-drag-over" : ""} ${isDragging ? "is-dragging" : ""}`}
-                      style={{ left: `${item.captionLeft}%`, width: `${item.captionWidth}%` }}
-                      draggable={false}
-                      onMouseDown={(e) => handleClipSlideStart(e, item.scene, "captions")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSceneId(item.scene.id);
-                        seekToTimeline(item.captionStartSec);
-                      }}
-                      onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "captions")}
-                    >
-                      <div
-                        className="ts-clip-handle ts-handle-left"
-                        draggable={false}
-                        title="Kéo co giãn đầu phụ đề (Độc lập)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "left", "captions");
-                        }}
-                      />
-                      <span className="ts-caption-coral-tag">T</span>
-                      <span className="ts-caption-coral-text" title={subText}>
-                        {subText}
-                      </span>
-                      <div
-                        className="ts-clip-handle ts-handle-right"
-                        draggable={false}
-                        title="Kéo co giãn đuôi phụ đề (Độc lập)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "right", "captions");
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* TRACK 2: VISUALS TRACK (Teal Filmstrip Thumbnails Sequence) */}
-              <div className="ts-track-lane lane-visuals-teal">
-                {clipLayouts.map((item) => {
-                  const isSelected = item.scene.id === activeSceneId;
-                  const isDragOver = dragOverSceneIdx === item.index;
-                  const isDragging = draggedSceneIdx === item.index;
-                  const previewFrames = sourceJob?.analysis?.previewFrames || [];
-                  const srcTargetSec = toSeconds(item.scene.sourceStart || item.scene.start);
-                  const matchedFrame = previewFrames.find(
-                    (f) => Math.abs((f.timestampSeconds || 0) - srcTargetSec) < 15
-                  ) || previewFrames[item.index % (previewFrames.length || 1)];
-                  const frameImg = matchedFrame?.imageDataUrl;
-
-                  return (
-                    <div
-                      key={`visual-${item.scene.id}-${item.index}`}
-                      className={`ts-clip-card clip-visuals-teal ${isSelected ? "is-selected" : ""} ${isDragOver ? "is-drag-over" : ""} ${isDragging ? "is-dragging" : ""}`}
-                      style={{ left: `${item.visualLeft}%`, width: `${item.visualWidth}%` }}
-                      draggable={false}
-                      onMouseDown={(e) => handleClipSlideStart(e, item.scene, "visuals")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSceneId(item.scene.id);
-                        seekToTimeline(item.visualStartSec);
-                      }}
-                      onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "visuals")}
-                    >
-                      <div
-                        className="ts-clip-handle ts-handle-left"
-                        draggable={false}
-                        title="Kéo co giãn đầu cảnh (Độc lập)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "left", "visuals");
-                        }}
-                      />
-                      <div className="ts-visual-topline">
-                        <span className="ts-visual-title-tag" title={item.scene.title}>
-                          {item.scene.title} · {item.scene.start} {item.scene.sourceStart ? `(Gốc: ${item.scene.sourceStart}-${item.scene.sourceEnd})` : ""}
-                        </span>
-                      </div>
-                      <div className="ts-clip-filmstrip-row">
-                        {frameImg ? (
-                          Array.from({ length: Math.max(1, Math.floor(item.visualDur / 2.5)) }).map((_, fIdx) => (
-                            <img
-                              key={fIdx}
-                              src={frameImg}
-                              alt="frame"
-                              className="ts-filmstrip-img"
-                            />
-                          ))
-                        ) : (
-                          <div className="ts-clip-label-placeholder">
-                            <span>🎬 {item.scene.title}</span>
-                          </div>
-                        )}
-                      </div>
-                      <div
-                        className="ts-clip-handle ts-handle-right"
-                        draggable={false}
-                        title="Kéo co giãn đuôi cảnh (Độc lập)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "right", "visuals");
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* TRACK 3: UNIFIED CONTINUOUS VOICE NARRATION TRACK */}
-              <div className="ts-track-lane lane-audio-staggered">
-                {clipLayouts.map((item) => {
-                  const isSelected = item.scene.id === activeSceneId;
-                  const isSpeaking = speakingSceneId === item.scene.id;
-                  const isDragOver = dragOverSceneIdx === item.index;
-                  return (
-                    <div
-                      key={`aud-${item.scene.id}-${item.index}`}
-                      className={`ts-clip-card clip-audio-staggered ${isSelected ? "is-selected" : ""} ${isSpeaking ? "is-speaking" : ""} ${isDragOver ? "is-drag-over" : ""}`}
-                      style={{ left: `${item.voiceLeft}%`, width: `${item.voiceWidth}%` }}
-                      draggable={false}
-                      onMouseDown={(e) => handleClipSlideStart(e, item.scene, "voice")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSceneId(item.scene.id);
-                        seekToTimeline(item.voiceStartSec);
-                        if (item.scene.subtitle) {
-                          playSceneAudio(item.scene.subtitle, item.scene.id);
-                        }
-                      }}
-                      onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "voice")}
-                    >
-                      <div
-                        className="ts-clip-handle ts-handle-left"
-                        draggable={false}
-                        title="Kéo co giãn đầu âm thanh (Độc lập)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "left", "voice");
-                        }}
-                      />
-                      <div className="ts-audio-clip-header">
-                        <span className="ts-audio-file-name">Voice {item.index + 1}: {item.scene.title.slice(0, 22)}</span>
-                        <span className="ts-audio-duration-tag">{item.voiceDur.toFixed(1)}s</span>
-                      </div>
-                      <div className="ts-audio-waveform-row">
-                        {Array.from({ length: Math.min(36, Math.max(8, Math.floor(item.voiceDur * 4))) }).map((_, wIdx) => (
-                          <span
-                            key={wIdx}
-                            className="ts-waveform-bar"
-                            style={{
-                              height: `${[45, 85, 100, 60, 95, 70, 90, 45, 80, 60, 95, 75][wIdx % 12]}%`,
-                              background: isSpeaking ? "#f59e0b" : "#38bdf8",
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div
-                        className="ts-clip-handle ts-handle-right"
-                        draggable={false}
-                        title="Kéo co giãn đuôi âm thanh (Độc lập)"
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          e.preventDefault();
-                          handleTrimStart(e, item.scene, "right", "voice");
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* TRACK 6: BGM & MUSIC (Ambient Bed) */}
-              <div className="ts-track-lane lane-bgm-amber">
-                <div
-                  className="ts-clip-card clip-bgm-amber"
-                  style={{ left: "0%", width: "100%" }}
-                  onContextMenu={(e) => handleClipContextMenu(e, "bgm-global", "bgm")}
-                >
-                  <div className="ts-audio-waveform-row">
-                    <span style={{ fontSize: "10px", color: "#f59e0b", marginRight: "6px", fontWeight: 700 }}>
-                      🎵 BGM: Hoà Cùng Yêu Dấu Nỗi Buồn (Lo-Fi)
-                    </span>
-                    {Array.from({ length: 24 }).map((_, wIdx) => (
-                      <span
-                        key={wIdx}
-                        className="ts-waveform-bar"
-                        style={{
-                          height: `${[25, 45, 60, 35, 55, 40, 65, 30, 50, 35, 60, 45][wIdx % 12]}%`,
-                          background: "#f59e0b",
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <EditorTimeline
+        undoTimeline={undoTimeline}
+        redoTimeline={redoTimeline}
+        deleteActiveScene={deleteActiveScene}
+        splitActiveScene={splitActiveScene}
+        addNewSceneSegment={addNewSceneSegment}
+        activeScene={activeScene}
+        activeSceneId={activeSceneId}
+        editorScenes={editorScenes}
+        effectiveScenes={effectiveScenes}
+        setScenesWithHistory={setScenesWithHistory}
+        setSceneId={setSceneId}
+        setProjectMessage={setProjectMessage}
+        playing={playing}
+        setPlaying={setPlaying}
+        zoomLevel={zoomLevel}
+        setZoomLevel={setZoomLevel}
+        trackMutes={trackMutes}
+        setTrackMutes={setTrackMutes}
+        trackLocks={trackLocks}
+        setTrackLocks={setTrackLocks}
+        timelineViewportRef={timelineViewportRef}
+        onTimelineMouseDown={onTimelineMouseDown}
+        handleClipContextMenu={handleClipContextMenu}
+        sequenceDuration={sequenceDuration}
+        playheadLineElRef={playheadLineElRef}
+        playheadSeconds={playheadSeconds}
+        clipLayouts={clipLayouts}
+        dragOverSceneIdx={null}
+        draggedSceneIdx={null}
+        handleClipSlideStart={handleClipSlideStart}
+        handleTrimStart={handleTrimStart}
+        seekToTimeline={seekToTimeline}
+        sourceJob={sourceJob}
+        speakingSceneId={speakingSceneId}
+        playSceneAudio={playSceneAudio}
+      />
 
       {/* RIGHT-CLICK CONTEXT MENU (CAPCUT & TIMELINE STUDIO STYLE) VIA PORTAL */}
-      {contextMenu && contextMenu.visible && typeof document !== "undefined" && createPortal(
-        <>
-          <div
-            className="capcut-context-backdrop"
-            onClick={() => setContextMenu(null)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setContextMenu(null);
-            }}
-          />
-          <div
-            className="capcut-context-menu"
-            style={{
-              top: `${contextMenu.y}px`,
-              left: `${contextMenu.x}px`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                splitActiveScene();
-              }}
-            >
-              <span>✂️ Tách cảnh tại Playhead</span>
-              <span className="capcut-context-shortcut">S</span>
-            </button>
-
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                playSceneAudio(activeScene.subtitle, activeScene.id);
-              }}
-            >
-              <span>🎙️ Nghe thử giọng đọc AI (TTS)</span>
-            </button>
-
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                const words = (activeScene.subtitle || "").trim().split(/\s+/).filter(Boolean).length;
-                const estimatedSec = Math.max(2.5, Math.round((words / 3.2) * 10) / 10);
-                let curTime = 0;
-                const fittedScenes = editorScenes.map((s) => {
-                  let d = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start));
-                  if (s.id === activeScene.id) {
-                    d = estimatedSec;
-                  }
-                  const sStr = formatSeconds(curTime);
-                  curTime += d;
-                  const eStr = formatSeconds(curTime);
-                  return { ...s, start: sStr, end: eStr };
-                });
-                setScenesWithHistory(fittedScenes);
-                setProjectMessage(`⚡ Đã tự khớp thời lượng cảnh theo giọng đọc: ${estimatedSec}s`);
-                setTimeout(() => setProjectMessage(""), 2500);
-              }}
-            >
-              <span>⚡ Tự khớp thời lượng theo giọng AI</span>
-            </button>
-
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                setTrackMutes((c) => ({ ...c, bgm: !c.bgm }));
-                setProjectMessage(trackMutes.bgm ? "✓ Đã bật lại nhạc nền" : "✓ Đã tắt nhạc nền");
-                setTimeout(() => setProjectMessage(""), 2000);
-              }}
-            >
-              <span>🎵 {trackMutes.bgm ? "Bật nhạc nền" : "Tắt nhạc nền"}</span>
-            </button>
-
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                setTrackMutes((c) => ({ ...c, voice1: !c.voice1, voice2: !c.voice2, voice3: !c.voice3 }));
-                setProjectMessage(trackMutes.voice1 ? "✓ Đã bật lại vocal" : "✓ Đã tách vocal");
-                setTimeout(() => setProjectMessage(""), 2000);
-              }}
-            >
-              <span>🗣️ {trackMutes.voice1 ? "Bật vocal thoại" : "Tách vocal thoại"}</span>
-            </button>
-
-            <div className="capcut-context-divider" />
-
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                const copyId = `scene-dup-${Date.now()}`;
-                const dup: EditorScene = { ...activeScene, id: copyId, title: `${activeScene.title} (Nhân bản)` };
-                setScenesWithHistory([...editorScenes, dup]);
-                setSceneId(copyId);
-                setProjectMessage(`✓ Đã nhân bản: "${dup.title}"`);
-                setTimeout(() => setProjectMessage(""), 2000);
-              }}
-            >
-              <span>📑 Nhân bản phân cảnh</span>
-              <span className="capcut-context-shortcut">Ctrl+D</span>
-            </button>
-
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                setCopiedScene(activeScene);
-                setProjectMessage(`📋 Đã sao chép: "${activeScene.title}"`);
-                setTimeout(() => setProjectMessage(""), 2000);
-              }}
-            >
-              <span>📋 Sao chép</span>
-              <span className="capcut-context-shortcut">Ctrl+C</span>
-            </button>
-
-            <button
-              type="button"
-              className="capcut-context-item"
-              onClick={() => {
-                setContextMenu(null);
-                if (copiedScene) {
-                  const newId = `scene-copy-${Date.now()}`;
-                  const newScene: EditorScene = { ...copiedScene, id: newId, title: `${copiedScene.title} (Bản sao)` };
-                  setScenesWithHistory([...editorScenes, newScene]);
-                  setSceneId(newId);
-                  setProjectMessage(`✓ Đã dán: "${newScene.title}"`);
-                  setTimeout(() => setProjectMessage(""), 2000);
-                } else {
-                  setProjectMessage("Chưa có phân cảnh nào trong bộ nhớ tạm.");
-                  setTimeout(() => setProjectMessage(""), 2000);
-                }
-              }}
-            >
-              <span>📥 Dán</span>
-              <span className="capcut-context-shortcut">Ctrl+V</span>
-            </button>
-
-            <div className="capcut-context-divider" />
-
-            <button
-              type="button"
-              className="capcut-context-item is-danger"
-              onClick={() => {
-                setContextMenu(null);
-                deleteActiveScene();
-              }}
-            >
-              <span>🗑️ Xóa phân cảnh</span>
-              <span className="capcut-context-shortcut">Del</span>
-            </button>
-          </div>
-        </>,
-        document.body
-      )}
+      <EditorContextMenu
+        contextMenu={contextMenu}
+        setContextMenu={setContextMenu}
+        activeScene={activeScene}
+        editorScenes={editorScenes}
+        setScenesWithHistory={setScenesWithHistory}
+        setSceneId={setSceneId}
+        splitActiveScene={splitActiveScene}
+        deleteActiveScene={deleteActiveScene}
+        playSceneAudio={playSceneAudio}
+        trackMutes={trackMutes}
+        setTrackMutes={setTrackMutes}
+        copiedScene={copiedScene}
+        setCopiedScene={setCopiedScene}
+        setProjectMessage={setProjectMessage}
+      />
 
       {/* Modal Cài Đặt Tỷ Lệ & Render */}
-      <Modal
+      <EditorConfigModal
         isOpen={isConfigModalOpen}
         onClose={() => setIsConfigModalOpen(false)}
-        title="Cấu hình Dựng & Render Video"
-        eyebrow="TIMELINE STUDIO SETTINGS"
-        maxWidth="480px"
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <label className="field-label">
-            Tỷ lệ khung hình mặc định
-            <select
-              value={aspectRatio}
-              onChange={(e) => setAspectRatio(e.target.value as "9:16" | "1:1" | "16:9" | "4:5")}
-              className="ts-select-box"
-              style={{ marginTop: "4px" }}
-            >
-              <option value="9:16">9:16 · Dọc (TikTok, Shorts, Reels)</option>
-              <option value="16:9">16:9 · Ngang (YouTube, TV)</option>
-              <option value="1:1">1:1 · Vuông (Facebook, Instagram)</option>
-              <option value="4:5">4:5 · Chân dung (Instagram Portrait)</option>
-            </select>
-          </label>
-
-          <label className="field-label">
-            Độ phân giải Render Video
-            <select className="ts-select-box" style={{ marginTop: "4px" }}>
-              <option value="1080p">1080p Full HD (Khuyên dùng)</option>
-              <option value="4k">4K Ultra HD (Chất lượng cao nhất)</option>
-              <option value="720p">720p HD (Tốc độ render nhanh)</option>
-            </select>
-          </label>
-
-          <label className="field-label">
-            Tốc độ khung hình (Frame Rate)
-            <select className="ts-select-box" style={{ marginTop: "4px" }}>
-              <option value="60fps">60 FPS (Siêu mượt mà)</option>
-              <option value="30fps">30 FPS (Chuẩn cơ bản)</option>
-              <option value="24fps">24 FPS (Chuẩn điện ảnh)</option>
-            </select>
-          </label>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px", gap: "8px" }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setIsConfigModalOpen(false)}
-            >
-              Đóng
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => {
-                setIsConfigModalOpen(false);
-                setProjectMessage("✓ Đã lưu cài đặt cấu hình thành công!");
-                setTimeout(() => setProjectMessage(""), 2000);
-              }}
-            >
-              Lưu cấu hình
-            </button>
-          </div>
-        </div>
-      </Modal>
+        aspectRatio={aspectRatio}
+        setAspectRatio={setAspectRatio}
+        setProjectMessage={setProjectMessage}
+      />
     </div>
   );
 }
