@@ -442,10 +442,6 @@ Văn bản lưu trữ lịch sử theo quy định quản lý phiên bản phầ
 async def list_eula_documents() -> dict:
     """Get all EULA and licensing documents stored in DB."""
     docs = store.list("eula_documents")
-    if not docs:
-        for d in DEFAULT_EULA_DOCUMENTS:
-            store.create("eula_documents", d)
-        docs = store.list("eula_documents")
     return {"data": docs}
 
 
