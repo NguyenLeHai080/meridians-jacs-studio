@@ -22,7 +22,7 @@ class ReleaseCreate(BaseModel):
     signature: str | None = None
     force_update: bool = False
 class ReleaseResponse(BaseModel):
-    id: UUID | str
+    id: UUID | str | None = None
     version: str
     platform: str
     channel: str = "stable"
