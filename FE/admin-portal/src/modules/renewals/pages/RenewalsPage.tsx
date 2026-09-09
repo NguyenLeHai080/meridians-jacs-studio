@@ -40,94 +40,7 @@ interface RenewalsPageProps {
   onNotify?: (msg: string, type?: "success" | "error") => void;
 }
 
-// Default fallback sample data to match mockup perfectly if backend is empty
-const SAMPLE_SEPAY_DATA: SepayTransaction[] = [
-  {
-    id: "tx-sample-1",
-    sepay_code: "SEVQRE31E61F2",
-    license_id: "lic-test-1",
-    api_key_name: "test",
-    api_key_masked: "sk-UK4APVL",
-    deposit_amount: 100000,
-    cost_amount: 61538,
-    credit_amount: 61538,
-    profit_amount: 38462,
-    profit_percent: 38.5,
-    status: "COMPLETED",
-    payment_method: "VietinBank - VietQR",
-    bank_name: "VietinBank",
-    notes: "Nạp credit API gói standard: test",
-    created_at: new Date(Date.now() - 15 * 60000).toISOString(),
-  },
-  {
-    id: "tx-sample-2",
-    sepay_code: "SEVQR7C873F63",
-    license_id: "lic-test-1",
-    api_key_name: "test",
-    api_key_masked: "sk-UK4APVL",
-    deposit_amount: 50000,
-    cost_amount: 30769,
-    credit_amount: 30769,
-    profit_amount: 19231,
-    profit_percent: 38.5,
-    status: "COMPLETED",
-    payment_method: "VietinBank - VietQR",
-    bank_name: "VietinBank",
-    notes: "Nạp credit API bổ sung: test",
-    created_at: new Date(Date.now() - 60 * 60000).toISOString(),
-  },
-  {
-    id: "tx-sample-3",
-    sepay_code: "SEVQR89520051",
-    license_id: "lic-triad-1",
-    api_key_name: "TRIAD_DATA",
-    api_key_masked: "sk-COS2M2U",
-    deposit_amount: 30000,
-    cost_amount: 18461,
-    credit_amount: 18461,
-    profit_amount: 11539,
-    profit_percent: 38.5,
-    status: "COMPLETED",
-    payment_method: "BIDV - VietQR",
-    bank_name: "BIDV",
-    notes: "Nạp credit API định kỳ: TRIAD_DATA",
-    created_at: new Date(Date.now() - 3 * 3600000).toISOString(),
-  },
-  {
-    id: "tx-sample-4",
-    sepay_code: "SEVQR4B58FB1F",
-    license_id: "lic-triad-1",
-    api_key_name: "TRIAD_DATA",
-    api_key_masked: "sk-COS2M2U",
-    deposit_amount: 30000,
-    cost_amount: 18461,
-    credit_amount: 18461,
-    profit_amount: 11539,
-    profit_percent: 38.5,
-    status: "COMPLETED",
-    payment_method: "BIDV - VietQR",
-    bank_name: "BIDV",
-    notes: "Nạp credit API token out: TRIAD_DATA",
-    created_at: new Date(Date.now() - 6 * 3600000).toISOString(),
-  },
-  {
-    id: "tx-sample-5",
-    sepay_code: "SEVQRAB9B0103",
-    license_id: "lic-triad-1",
-    api_key_name: "TRIAD_DATA",
-    api_key_masked: "sk-COS2M2U",
-    deposit_amount: 20000,
-    cost_amount: 12307,
-    credit_amount: 12307,
-    profit_amount: 7693,
-    profit_percent: 38.5,
-    status: "COMPLETED",
-    payment_method: "VietinBank - VietQR",
-    bank_name: "VietinBank",
-    notes: "Nạp credit API test: TRIAD_DATA",
-    created_at: new Date(Date.now() - 12 * 3600000).toISOString(),
-  },
-];
+
 
 export const RenewalsPage: React.FC<RenewalsPageProps> = ({
   licenses: propLicenses,
@@ -199,10 +112,10 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
         planService.getCreditConfig(),
       ]);
 
-      if (txRes.status === "fulfilled" && txRes.value && txRes.value.length > 0) {
+      if (txRes.status === "fulfilled" && Array.isArray(txRes.value)) {
         setTransactions(txRes.value);
       } else {
-        setTransactions(SAMPLE_SEPAY_DATA);
+        setTransactions([]);
       }
 
       if (licRes.status === "fulfilled") {
@@ -213,7 +126,7 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
         setCreditConfig(cfgRes.value);
       }
     } catch {
-      setTransactions(SAMPLE_SEPAY_DATA);
+      setTransactions([]);
     } finally {
       setLoading(false);
     }
