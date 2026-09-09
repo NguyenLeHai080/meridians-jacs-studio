@@ -4,5 +4,10 @@ export * from "./pages/AiRequestLogsPage";
 export * from "./pages/AiKeyGrantsPage";
 export * from "./pages/modal/ProviderModal";
 export * from "./hooks/useProviders";
+export * from "./hooks/useProvidersManagement";
+export * from "./components/ProviderStatsCards";
+export * from "./components/ProviderTableFilter";
+export * from "./components/ProviderTable";
+export * from "./components/ProviderEditorModal";
+export * from "./components/ProviderDeleteModal";
 export * from "./services/providerService";
-

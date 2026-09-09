@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("jacsRuntime", {
+const runtimeApi = {
   getApiBaseUrl: () => process.env.JACS_API_URL || "https://jacs-studio.nexoratech.com.vn",
   getMachineInfo: () => ipcRenderer.invoke("runtime:machine-info"),
   getHardwareStats: () => ipcRenderer.invoke("runtime:hardware-stats"),
@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   synthesizeSpeech: (text, language, gender, voice, rate) => ipcRenderer.invoke("runtime:synthesize-speech", text, language, gender, voice, rate),
   isolateVocals: (value, operationId) => ipcRenderer.invoke("runtime:isolate-vocals", value, operationId),
   resolveVideoUrl: (url) => ipcRenderer.invoke("runtime:resolve-video-url", url),
+  signRequest: (payload, hwid) => ipcRenderer.invoke("runtime:sign-request", payload, hwid),
   onDownloadProgress: (listener) => {
     const handler = (_event, payload) => listener(payload);
     ipcRenderer.on("runtime:download-progress", handler);
@@ -52,6 +53,11 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
     ipcRenderer.on("runtime:render-progress", handler);
     return () => ipcRenderer.removeListener("runtime:render-progress", handler);
   },
+  onIsolateVocalsProgress: (listener) => {
+    const handler = (_event, payload) => listener(payload);
+    ipcRenderer.on("runtime:isolate-vocals-progress", handler);
+    return () => ipcRenderer.removeListener("runtime:isolate-vocals-progress", handler);
+  },
   onUpdateProgress: (listener) => {
     const handler = (_event, payload) => listener(payload);
     ipcRenderer.on("runtime:update-progress", handler);
@@ -59,4 +65,8 @@ contextBridge.exposeInMainWorld("jacsRuntime", {
   },
   revealPath: (value) => ipcRenderer.invoke("runtime:reveal-path", value),
   copyText: (value) => ipcRenderer.invoke("runtime:copy-text", value),
-});
+};
+
+// Object.freeze prevents client extensions/injected scripts from tampering with the bridge
+Object.freeze(runtimeApi);
+contextBridge.exposeInMainWorld("jacsRuntime", runtimeApi);

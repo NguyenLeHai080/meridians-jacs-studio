@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   RotateCw,
   Search,
@@ -21,6 +21,8 @@ import {
   HelpCircle,
   Clock,
   ArrowRight,
+  Home,
+  X,
 } from "lucide-react";
 import type { License, SepayTransaction, BankConfig, CreditConfig } from "../../../core/types";
 import { renewalService } from "../services/renewalService";
@@ -144,7 +146,7 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   // Pagination State
-  const [pageSize, setPageSize] = useState<number>(5);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Detail & API Quota Modal State
@@ -161,29 +163,33 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
     credit_balance: 160000,
     is_custom_quota: false,
   });
+
+  // Simulator in Detail Modal
+  const [simTokenIn, setSimTokenIn] = useState<number>(1);
+  const [simTokenOut, setSimTokenOut] = useState<number>(2);
   const [savingKeyConfig, setSavingKeyConfig] = useState(false);
 
-  // Simulator State in Modal
-  const [simTokenIn, setSimTokenIn] = useState<number>(10);
-  const [simTokenOut, setSimTokenOut] = useState<number>(5);
-
-  // Manual Topup / Renewal Modal State
+  // Manual Topup Modal State
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualSubmitting, setManualSubmitting] = useState(false);
   const [manualForm, setManualForm] = useState({
     license_id: "",
     amount: 100000,
-    credit_amount: 160000,
+    credit_amount: 80000,
     days: 30,
-    notes: "Nạp credit trực tiếp qua Admin",
+    notes: "",
   });
-  const [manualSubmitting, setManualSubmitting] = useState(false);
 
-  const notify = (msg: string, type: "success" | "error" = "success") => {
+  const onNotifyRef = useRef(onNotify);
+  useEffect(() => {
+    onNotifyRef.current = onNotify;
+  }, [onNotify]);
+
+  const notify = useCallback((msg: string, type: "success" | "error" = "success") => {
     showToast(msg, type);
-    if (onNotify) onNotify(msg, type);
-  };
+    if (onNotifyRef.current) onNotifyRef.current(msg, type);
+  }, []);
 
-  // Fetch all data
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -193,19 +199,18 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
         planService.getCreditConfig(),
       ]);
 
-      if (licRes.status === "fulfilled" && Array.isArray(licRes.value)) {
+      if (txRes.status === "fulfilled" && txRes.value && txRes.value.length > 0) {
+        setTransactions(txRes.value);
+      } else {
+        setTransactions(SAMPLE_SEPAY_DATA);
+      }
+
+      if (licRes.status === "fulfilled") {
         setLicenses(licRes.value);
       }
 
-      if (cfgRes.status === "fulfilled" && cfgRes.value) {
+      if (cfgRes.status === "fulfilled") {
         setCreditConfig(cfgRes.value);
-      }
-
-      if (txRes.status === "fulfilled" && Array.isArray(txRes.value) && txRes.value.length > 0) {
-        setTransactions(txRes.value);
-      } else {
-        // Use sample list if no transactions recorded yet
-        setTransactions(SAMPLE_SEPAY_DATA);
       }
     } catch {
       setTransactions(SAMPLE_SEPAY_DATA);
@@ -218,83 +223,73 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
     fetchData();
   }, [fetchData]);
 
-  // Copy helper with feedback
-  const handleCopy = (text: string, label: string = "Mã") => {
+  // Copy helper
+  const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     notify(`Đã sao chép ${label}: ${text}`, "success");
   };
 
-  // KPI calculations
+  // KPIs
   const totalApiKeysCount = useMemo(() => {
-    return licenses.length > 0 ? licenses.length : 25;
-  }, [licenses]);
+    if (licenses.length > 0) return licenses.length;
+    return new Set(transactions.map((t) => t.api_key_name)).size || 4;
+  }, [licenses, transactions]);
 
-  const totalSepayTxsCount = useMemo(() => {
-    return transactions.length >= 5 ? transactions.length : 44;
-  }, [transactions]);
+  const totalSepayTxsCount = transactions.length;
+  const pendingCount = useMemo(
+    () => transactions.filter((t) => t.status === "PENDING").length,
+    [transactions]
+  );
 
-  const pendingCount = useMemo(() => {
-    const p = transactions.filter((t) => t.status === "PENDING").length;
-    return p > 0 ? p : 12;
-  }, [transactions]);
-
-  // Filtered & Paginated Transactions
+  // Filtered dataset
   const filteredTransactions = useMemo(() => {
-    let list = [...transactions];
+    const q = searchQuery.toLowerCase().trim();
+    return transactions.filter((tx) => {
+      const matchSearch =
+        !q ||
+        tx.sepay_code.toLowerCase().includes(q) ||
+        tx.api_key_name.toLowerCase().includes(q) ||
+        tx.api_key_masked.toLowerCase().includes(q) ||
+        tx.status.toLowerCase().includes(q) ||
+        (tx.notes && tx.notes.toLowerCase().includes(q));
 
-    if (statusFilter !== "ALL") {
-      list = list.filter((t) => t.status?.toUpperCase() === statusFilter.toUpperCase());
-    }
+      const matchStatus =
+        statusFilter === "ALL" || tx.status.toUpperCase() === statusFilter.toUpperCase();
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(
-        (t) =>
-          t.sepay_code.toLowerCase().includes(q) ||
-          t.api_key_name.toLowerCase().includes(q) ||
-          t.api_key_masked.toLowerCase().includes(q) ||
-          t.status.toLowerCase().includes(q) ||
-          (t.notes && t.notes.toLowerCase().includes(q))
-      );
-    }
+      return matchSearch && matchStatus;
+    });
+  }, [transactions, searchQuery, statusFilter]);
 
-    return list;
-  }, [transactions, statusFilter, searchQuery]);
-
-  const totalPages = Math.ceil(filteredTransactions.length / pageSize) || 1;
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
   const paginatedTransactions = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredTransactions.slice(start, start + pageSize);
   }, [filteredTransactions, currentPage, pageSize]);
 
-  // Handle Revoke Credit
+  // Revoke Credit Action
   const handleRevokeCredit = async (tx: SepayTransaction) => {
-    if (tx.status === "REVOKED") {
-      notify("Giao dịch này đã được thu hồi trước đó!", "error");
-      return;
-    }
-
     const confirmed = await confirmDialog({
-      title: "Xác nhận thu hồi Credit",
-      text: `Bạn có chắc chắn muốn thu hồi Credit của giao dịch ${tx.sepay_code} (${formatCurrency(
-        tx.credit_amount
-      )}) không?`,
-      isDestructive: true,
+      title: "Xác nhận thu hồi Credit?",
+      html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
+        <p>Bạn có chắc muốn <b>thu hồi Credit</b> của mã SePay <b>${tx.sepay_code}</b>?</p>
+        <p style="font-size: 12px; color: #dc2626; margin-top: 6px;">
+          ⚠️ Credit đã cấp (${formatCurrency(tx.credit_amount)}) sẽ bị trừ ngược khỏi Key [${tx.api_key_name}].
+        </p>
+      </div>`,
+      icon: "warning",
       confirmButtonText: "Thu hồi ngay",
+      cancelButtonText: "Hủy bỏ",
+      isDestructive: true,
     });
     if (!confirmed) return;
 
     try {
       await renewalService.revokeCredit(tx.id);
-      notify(`Đã thu hồi thành công Credit giao dịch ${tx.sepay_code}`, "success");
-
-      // Update locally
+      notify(`Đã thu hồi thành công Credit giao dịch [${tx.sepay_code}]`, "success");
       setTransactions((prev) =>
-        prev.map((item) => (item.id === tx.id ? { ...item, status: "REVOKED" } : item))
+        prev.map((t) => (t.id === tx.id ? { ...t, status: "REVOKED" } : t))
       );
-      if (selectedTx?.id === tx.id) {
-        setSelectedTx((prev) => (prev ? { ...prev, status: "REVOKED" } : null));
-      }
     } catch (err: any) {
       notify(err instanceof Error ? err.message : "Lỗi khi thu hồi Credit", "error");
     }
@@ -398,528 +393,296 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
   }, [simTokenIn, simTokenOut, keyConfigForm.token_in_price, keyConfigForm.token_out_price]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px", paddingBottom: "40px" }} className="animate-fade-in">
-      
-      {/* 1. Header Section */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+    <div className="w-full max-w-full space-y-6">
+      {/* 1. Spacious Single-Tier Header with Breadcrumb & Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <span
-            style={{
-              background: "#fff7ed",
-              color: "#ea580c",
-              fontSize: "11.5px",
-              fontWeight: 750,
-              padding: "3px 10px",
-              borderRadius: "12px",
-              display: "inline-block",
-              marginBottom: "6px",
-              border: "1px solid #fed7aa",
-            }}
-          >
-            SePay · VietinBank · BIDV
-          </span>
-          <h1 style={{ fontSize: "22px", fontWeight: 850, color: "#0f172a", margin: 0 }}>
-            Giao dịch nạp Credit
-          </h1>
-          <p style={{ fontSize: "13px", color: "#64748b", margin: "4px 0 0" }}>
-            Theo dõi tiền khách nạp, vốn API, Credit và lợi nhuận.
-          </p>
+          {/* Breadcrumb Navigation Trail */}
+          <nav className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2.5">
+            <span className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors">
+              <Home size={12} className="text-slate-400" />
+              <span>JACS Studio</span>
+            </span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="text-slate-500">Tài Chính & Bản Quyền</span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-orange-500/10 text-orange-700 border border-orange-500/20">
+              Giao Dịch Nạp Credit
+            </span>
+          </nav>
+
+          {/* Title and Status */}
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-orange-500 via-amber-600 to-orange-600 flex items-center justify-center text-white shadow-md shadow-orange-500/20 shrink-0">
+              <Coins size={22} className="stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight m-0">
+                  Giao Dịch Nạp Credit & Hạch Toán SePay
+                </h1>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>SePay · VietinBank · BIDV</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Theo dõi tiền khách nạp, vốn API chi trả, Credit đã cấp và biên lợi nhuận ròng tự động.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center flex-wrap sm:flex-nowrap">
           <button
             type="button"
             onClick={() => setIsManualModalOpen(true)}
-            style={{
-              background: "#ea580c",
-              border: "none",
-              color: "#ffffff",
-              padding: "8px 14px",
-              borderRadius: "8px",
-              fontSize: "13px",
-              fontWeight: 650,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              boxShadow: "0 2px 6px rgba(234, 88, 12, 0.25)",
-            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 rounded-xl shadow-sm transition-all active:scale-95"
           >
             <Plus size={15} />
-            Nạp thủ công
+            <span>Nạp thủ công</span>
           </button>
 
           <button
             type="button"
             onClick={fetchData}
             disabled={loading}
-            style={{
-              background: "#ffffff",
-              border: "1px solid #cbd5e1",
-              color: "#475569",
-              padding: "8px 14px",
-              borderRadius: "8px",
-              fontSize: "13px",
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              transition: "all 0.2s",
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.background = "#f8fafc")}
-            onMouseOut={(e) => (e.currentTarget.style.background = "#ffffff")}
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-400 border border-slate-300/90 rounded-xl shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50"
           >
-            <RotateCw size={15} className={loading ? "animate-spin text-orange-500" : ""} />
-            Làm mới
+            <RotateCw size={14} className={loading ? "animate-spin text-orange-600" : "text-slate-500"} />
+            <span>Làm mới</span>
           </button>
         </div>
       </div>
 
-      {/* 2. Three KPI Cards */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: "16px",
-        }}
-      >
+      {/* 2. 3 Glassmorphic KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Card 1: API Keys */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "12px",
-            padding: "20px 24px",
-            border: "1px solid #e2e8f0",
-            borderLeft: "4px solid #ea580c",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-          }}
-        >
-          <span style={{ fontSize: "12.5px", fontWeight: 650, color: "#64748b" }}>
-            API keys
-          </span>
-          <span style={{ fontSize: "32px", fontWeight: 850, color: "#0f172a", lineHeight: 1.2 }}>
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-orange-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              API Keys
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+              <Cpu size={16} />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-slate-900">
             {totalApiKeysCount}
-          </span>
-          <span style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>
-            Đang quản lý
-          </span>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Đang quản lý trong hệ thống</div>
         </div>
 
         {/* Card 2: Giao dịch SePay */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "12px",
-            padding: "20px 24px",
-            border: "1px solid #e2e8f0",
-            borderLeft: "4px solid #ea580c",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-          }}
-        >
-          <span style={{ fontSize: "12.5px", fontWeight: 650, color: "#64748b" }}>
-            Giao dịch SePay
-          </span>
-          <span style={{ fontSize: "32px", fontWeight: 850, color: "#0f172a", lineHeight: 1.2 }}>
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Giao Dịch SePay
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Coins size={16} />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-slate-900">
             {totalSepayTxsCount}
-          </span>
-          <span style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>
-            Tất cả trạng thái
-          </span>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Tất cả trạng thái nạp</div>
         </div>
 
         {/* Card 3: Chờ xử lý */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "12px",
-            padding: "20px 24px",
-            border: "1px solid #e2e8f0",
-            borderLeft: "4px solid #ea580c",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-          }}
-        >
-          <span style={{ fontSize: "12.5px", fontWeight: 650, color: "#64748b" }}>
-            Chờ xử lý
-          </span>
-          <span style={{ fontSize: "32px", fontWeight: 850, color: "#0f172a", lineHeight: 1.2 }}>
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-amber-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Chờ Xử Lý
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Clock size={16} />
+            </div>
+          </div>
+          <div className={`text-2xl font-black ${pendingCount > 0 ? "text-amber-600" : "text-slate-900"}`}>
             {pendingCount}
-          </span>
-          <span style={{ fontSize: "12px", color: "#94a3b8", marginTop: "2px" }}>
-            Cần đối soát
-          </span>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Cần đối soát thanh toán</div>
         </div>
       </div>
 
-      {/* 3. Main Data Card & Table */}
-      <div
-        style={{
-          background: "#ffffff",
-          borderRadius: "12px",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Search & Filter Header Bar */}
-        <div
-          style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "12px",
-          }}
-        >
+      {/* 3. Main Data Card & Single-Line Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Table Top Filter Bar */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
           {/* Search Box */}
-          <div
-            style={{
-              position: "relative",
-              flex: "1",
-              maxWidth: "400px",
-              minWidth: "240px",
-            }}
-          >
-            <Search
-              size={16}
-              style={{
-                position: "absolute",
-                left: "12px",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: "#94a3b8",
-              }}
-            />
+          <div className="relative min-w-[260px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Tìm mã, tài khoản, trạng thái"
+              placeholder="Tìm mã, tài khoản, trạng thái..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{
-                width: "100%",
-                padding: "8px 12px 8px 36px",
-                borderRadius: "8px",
-                border: "1px solid #e2e8f0",
-                fontSize: "13px",
-                color: "#1e293b",
-                background: "#f8fafc",
-                outline: "none",
-              }}
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-800 bg-white focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all"
             />
           </div>
 
-          {/* Status Quick Filter Pills */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            {["ALL", "COMPLETED", "PENDING", "REVOKED"].map((st) => (
+          {/* Quick Status Filters */}
+          <div className="flex items-center gap-1.5">
+            {[
+              { id: "ALL", label: "Tất cả" },
+              { id: "COMPLETED", label: "Đã nạp" },
+              { id: "PENDING", label: "Chờ duyệt" },
+              { id: "REVOKED", label: "Đã thu hồi" },
+            ].map((st) => (
               <button
-                key={st}
+                key={st.id}
                 type="button"
                 onClick={() => {
-                  setStatusFilter(st);
+                  setStatusFilter(st.id);
                   setCurrentPage(1);
                 }}
-                style={{
-                  padding: "5px 12px",
-                  borderRadius: "20px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  border: statusFilter === st ? "1px solid #ea580c" : "1px solid #e2e8f0",
-                  background: statusFilter === st ? "#fff7ed" : "#ffffff",
-                  color: statusFilter === st ? "#ea580c" : "#64748b",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                  statusFilter === st.id
+                    ? "bg-orange-50 text-orange-700 border-orange-300 shadow-2xs"
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                }`}
               >
-                {st === "ALL"
-                  ? "Tất cả"
-                  : st === "COMPLETED"
-                  ? "Đã nạp"
-                  : st === "PENDING"
-                  ? "Chờ duyệt"
-                  : "Đã thu hồi"}
+                {st.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Table View */}
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              textAlign: "left",
-              fontSize: "13px",
-            }}
-          >
+        {/* High-End Single-Line Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1100px] border-collapse text-left text-xs">
             <thead>
-              <tr
-                style={{
-                  borderBottom: "1px solid #e2e8f0",
-                  background: "#f8fafc",
-                  color: "#64748b",
-                  fontSize: "11.5px",
-                  fontWeight: 750,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                }}
-              >
-                <th style={{ padding: "14px 20px" }}>MÃ SEPAY</th>
-                <th style={{ padding: "14px 16px" }}>API KEY NHẬN CREDIT</th>
-                <th style={{ padding: "14px 16px" }}>TIỀN KHÁCH NẠP</th>
-                <th style={{ padding: "14px 16px" }}>VỐN BIDV</th>
-                <th style={{ padding: "14px 16px" }}>CREDIT CẤP</th>
-                <th style={{ padding: "14px 16px" }}>LỢI NHUẬN</th>
-                <th style={{ padding: "14px 16px" }}>TRẠNG THÁI</th>
-                <th style={{ padding: "14px 20px", textAlign: "right" }}>THAO TÁC</th>
+              <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                <th className="py-3 px-4 w-[160px]">MÃ SEPAY</th>
+                <th className="py-3 px-3 w-[220px]">API KEY NHẬN CREDIT</th>
+                <th className="py-3 px-3 w-[140px]">TIỀN KHÁCH NẠP</th>
+                <th className="py-3 px-3 w-[130px]">VỐN BIDV</th>
+                <th className="py-3 px-3 w-[130px]">CREDIT CẤP</th>
+                <th className="py-3 px-3 w-[140px]">LỢI NHUẬN</th>
+                <th className="py-3 px-3 w-[120px] text-center">TRẠNG THÁI</th>
+                <th className="py-3 px-4 text-right w-[200px]">THAO TÁC</th>
               </tr>
             </thead>
-            <tbody>
-              {paginatedTransactions.map((tx) => {
-                const isRevoked = tx.status === "REVOKED";
-                const isPending = tx.status === "PENDING";
-
-                return (
-                  <tr
-                    key={tx.id}
-                    style={{
-                      borderBottom: "1px solid #f1f5f9",
-                      transition: "background 0.15s",
-                    }}
-                    onMouseOver={(e) => (e.currentTarget.style.background = "#fafafa")}
-                    onMouseOut={(e) => (e.currentTarget.style.background = "#ffffff")}
-                  >
-                    {/* Mã SePay */}
-                    <td style={{ padding: "16px 20px" }}>
-                      <span
-                        onClick={() => handleCopy(tx.sepay_code, "Mã SePay")}
-                        title="Click để sao chép mã SePay"
-                        style={{
-                          fontWeight: 750,
-                          color: "#0f172a",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        {tx.sepay_code}
-                      </span>
-                    </td>
-
-                    {/* API Key Nhận Credit */}
-                    <td style={{ padding: "16px 16px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                        <span style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px" }}>
-                          {tx.api_key_name}
-                        </span>
-                        <span
-                          style={{
-                            background: "#f1f5f9",
-                            color: "#475569",
-                            padding: "2px 8px",
-                            borderRadius: "6px",
-                            fontSize: "11.5px",
-                            fontFamily: "monospace",
-                            fontWeight: 600,
-                            display: "inline-block",
-                            width: "fit-content",
-                          }}
-                        >
-                          {tx.api_key_masked}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Tiền Khách Nạp */}
-                    <td style={{ padding: "16px 16px" }}>
-                      <span style={{ fontWeight: 750, color: "#0f172a" }}>
-                        {formatCurrency(tx.deposit_amount)}
-                      </span>
-                    </td>
-
-                    {/* Vốn BIDV */}
-                    <td style={{ padding: "16px 16px" }}>
-                      <span style={{ color: "#475569", fontWeight: 600 }}>
-                        {formatCurrency(tx.cost_amount)}
-                      </span>
-                    </td>
-
-                    {/* Credit Cấp */}
-                    <td style={{ padding: "16px 16px" }}>
-                      <span style={{ color: "#475569", fontWeight: 600 }}>
-                        {formatCurrency(tx.credit_amount)}
-                      </span>
-                    </td>
-
-                    {/* Lợi Nhuận */}
-                    <td style={{ padding: "16px 16px" }}>
-                      <span
-                        style={{
-                          fontWeight: 800,
-                          color: isRevoked ? "#94a3b8" : "#16a34a",
-                        }}
-                      >
-                        {formatCurrency(tx.profit_amount)}
-                      </span>
-                    </td>
-
-                    {/* Trạng Thái */}
-                    <td style={{ padding: "16px 16px" }}>
-                      {isRevoked ? (
-                        <span
-                          style={{
-                            background: "#fee2e2",
-                            color: "#dc2626",
-                            fontSize: "11px",
-                            fontWeight: 750,
-                            padding: "3px 8px",
-                            borderRadius: "12px",
-                            display: "inline-block",
-                          }}
-                        >
-                          REVOKED
-                        </span>
-                      ) : isPending ? (
-                        <span
-                          style={{
-                            background: "#fef9c3",
-                            color: "#854d0e",
-                            fontSize: "11px",
-                            fontWeight: 750,
-                            padding: "3px 8px",
-                            borderRadius: "12px",
-                            display: "inline-block",
-                          }}
-                        >
-                          PENDING
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            background: "#dcfce7",
-                            color: "#166534",
-                            fontSize: "11px",
-                            fontWeight: 750,
-                            padding: "3px 8px",
-                            borderRadius: "12px",
-                            display: "inline-block",
-                          }}
-                        >
-                          COMPLETED
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Thao Tác */}
-                    <td style={{ padding: "16px 20px", textAlign: "right" }}>
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          justifyContent: "flex-end",
-                        }}
-                      >
-                        {/* Thu hồi Credit button */}
-                        <button
-                          type="button"
-                          onClick={() => handleRevokeCredit(tx)}
-                          disabled={isRevoked}
-                          style={{
-                            background: isRevoked ? "#f8fafc" : "#fef2f2",
-                            border: isRevoked ? "1px solid #e2e8f0" : "1px solid #fecaca",
-                            color: isRevoked ? "#94a3b8" : "#dc2626",
-                            padding: "6px 12px",
-                            borderRadius: "7px",
-                            fontSize: "12px",
-                            fontWeight: 650,
-                            cursor: isRevoked ? "not-allowed" : "pointer",
-                            transition: "all 0.15s",
-                          }}
-                        >
-                          Thu hồi Credit
-                        </button>
-
-                        {/* Chi tiết button */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDetail(tx)}
-                          style={{
-                            background: "#ffffff",
-                            border: "1px solid #cbd5e1",
-                            color: "#334155",
-                            padding: "6px 12px",
-                            borderRadius: "7px",
-                            fontSize: "12px",
-                            fontWeight: 650,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            transition: "all 0.15s",
-                          }}
-                          onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                          onMouseOut={(e) => (e.currentTarget.style.background = "#ffffff")}
-                        >
-                          <Eye size={13} />
-                          Chi tiết
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {paginatedTransactions.length === 0 && (
+            <tbody className="divide-y divide-slate-100">
+              {paginatedTransactions.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={8}
-                    style={{
-                      textAlign: "center",
-                      padding: "40px 20px",
-                      color: "#94a3b8",
-                      fontSize: "13.5px",
-                    }}
-                  >
-                    Không tìm thấy giao dịch nạp SePay nào phù hợp
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                    Không tìm thấy giao dịch nạp SePay nào phù hợp.
                   </td>
                 </tr>
+              ) : (
+                paginatedTransactions.map((tx) => {
+                  const isRevoked = tx.status === "REVOKED";
+                  const isPending = tx.status === "PENDING";
+
+                  return (
+                    <tr
+                      key={tx.id}
+                      className="hover:bg-slate-50/80 transition-colors duration-100 whitespace-nowrap"
+                    >
+                      {/* 1. Mã SePay */}
+                      <td className="py-3 px-4">
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(tx.sepay_code, "Mã SePay")}
+                          className="font-mono font-bold text-slate-900 hover:text-orange-600 transition-colors"
+                          title="Click để sao chép mã SePay"
+                        >
+                          {tx.sepay_code}
+                        </button>
+                      </td>
+
+                      {/* 2. API Key */}
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-slate-900">{tx.api_key_name}</div>
+                        <div className="font-mono text-[10.5px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 inline-block mt-0.5">
+                          {tx.api_key_masked}
+                        </div>
+                      </td>
+
+                      {/* 3. Tiền Khách Nạp */}
+                      <td className="py-3 px-3 font-bold text-slate-900">
+                        {formatCurrency(tx.deposit_amount)}
+                      </td>
+
+                      {/* 4. Vốn BIDV */}
+                      <td className="py-3 px-3 text-slate-600 font-semibold">
+                        {formatCurrency(tx.cost_amount)}
+                      </td>
+
+                      {/* 5. Credit Cấp */}
+                      <td className="py-3 px-3 font-bold text-orange-600">
+                        {formatCurrency(tx.credit_amount)}
+                      </td>
+
+                      {/* 6. Lợi Nhuận */}
+                      <td className="py-3 px-3 font-black text-emerald-600">
+                        {isRevoked ? (
+                          <span className="text-slate-400">0đ</span>
+                        ) : (
+                          <span>+{formatCurrency(tx.profit_amount)}</span>
+                        )}
+                      </td>
+
+                      {/* 7. Trạng Thái */}
+                      <td className="py-3 px-3 text-center">
+                        {isRevoked ? (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            REVOKED
+                          </span>
+                        ) : isPending ? (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            PENDING
+                          </span>
+                        ) : (
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            COMPLETED
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 8. Thao Tác */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleRevokeCredit(tx)}
+                            disabled={isRevoked}
+                            className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-colors ${
+                              isRevoked
+                                ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                : "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
+                            }`}
+                          >
+                            Thu hồi
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDetail(tx)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors"
+                          >
+                            <Eye size={12} />
+                            <span>Chi tiết</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
-        {/* 4. Table Pagination Footer */}
-        <div
-          style={{
-            padding: "14px 20px",
-            borderTop: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "12px",
-            background: "#ffffff",
-            fontSize: "12.5px",
-            color: "#64748b",
-          }}
-        >
-          <div>
+        {/* Pagination Footer */}
+        <div className="p-3.5 border-t border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-slate-600">
             Hiển thị{" "}
             <select
               value={pageSize}
@@ -927,288 +690,161 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                 setPageSize(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              style={{
-                padding: "2px 6px",
-                borderRadius: "4px",
-                border: "1px solid #cbd5e1",
-                background: "#f8fafc",
-                fontSize: "12px",
-                fontWeight: 600,
-                color: "#1e293b",
-                margin: "0 4px",
-              }}
+              className="py-0.5 px-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white mx-1"
             >
               <option value={5}>5</option>
               <option value={10}>10</option>
               <option value={20}>20</option>
-              <option value={50}>50</option>
             </select>{" "}
             dòng mỗi trang · <strong>{filteredTransactions.length}</strong> giao dịch
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
-              style={{
-                padding: "4px 8px",
-                borderRadius: "6px",
-                border: "1px solid #e2e8f0",
-                background: currentPage <= 1 ? "#f8fafc" : "#ffffff",
-                color: currentPage <= 1 ? "#cbd5e1" : "#475569",
-                cursor: currentPage <= 1 ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "2px",
-              }}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <ChevronLeft size={14} />
+              <ChevronLeft size={13} />
+              <span>Trước</span>
             </button>
 
-            <span style={{ fontWeight: 650, color: "#1e293b", padding: "0 6px" }}>
-              Trang {currentPage}/{totalPages}
+            <span className="text-xs font-bold text-slate-800 px-2">
+              Trang {currentPage} / {totalPages}
             </span>
 
             <button
               type="button"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
-              style={{
-                padding: "4px 8px",
-                borderRadius: "6px",
-                border: "1px solid #e2e8f0",
-                background: currentPage >= totalPages ? "#f8fafc" : "#ffffff",
-                color: currentPage >= totalPages ? "#cbd5e1" : "#475569",
-                cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "2px",
-              }}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <ChevronRight size={14} />
+              <span>Sau</span>
+              <ChevronRight size={13} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* 5. MODAL: Chi tiết Giao dịch & Cấu hình API Key / Quota */}
+      {/* 4. MODAL: Chi Tiết Giao Dịch & Cấu Hình Quota API Key */}
       {isDetailModalOpen && selectedTx && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px",
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setIsDetailModalOpen(false)}
         >
           <div
-            style={{
-              background: "#ffffff",
-              borderRadius: "16px",
-              width: "100%",
-              maxWidth: "760px",
-              maxHeight: "90vh",
-              overflowY: "auto",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
-              border: "1px solid #cbd5e1",
-            }}
+            className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
-            className="animate-scale-up"
           >
             {/* Modal Header */}
-            <div
-              style={{
-                padding: "20px 24px",
-                borderBottom: "1px solid #e2e8f0",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
+            <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
-                <span
-                  style={{
-                    background: "#fff7ed",
-                    color: "#ea580c",
-                    fontSize: "11px",
-                    fontWeight: 750,
-                    padding: "2px 8px",
-                    borderRadius: "10px",
-                    border: "1px solid #fed7aa",
-                  }}
-                >
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-300">
                   Chi tiết giao dịch & Quota
                 </span>
-                <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a", margin: "6px 0 0" }}>
+                <h3 className="text-base font-black text-slate-900 mt-1.5 m-0">
                   Mã SePay: {selectedTx.sepay_code}
                 </h3>
               </div>
 
               {/* Tabs Switcher */}
-              <div
-                style={{
-                  background: "#f1f5f9",
-                  padding: "3px",
-                  borderRadius: "8px",
-                  display: "flex",
-                  gap: "2px",
-                }}
-              >
+              <div className="bg-slate-200/80 p-1 rounded-xl flex gap-1">
                 <button
                   type="button"
                   onClick={() => setModalActiveTab("detail")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: modalActiveTab === "detail" ? "#ffffff" : "transparent",
-                    color: modalActiveTab === "detail" ? "#ea580c" : "#64748b",
-                    fontWeight: 700,
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    boxShadow: modalActiveTab === "detail" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                  }}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    modalActiveTab === "detail"
+                      ? "bg-white text-orange-600 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
                 >
                   Thông tin GD
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalActiveTab("api_config")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: modalActiveTab === "api_config" ? "#ffffff" : "transparent",
-                    color: modalActiveTab === "api_config" ? "#ea580c" : "#64748b",
-                    fontWeight: 700,
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    boxShadow: modalActiveTab === "api_config" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                  }}
+                  className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    modalActiveTab === "api_config"
+                      ? "bg-white text-orange-600 shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
                 >
-                  <Sliders size={13} />
-                  Cấu hình API Key
+                  <Sliders size={12} />
+                  <span>Cấu hình API</span>
                 </button>
               </div>
             </div>
 
             {/* Modal Body */}
-            <div style={{ padding: "24px" }}>
+            <div className="p-6 max-h-[75vh] overflow-y-auto">
               {/* TAB 1: THÔNG TIN GIAO DỊCH */}
               {modalActiveTab === "detail" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-                  {/* Summary Grid */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(2, 1fr)",
-                      gap: "14px",
-                      background: "#f8fafc",
-                      padding: "16px",
-                      borderRadius: "10px",
-                      border: "1px solid #e2e8f0",
-                    }}
-                  >
+                <div className="space-y-4 text-xs">
+                  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                     <div>
-                      <span style={{ fontSize: "11.5px", color: "#64748b" }}>API Key Nhận Credit</span>
-                      <div style={{ fontWeight: 750, color: "#0f172a", fontSize: "14px", marginTop: "2px" }}>
+                      <span className="text-slate-400 font-semibold text-[11px]">API Key Nhận Credit</span>
+                      <div className="font-bold text-slate-900 text-sm mt-0.5">
                         {selectedTx.api_key_name} ({selectedTx.api_key_masked})
                       </div>
                     </div>
 
                     <div>
-                      <span style={{ fontSize: "11.5px", color: "#64748b" }}>Thời gian thực hiện</span>
-                      <div style={{ fontWeight: 650, color: "#0f172a", fontSize: "13px", marginTop: "2px" }}>
-                        {selectedTx.created_at
-                          ? new Date(selectedTx.created_at).toLocaleString("vi-VN")
-                          : "Vừa xong"}
+                      <span className="text-slate-400 font-semibold text-[11px]">Thời gian thực hiện</span>
+                      <div className="font-semibold text-slate-800 text-xs mt-0.5">
+                        {selectedTx.created_at ? new Date(selectedTx.created_at).toLocaleString("vi-VN") : "Vừa xong"}
                       </div>
                     </div>
 
                     <div>
-                      <span style={{ fontSize: "11.5px", color: "#64748b" }}>Tiền khách chuyển</span>
-                      <div style={{ fontWeight: 800, color: "#0f172a", fontSize: "16px", marginTop: "2px" }}>
+                      <span className="text-slate-400 font-semibold text-[11px]">Tiền khách chuyển</span>
+                      <div className="font-black text-slate-900 text-base mt-0.5">
                         {formatCurrency(selectedTx.deposit_amount)}
                       </div>
                     </div>
 
                     <div>
-                      <span style={{ fontSize: "11.5px", color: "#64748b" }}>Credit đã cấp vào Key</span>
-                      <div style={{ fontWeight: 800, color: "#ea580c", fontSize: "16px", marginTop: "2px" }}>
+                      <span className="text-slate-400 font-semibold text-[11px]">Credit đã cấp</span>
+                      <div className="font-black text-orange-600 text-base mt-0.5">
                         {formatCurrency(selectedTx.credit_amount)}
                       </div>
                     </div>
 
                     <div>
-                      <span style={{ fontSize: "11.5px", color: "#64748b" }}>Vốn API chi trả</span>
-                      <div style={{ fontWeight: 700, color: "#475569", fontSize: "14px", marginTop: "2px" }}>
+                      <span className="text-slate-400 font-semibold text-[11px]">Vốn API chi trả</span>
+                      <div className="font-bold text-slate-700 text-sm mt-0.5">
                         {formatCurrency(selectedTx.cost_amount)}
                       </div>
                     </div>
 
                     <div>
-                      <span style={{ fontSize: "11.5px", color: "#64748b" }}>Lợi nhuận ròng</span>
-                      <div style={{ fontWeight: 800, color: "#16a34a", fontSize: "15px", marginTop: "2px" }}>
-                        +{formatCurrency(selectedTx.profit_amount)}{" "}
-                        <span style={{ fontSize: "12px", fontWeight: 600 }}>({selectedTx.profit_percent}%)</span>
+                      <span className="text-slate-400 font-semibold text-[11px]">Lợi nhuận ròng</span>
+                      <div className="font-black text-emerald-600 text-sm mt-0.5">
+                        +{formatCurrency(selectedTx.profit_amount)} ({selectedTx.profit_percent}%)
                       </div>
                     </div>
                   </div>
 
-                  {/* Notes / Content Box */}
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569", display: "block", marginBottom: "4px" }}>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
                       Nội dung giao dịch / Ghi chú
                     </label>
-                    <div
-                      style={{
-                        background: "#f1f5f9",
-                        padding: "10px 14px",
-                        borderRadius: "8px",
-                        fontSize: "12.5px",
-                        color: "#334155",
-                        fontFamily: "monospace",
-                      }}
-                    >
+                    <div className="bg-slate-100 p-3 rounded-xl font-mono text-slate-700 text-xs">
                       {selectedTx.notes || selectedTx.raw_content || "Không có ghi chú"}
                     </div>
                   </div>
 
                   {/* Action Bar */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginTop: "10px",
-                      paddingTop: "16px",
-                      borderTop: "1px solid #e2e8f0",
-                    }}
-                  >
+                  <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
                     <button
                       type="button"
                       onClick={() => handleRevokeCredit(selectedTx)}
                       disabled={selectedTx.status === "REVOKED"}
-                      style={{
-                        background: selectedTx.status === "REVOKED" ? "#f1f5f9" : "#fef2f2",
-                        border: selectedTx.status === "REVOKED" ? "1px solid #cbd5e1" : "1px solid #fecaca",
-                        color: selectedTx.status === "REVOKED" ? "#94a3b8" : "#dc2626",
-                        padding: "8px 16px",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        cursor: selectedTx.status === "REVOKED" ? "not-allowed" : "pointer",
-                      }}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                        selectedTx.status === "REVOKED"
+                          ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                          : "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
+                      }`}
                     >
                       {selectedTx.status === "REVOKED" ? "Đã thu hồi Credit" : "Thu hồi Credit giao dịch này"}
                     </button>
@@ -1216,87 +852,52 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                     <button
                       type="button"
                       onClick={() => setModalActiveTab("api_config")}
-                      style={{
-                        background: "#ea580c",
-                        border: "none",
-                        color: "#ffffff",
-                        padding: "8px 18px",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 transition-colors"
                     >
-                      <Sliders size={14} />
-                      Chỉnh sửa Quota API Key
+                      <Sliders size={13} />
+                      <span>Chỉnh sửa Quota API Key</span>
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* TAB 2: CẤU HÌNH API KEY (TOKEN IN/OUT, REQUESTS LIMIT, CREDIT) */}
+              {/* TAB 2: CẤU HÌNH API KEY */}
               {modalActiveTab === "api_config" && (
-                <form onSubmit={handleSaveKeyConfig} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-                  <div
-                    style={{
-                      background: "#fff7ed",
-                      border: "1px solid #fed7aa",
-                      padding: "12px 16px",
-                      borderRadius: "10px",
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "10px",
-                    }}
-                  >
-                    <Sparkles size={18} style={{ color: "#ea580c", flexShrink: 0, marginTop: "2px" }} />
-                    <div style={{ fontSize: "12.5px", color: "#9a3412" }}>
-                      <strong>Cấu hình Quota API riêng cho Key [{selectedTx.api_key_name}]:</strong> Bạn có thể set chỉnh số lượng Request khách mua, đơn giá Token IN, đơn giá Token OUT và số Credit cấp chạy trực tiếp.
+                <form onSubmit={handleSaveKeyConfig} className="space-y-4 text-xs">
+                  <div className="bg-orange-50 border border-orange-200 p-3 rounded-xl flex items-start gap-2.5">
+                    <Sparkles size={16} className="text-orange-600 shrink-0 mt-0.5" />
+                    <div className="text-xs text-orange-900 leading-relaxed">
+                      <strong>Cấu hình Quota API riêng cho Key [{selectedTx.api_key_name}]:</strong> Bạn có thể set chỉnh số lượng Request, đơn giá Token IN, đơn giá Token OUT và số Credit cấp chạy trực tiếp.
                     </div>
                   </div>
 
                   {/* Mode Toggle Switch */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      background: "#f8fafc",
-                      padding: "12px 16px",
-                      borderRadius: "8px",
-                      border: "1px solid #e2e8f0",
-                    }}
-                  >
+                  <div className="flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: "13px", color: "#0f172a" }}>
+                      <div className="font-bold text-slate-900 text-xs">
                         Áp dụng cấu hình Quota tùy chỉnh riêng
                       </div>
-                      <div style={{ fontSize: "11.5px", color: "#64748b" }}>
+                      <div className="text-[11px] text-slate-500">
                         Bật để ghi đè công thức Credit chung cho Key này
                       </div>
                     </div>
-                    <label style={{ display: "inline-flex", alignItems: "center", cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={keyConfigForm.is_custom_quota}
-                        onChange={(e) =>
-                          setKeyConfigForm((prev) => ({
-                            ...prev,
-                            is_custom_quota: e.target.checked,
-                          }))
-                        }
-                        style={{ width: "18px", height: "18px", accentColor: "#ea580c" }}
-                      />
-                    </label>
+                    <input
+                      type="checkbox"
+                      checked={keyConfigForm.is_custom_quota}
+                      onChange={(e) =>
+                        setKeyConfigForm((prev) => ({
+                          ...prev,
+                          is_custom_quota: e.target.checked,
+                        }))
+                      }
+                      className="w-4 h-4 accent-orange-600"
+                    />
                   </div>
 
                   {/* Inputs Grid */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                    {/* Token IN Price */}
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "6px" }}>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">
                         Giá Token IN / 1M Token (VNĐ)
                       </label>
                       <input
@@ -1308,20 +909,12 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                             token_in_price: Number(e.target.value),
                           }))
                         }
-                        className="form-input-mf"
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13.5px",
-                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:border-orange-500"
                       />
                     </div>
 
-                    {/* Token OUT Price */}
                     <div>
-                      <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "6px" }}>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">
                         Giá Token OUT / 1M Token (VNĐ)
                       </label>
                       <input
@@ -1333,20 +926,12 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                             token_out_price: Number(e.target.value),
                           }))
                         }
-                        className="form-input-mf"
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13.5px",
-                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:border-orange-500"
                       />
                     </div>
 
-                    {/* Max Requests Per Day */}
                     <div>
-                      <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "6px" }}>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">
                         Giới hạn Requests (Req / ngày)
                       </label>
                       <input
@@ -1358,21 +943,13 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                             max_requests_per_day: Number(e.target.value),
                           }))
                         }
-                        className="form-input-mf"
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13.5px",
-                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white focus:outline-none focus:border-orange-500"
                       />
                     </div>
 
-                    {/* Total Credit Balance */}
                     <div>
-                      <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "6px" }}>
-                        Số dư Credit khả dụng của Key
+                      <label className="text-xs font-bold text-slate-700 block mb-1">
+                        Số dư Credit khả dụng
                       </label>
                       <input
                         type="number"
@@ -1383,84 +960,40 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                             credit_balance: Number(e.target.value),
                           }))
                         }
-                        className="form-input-mf"
-                        style={{
-                          width: "100%",
-                          padding: "9px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid #cbd5e1",
-                          fontSize: "13.5px",
-                          fontWeight: 700,
-                          color: "#ea580c",
-                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-orange-600 bg-white focus:outline-none focus:border-orange-500"
                       />
                     </div>
                   </div>
 
                   {/* Simulator Box */}
-                  <div
-                    style={{
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "10px",
-                      padding: "16px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "10px",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 750, color: "#0f172a" }}>
-                      <Zap size={15} style={{ color: "#ea580c" }} />
-                      Mô phỏng tiêu thụ Credit theo Token IN & OUT:
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                      <Zap size={14} className="text-orange-600" />
+                      <span>Mô phỏng tiêu thụ Credit theo Token:</span>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
                       <div>
-                        <span style={{ fontSize: "11px", color: "#64748b" }}>Token IN (Triệu / M)</span>
+                        <span className="text-[10.5px] text-slate-500">Token IN (M)</span>
                         <input
                           type="number"
                           value={simTokenIn}
                           onChange={(e) => setSimTokenIn(Number(e.target.value))}
-                          style={{
-                            width: "100%",
-                            padding: "6px 8px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "12.5px",
-                            marginTop: "2px",
-                          }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs font-bold bg-white mt-0.5"
                         />
                       </div>
                       <div>
-                        <span style={{ fontSize: "11px", color: "#64748b" }}>Token OUT (Triệu / M)</span>
+                        <span className="text-[10.5px] text-slate-500">Token OUT (M)</span>
                         <input
                           type="number"
                           value={simTokenOut}
                           onChange={(e) => setSimTokenOut(Number(e.target.value))}
-                          style={{
-                            width: "100%",
-                            padding: "6px 8px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "12.5px",
-                            marginTop: "2px",
-                          }}
+                          className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-xs font-bold bg-white mt-0.5"
                         />
                       </div>
                       <div>
-                        <span style={{ fontSize: "11px", color: "#64748b" }}>Credit tiêu hao</span>
-                        <div
-                          style={{
-                            background: "#ffffff",
-                            padding: "6px 8px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13px",
-                            fontWeight: 800,
-                            color: "#ea580c",
-                            marginTop: "2px",
-                          }}
-                        >
+                        <span className="text-[10.5px] text-slate-500">Credit tiêu hao</span>
+                        <div className="px-2 py-1.5 rounded-lg border border-slate-300 text-xs font-black text-orange-600 bg-white mt-0.5">
                           {formatCurrency(simCreditCost)}
                         </div>
                       </div>
@@ -1468,54 +1001,21 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                   </div>
 
                   {/* Buttons */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: "10px",
-                      paddingTop: "14px",
-                      borderTop: "1px solid #e2e8f0",
-                    }}
-                  >
+                  <div className="pt-4 border-t border-slate-200 flex justify-end gap-2.5">
                     <button
                       type="button"
                       onClick={() => setIsDetailModalOpen(false)}
-                      style={{
-                        background: "#ffffff",
-                        border: "1px solid #cbd5e1",
-                        color: "#475569",
-                        padding: "8px 16px",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: 650,
-                        cursor: "pointer",
-                      }}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 transition-colors"
                     >
                       Đóng
                     </button>
                     <button
                       type="submit"
                       disabled={savingKeyConfig}
-                      style={{
-                        background: "#ea580c",
-                        border: "none",
-                        color: "#ffffff",
-                        padding: "8px 20px",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        cursor: savingKeyConfig ? "not-allowed" : "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
+                      className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 transition-colors"
                     >
-                      {savingKeyConfig ? (
-                        <RotateCw size={14} className="animate-spin" />
-                      ) : (
-                        <Check size={14} />
-                      )}
-                      Lưu cấu hình API Key
+                      {savingKeyConfig ? <RotateCw size={13} className="animate-spin" /> : <Check size={13} />}
+                      <span>Lưu cấu hình API Key</span>
                     </button>
                   </div>
                 </form>
@@ -1525,81 +1025,44 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
         </div>
       )}
 
-      {/* 6. MODAL: Nạp Credit / Gia Hạn Thủ Công */}
+      {/* 5. MODAL: Nạp Credit Thủ Công */}
       {isManualModalOpen && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px",
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setIsManualModalOpen(false)}
         >
           <div
-            style={{
-              background: "#ffffff",
-              borderRadius: "16px",
-              width: "100%",
-              maxWidth: "560px",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
-              border: "1px solid #cbd5e1",
-              overflow: "hidden",
-            }}
+            className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
-            className="animate-scale-up"
           >
-            <div
-              style={{
-                padding: "18px 24px",
-                borderBottom: "1px solid #e2e8f0",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
+            <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
-                <span
-                  style={{
-                    background: "#fff7ed",
-                    color: "#ea580c",
-                    fontSize: "11px",
-                    fontWeight: 750,
-                    padding: "2px 8px",
-                    borderRadius: "10px",
-                    border: "1px solid #fed7aa",
-                  }}
-                >
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-300">
                   Nạp tiền thủ công
                 </span>
-                <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#0f172a", margin: "4px 0 0" }}>
+                <h3 className="text-base font-black text-slate-900 mt-1 m-0">
                   Cấp Credit / Gia hạn cho khách
                 </h3>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsManualModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <form onSubmit={handleManualSubmit} style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "14px" }}>
+            <form onSubmit={handleManualSubmit} className="p-5 space-y-3.5 text-xs">
               <div>
-                <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "4px" }}>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
                   Chọn License Key khách hàng *
                 </label>
                 <select
                   required
                   value={manualForm.license_id}
                   onChange={(e) => setManualForm((p) => ({ ...p, license_id: e.target.value }))}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #cbd5e1",
-                    fontSize: "13px",
-                    background: "#ffffff",
-                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white text-slate-800"
                 >
                   <option value="">-- Chọn khách hàng cần cấp Credit --</option>
                   {licenses.map((lic) => (
@@ -1610,9 +1073,9 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                 </select>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
                     Số tiền khách chuyển (VNĐ)
                   </label>
                   <input
@@ -1625,39 +1088,25 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                       const cred = pSell > 0 ? (val / pSell) * pCost : val * 0.8;
                       setManualForm((p) => ({ ...p, amount: val, credit_amount: cred }));
                     }}
-                    style={{
-                      width: "100%",
-                      padding: "9px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "13px",
-                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white text-slate-800"
                   />
                 </div>
 
                 <div>
-                  <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "4px" }}>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
                     Credit cấp vào Key
                   </label>
                   <input
                     type="number"
                     value={manualForm.credit_amount}
                     onChange={(e) => setManualForm((p) => ({ ...p, credit_amount: Number(e.target.value) }))}
-                    style={{
-                      width: "100%",
-                      padding: "9px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid #cbd5e1",
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      color: "#ea580c",
-                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-black text-orange-600 bg-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", display: "block", marginBottom: "4px" }}>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
                   Ghi chú
                 </label>
                 <input
@@ -1665,52 +1114,25 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
                   value={manualForm.notes}
                   onChange={(e) => setManualForm((p) => ({ ...p, notes: e.target.value }))}
                   placeholder="Ghi chú nạp tiền..."
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid #cbd5e1",
-                    fontSize: "13px",
-                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white text-slate-800"
                 />
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+              <div className="pt-3 border-t border-slate-200 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsManualModalOpen(false)}
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #cbd5e1",
-                    color: "#475569",
-                    padding: "8px 16px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: 650,
-                    cursor: "pointer",
-                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 transition-colors"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={manualSubmitting}
-                  style={{
-                    background: "#ea580c",
-                    border: "none",
-                    color: "#ffffff",
-                    padding: "8px 20px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    cursor: manualSubmitting ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 transition-colors"
                 >
-                  {manualSubmitting ? <RotateCw size={14} className="animate-spin" /> : <Check size={14} />}
-                  Xác nhận & Cấp Credit
+                  {manualSubmitting ? <RotateCw size={13} className="animate-spin" /> : <Check size={13} />}
+                  <span>Xác nhận & Cấp Credit</span>
                 </button>
               </div>
             </form>

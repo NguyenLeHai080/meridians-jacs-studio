@@ -5,7 +5,6 @@ import {
   ShieldCheck,
   Wallet,
   Building2,
-  CreditCard,
   ArrowDownLeft,
   Settings,
   Rocket,
@@ -84,7 +83,7 @@ export function Sidebar({
             <div className="brand-logo-icon">MI</div>
             <div className="brand-title-box">
               <span className="brand-title">MintForge</span>
-              <span className="brand-badge-sub">BUSINESS SUITE</span>
+              <span className="brand-badge-sub">{t("appSuite", "BUSINESS SUITE")}</span>
             </div>
           </a>
           {mobileMenuOpen && (
@@ -100,10 +99,10 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-menu">
-          <div className="menu-heading">KHÔNG GIAN LÀM VIỆC</div>
+          <div className="menu-heading">{t("headingWorkspace", "KHÔNG GIAN LÀM VIỆC")}</div>
 
           <div className="menu-heading" style={{ paddingTop: "0.4rem" }}>
-            TỔNG QUAN
+            {t("headingOverview", "TỔNG QUAN")}
           </div>
           <button
             type="button"
@@ -116,7 +115,7 @@ export function Sidebar({
             <span className="menu-label">{t("menuOverview", "Tổng quan hệ thống")}</span>
           </button>
 
-          <div className="menu-heading">KHÁCH HÀNG & BẢN QUYỀN</div>
+          <div className="menu-heading">{t("headingClientsLegal", "KHÁCH HÀNG & BẢN QUYỀN")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
@@ -140,7 +139,7 @@ export function Sidebar({
             <span className="menu-label">{t("menuTerms", "Phân quyền & Pháp lý")}</span>
           </button>
 
-          <div className="menu-heading">DỊCH VỤ & MÔ HÌNH AI</div>
+          <div className="menu-heading">{t("headingAiServices", "DỊCH VỤ & MÔ HÌNH AI")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "providers" ? "active" : ""}`}
@@ -149,7 +148,7 @@ export function Sidebar({
             <span className="menu-icon">
               <Cpu size={17} />
             </span>
-            <span className="menu-label">Cấu hình dịch vụ</span>
+            <span className="menu-label">{t("menuProviders", "Cấu hình AI Providers")}</span>
           </button>
 
           <button
@@ -160,7 +159,7 @@ export function Sidebar({
             <span className="menu-icon">
               <Coins size={17} />
             </span>
-            <span className="menu-label">Cấu hình gói credit</span>
+            <span className="menu-label">{t("menuPlans", "Cấu hình gói credit")}</span>
           </button>
 
           <button
@@ -171,7 +170,7 @@ export function Sidebar({
             <span className="menu-icon">
               <Layers size={17} />
             </span>
-            <span className="menu-label">Cấu hình gói model</span>
+            <span className="menu-label">{t("menuModelPricing", "Cấu hình gói model")}</span>
           </button>
 
           <button
@@ -182,7 +181,7 @@ export function Sidebar({
             <span className="menu-icon">
               <KeyRound size={17} />
             </span>
-            <span className="menu-label">Cấp Quyền & Credit Key Tool</span>
+            <span className="menu-label">{t("menuAiKeyGrants", "Cấp Quyền & Credit Key Tool")}</span>
           </button>
 
           <button
@@ -193,7 +192,7 @@ export function Sidebar({
             <span className="menu-icon">
               <Activity size={17} />
             </span>
-            <span className="menu-label">Nhật ký Requests AI</span>
+            <span className="menu-label">{t("menuAiRequestLogs", "Nhật ký Requests AI")}</span>
           </button>
 
           <button
@@ -204,10 +203,10 @@ export function Sidebar({
             <span className="menu-icon">
               <BarChart3 size={17} />
             </span>
-            <span className="menu-label">Báo cáo vận hành API</span>
+            <span className="menu-label">{t("menuApiOperations", "Báo cáo vận hành API")}</span>
           </button>
 
-          <div className="menu-heading">CREDIT & THANH TOÁN</div>
+          <div className="menu-heading">{t("headingBillingPayment", "CREDIT & THANH TOÁN")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "billing" ? "active" : ""}`}
@@ -241,7 +240,7 @@ export function Sidebar({
             <span className="menu-label">{t("menuRenewals", "Giao dịch nạp SePay")}</span>
           </button>
 
-          <div className="menu-heading">CẤU HÌNH & HỆ THỐNG</div>
+          <div className="menu-heading">{t("headingConfigSystem", "CẤU HÌNH & HỆ THỐNG")}</div>
           <button
             type="button"
             className={`menu-item ${activeMenu === "tool_branding" ? "active" : ""}`}
@@ -283,7 +282,7 @@ export function Sidebar({
             <span className="menu-icon">
               <ScrollText size={17} />
             </span>
-            <span className="menu-label">Vết thao tác quản trị</span>
+            <span className="menu-label">{t("menuLogs", "Vết thao tác quản trị")}</span>
           </button>
 
           <button
@@ -302,17 +301,17 @@ export function Sidebar({
         <div className="sidebar-promo-card">
           <div className="promo-header-row">
             <span className="promo-sparkle-icon">✨</span>
-            <span className="promo-title">Nâng cấp doanh nghiệp</span>
+            <span className="promo-title">{t("promoUpgradeTitle", "Nâng cấp doanh nghiệp")}</span>
           </div>
           <div className="promo-desc">
-            Mở khóa báo cáo nâng cao và tự động hóa.
+            {t("promoUpgradeDesc", "Mở khóa báo cáo nâng cao và tự động hóa.")}
           </div>
           <button
             type="button"
             className="btn-promo-action"
             onClick={onOpenAccountModal}
           >
-            <span>Nâng cấp ngay</span>
+            <span>{t("promoUpgradeBtn", "Nâng cấp ngay")}</span>
           </button>
         </div>
       </aside>
