@@ -89,27 +89,40 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
   const isFailed = job.status === "failed";
   const scenes = job.analysis?.scenes || [];
   const tokenInfo = formatTokenUsage(job);
+  const aiHookTitle = job.analysis?.videoTitle;
 
   return (
     <div
       style={{
-        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-        background: isSelected
-          ? "rgba(245, 158, 11, 0.08)"
+        margin: "8px 12px",
+        borderRadius: "12px",
+        background: isRunning
+          ? "linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(18, 24, 38, 0.85) 100%)"
+          : isSelected
+          ? "linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(20, 26, 42, 0.9) 100%)"
           : isExpanded
-          ? "rgba(255, 255, 255, 0.02)"
-          : "transparent",
-        transition: "all 0.15s ease",
+          ? "linear-gradient(135deg, rgba(30, 42, 68, 0.6) 0%, rgba(18, 24, 38, 0.9) 100%)"
+          : "linear-gradient(135deg, rgba(24, 32, 52, 0.7) 0%, rgba(15, 21, 35, 0.8) 100%)",
+        border: isSelected
+          ? "1px solid rgba(245, 158, 11, 0.5)"
+          : isExpanded
+          ? "1px solid rgba(245, 158, 11, 0.35)"
+          : "1px solid rgba(255, 255, 255, 0.08)",
+        boxShadow: isExpanded || isSelected
+          ? "0 8px 24px rgba(0, 0, 0, 0.45), 0 0 16px rgba(245, 158, 11, 0.12)"
+          : "0 4px 16px rgba(0, 0, 0, 0.25)",
+        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+        overflow: "hidden",
       }}
     >
       {/* Level 1: Parent Video Row */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "40px 42px minmax(260px, 2fr) 175px 145px 95px 250px",
-          padding: "11px 16px",
+          gridTemplateColumns: "40px 36px 1fr 160px 145px 105px 330px",
+          padding: "12px 16px",
           alignItems: "center",
-          background: isRunning ? "rgba(245, 158, 11, 0.05)" : "transparent",
+          gap: "8px",
         }}
       >
         {/* 1. Select Checkbox */}
@@ -120,8 +133,8 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
             onChange={() => onToggleSelect(job.id)}
             style={{
               cursor: "pointer",
-              width: "15px",
-              height: "15px",
+              width: "16px",
+              height: "16px",
               accentColor: "#f59e0b",
             }}
           />
@@ -138,19 +151,19 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
               border: isExpanded
                 ? "1px solid rgba(245, 158, 11, 0.45)"
                 : "1px solid rgba(255, 255, 255, 0.1)",
-              width: "26px",
-              height: "26px",
-              borderRadius: "6px",
+              width: "28px",
+              height: "28px",
+              borderRadius: "7px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              boxShadow: isExpanded ? "0 0 10px rgba(245, 158, 11, 0.2)" : "none",
+              boxShadow: isExpanded ? "0 0 10px rgba(245, 158, 11, 0.25)" : "none",
               transition: "all 0.15s ease",
             }}
-            title={isExpanded ? "Thu gọn phân cảnh" : "Mở rộng phân cảnh"}
+            title={isExpanded ? "Thu gọn phân cảnh" : "Mở rộng xem các phân cảnh trích xuất"}
           >
-            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
         </div>
 
@@ -159,48 +172,50 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "12px",
+            gap: "14px",
             minWidth: 0,
-            paddingRight: "12px",
+            paddingRight: "10px",
           }}
         >
-          {/* Thumbnail preview button */}
+          {/* Large Pro Video Thumbnail */}
           <div
             onClick={() => onOpenPreviewPlayer(job)}
             style={{
-              width: "52px",
-              height: "36px",
-              borderRadius: "7px",
-              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-              border: "1px solid rgba(245, 158, 11, 0.3)",
+              width: "66px",
+              height: "44px",
+              borderRadius: "8px",
+              background: "linear-gradient(135deg, #1e293b 0%, #0b0f19 100%)",
+              border: "1px solid rgba(245, 158, 11, 0.35)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "#fbbf24",
               cursor: "pointer",
               flexShrink: 0,
-              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.4)",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.5)",
               position: "relative",
               overflow: "hidden",
-              transition: "all 0.15s ease",
+              transition: "transform 0.15s ease",
             }}
-            title="Bấm để mở trình phát video và xem kịch bản đồng bộ"
+            title="Bấm để mở trình phát Video Player & xem kịch bản đồng bộ"
           >
-            <Film size={15} />
+            <Film size={18} />
             <div
               style={{
                 position: "absolute",
-                inset: 0,
-                background: "rgba(0,0,0,0.3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: 0,
-                transition: "opacity 0.15s ease",
+                bottom: "2px",
+                right: "3px",
+                background: "rgba(0, 0, 0, 0.75)",
+                borderRadius: "3px",
+                padding: "0 3px",
+                fontSize: "8.5px",
+                fontFamily: "monospace",
+                fontWeight: 700,
+                color: "#fbbf24",
+                lineHeight: "1.2",
               }}
-              className="thumb-hover-overlay"
             >
-              <PlayFill size={14} color="#f59e0b" />
+              {formatDuration(job.durationSeconds)}
             </div>
           </div>
 
@@ -208,7 +223,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
             <strong
               onClick={() => onOpenPreviewPlayer(job)}
               style={{
-                fontSize: "13px",
+                fontSize: "13.5px",
                 fontWeight: 700,
                 color: "#f8fafc",
                 display: "block",
@@ -223,14 +238,16 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
             >
               {job.name}
             </strong>
+
             <div
               style={{
-                fontSize: "10.5px",
+                fontSize: "11px",
                 color: "#94a3b8",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
-                marginTop: "3px",
+                gap: "8px",
+                marginTop: "4px",
+                flexWrap: "wrap",
               }}
             >
               <span
@@ -239,7 +256,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                   color: "#fbbf24",
                   background: "rgba(245, 158, 11, 0.12)",
                   border: "1px solid rgba(245, 158, 11, 0.25)",
-                  padding: "1px 5px",
+                  padding: "1px 6px",
                   borderRadius: "4px",
                   fontWeight: 700,
                   fontSize: "10px",
@@ -247,14 +264,47 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
               >
                 ⏱️ {formatDuration(job.durationSeconds)}
               </span>
-              <span style={{ color: "rgba(255, 255, 255, 0.2)" }}>•</span>
+
+              <span
+                style={{
+                  background: "rgba(56, 189, 248, 0.1)",
+                  border: "1px solid rgba(56, 189, 248, 0.25)",
+                  color: "#38bdf8",
+                  padding: "1px 5px",
+                  borderRadius: "4px",
+                  fontSize: "9.5px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                }}
+              >
+                {job.sourceType === "url" ? "URL VIDEO" : "LOCAL MP4"}
+              </span>
+
+              {aiHookTitle && aiHookTitle !== job.name && (
+                <span
+                  style={{
+                    color: "#fef08a",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "280px",
+                  }}
+                  title={`Tiêu đề AI đề xuất: ${aiHookTitle}`}
+                >
+                  🎯 AI Hook: {aiHookTitle}
+                </span>
+              )}
+
               <span
                 style={{
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  maxWidth: "240px",
+                  maxWidth: "220px",
                   color: "#64748b",
+                  fontSize: "10px",
                 }}
                 title={job.localPath || job.source}
               >
@@ -265,7 +315,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
         </div>
 
         {/* 4. Status Badge & Live Progress */}
-        <div style={{ paddingRight: "8px" }}>
+        <div style={{ paddingRight: "6px" }}>
           {isRunning ? (
             <div>
               <div
@@ -290,8 +340,8 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
               <div
                 style={{
                   width: "100%",
-                  height: "5px",
-                  background: "rgba(0,0,0,0.5)",
+                  height: "6px",
+                  background: "rgba(0, 0, 0, 0.6)",
                   borderRadius: "10px",
                   overflow: "hidden",
                   border: "1px solid rgba(245, 158, 11, 0.25)",
@@ -330,27 +380,36 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: "5px",
-                  background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.2))",
-                  border: "1px solid rgba(16, 185, 129, 0.35)",
+                  gap: "6px",
+                  background: "linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.22))",
+                  border: "1px solid rgba(16, 185, 129, 0.4)",
                   color: "#34d399",
-                  padding: "3px 9px",
+                  padding: "4px 10px",
                   borderRadius: "20px",
                   fontSize: "11px",
                   fontWeight: 700,
-                  boxShadow: "0 0 12px rgba(16, 185, 129, 0.12)",
+                  boxShadow: "0 0 12px rgba(16, 185, 129, 0.15)",
                 }}
               >
-                <CheckCircleFill size={10} /> Đã Phân Tích
+                <span
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "#10b981",
+                    boxShadow: "0 0 8px #10b981",
+                  }}
+                />
+                Đã Phân Tích
               </span>
               <div
                 style={{
                   fontSize: "10px",
                   color: "#94a3b8",
-                  marginTop: "3px",
+                  marginTop: "4px",
                   display: "flex",
                   alignItems: "center",
-                  gap: "3px",
+                  gap: "4px",
                 }}
               >
                 <span>🎬</span> {scenes.length} phân cảnh trích xuất
@@ -365,24 +424,24 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 background: "rgba(239, 68, 68, 0.12)",
                 border: "1px solid rgba(239, 68, 68, 0.3)",
                 color: "#f87171",
-                padding: "3px 8px",
+                padding: "4px 9px",
                 borderRadius: "20px",
                 fontSize: "10.5px",
                 fontWeight: 700,
               }}
             >
-              <XCircleFill size={10} /> Lỗi phân tích
+              <XCircleFill size={11} /> Lỗi phân tích
             </span>
           ) : (
             <span
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "4px",
+                gap: "5px",
                 background: "rgba(255, 255, 255, 0.05)",
                 border: "1px solid rgba(255, 255, 255, 0.08)",
                 color: "#94a3b8",
-                padding: "3px 8px",
+                padding: "4px 9px",
                 borderRadius: "20px",
                 fontSize: "10.5px",
                 fontWeight: 700,
@@ -397,7 +456,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
         <div>
           <div
             style={{
-              fontSize: "11.5px",
+              fontSize: "12px",
               fontWeight: 800,
               color: tokenInfo.isUsed ? "#fbbf24" : "#64748b",
               display: "flex",
@@ -430,11 +489,11 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
               border: isCompleted
                 ? "1px solid rgba(245, 158, 11, 0.35)"
                 : "1px solid rgba(255, 255, 255, 0.06)",
-              padding: "3px 9px",
+              padding: "4px 10px",
               borderRadius: "20px",
               display: "inline-flex",
               alignItems: "center",
-              gap: "3px",
+              gap: "4px",
               fontSize: "11.5px",
               fontWeight: 800,
               color: isCompleted ? "#fbbf24" : "#64748b",
@@ -445,36 +504,9 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
           </div>
         </div>
 
-        {/* 7. Row Actions */}
+        {/* 7. Row Actions (Clean, cohesive, ample 330px room) */}
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "6px" }}>
-          {/* Action 1: Re-run AI Analysis */}
-          <button
-            type="button"
-            onClick={() => onOpenAnalysisConfigForJob(job)}
-            disabled={isRunning}
-            style={{
-              background: isCompleted
-                ? "rgba(255, 255, 255, 0.05)"
-                : "linear-gradient(135deg, #d97706, #f59e0b)",
-              color: isCompleted ? "#cbd5e1" : "#12151f",
-              border: isCompleted ? "1px solid rgba(255, 255, 255, 0.12)" : "none",
-              padding: "5px 9px",
-              borderRadius: "6px",
-              fontSize: "11px",
-              fontWeight: 700,
-              cursor: isRunning ? "not-allowed" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-              transition: "all 0.15s ease",
-            }}
-            title="Cài đặt mô hình AI & chạy phân tích"
-          >
-            {isCompleted ? <ArrowRepeat size={11} /> : <LightningChargeFill size={11} />}
-            <span>{isRunning ? "Đang chạy..." : isCompleted ? "Chạy lại" : "Phân tích"}</span>
-          </button>
-
-          {/* Action 2: Sang Kịch Bản (Primary Highlight CTA) */}
+          {/* Action 1: Sang Kịch Bản (Primary Highlight CTA) */}
           {isCompleted && (
             <button
               type="button"
@@ -483,25 +515,25 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 background: "linear-gradient(135deg, #d97706, #f59e0b)",
                 border: "none",
                 color: "#0f172a",
-                padding: "5px 11px",
-                borderRadius: "6px",
+                padding: "6px 12px",
+                borderRadius: "7px",
                 fontSize: "11px",
                 fontWeight: 800,
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "5px",
-                boxShadow: "0 2px 10px rgba(245, 158, 11, 0.35)",
+                boxShadow: "0 3px 12px rgba(245, 158, 11, 0.35)",
                 transition: "all 0.15s ease",
               }}
               title="Chuyển sang Bước 2: Kịch bản & Lời thoại AI"
             >
-              <ChatQuoteFill size={11} />
+              <ChatQuoteFill size={12} />
               <span>Kịch bản ➔</span>
             </button>
           )}
 
-          {/* Action 3: Timeline - Chỉ hiển thị khi kịch bản ĐÃ ĐƯỢC DUYỆT hoặc có timelineClips */}
+          {/* Action 2: Timeline */}
           {isCompleted &&
             (job.analysis?.storyPlan?.status === "approved" ||
               (job.timelineClips && job.timelineClips.length > 0)) && (
@@ -512,15 +544,15 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                   background: "linear-gradient(135deg, #0284c7, #0ea5e9)",
                   border: "none",
                   color: "#ffffff",
-                  padding: "5px 9px",
-                  borderRadius: "6px",
+                  padding: "6px 10px",
+                  borderRadius: "7px",
                   fontSize: "11px",
                   fontWeight: 700,
                   cursor: "pointer",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "4px",
-                  boxShadow: "0 2px 10px rgba(14, 165, 233, 0.25)",
+                  boxShadow: "0 3px 10px rgba(14, 165, 233, 0.25)",
                 }}
                 title="Kịch bản đã duyệt - Mở bàn dựng Timeline"
               >
@@ -529,17 +561,42 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
               </button>
             )}
 
+          {/* Action 3: Re-run AI Analysis */}
+          <button
+            type="button"
+            onClick={() => onOpenAnalysisConfigForJob(job)}
+            disabled={isRunning}
+            style={{
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              color: "#cbd5e1",
+              padding: "6px 9px",
+              borderRadius: "7px",
+              fontSize: "11px",
+              fontWeight: 600,
+              cursor: isRunning ? "not-allowed" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              transition: "all 0.15s ease",
+            }}
+            title="Cài đặt mô hình AI & chạy lại phân tích"
+          >
+            <ArrowRepeat size={11} />
+            <span>Chạy lại</span>
+          </button>
+
           {/* Action 4: View Player */}
           <button
             type="button"
             onClick={() => onOpenPreviewPlayer(job)}
             style={{
-              background: "rgba(255, 255, 255, 0.05)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
               color: "#94a3b8",
-              width: "28px",
-              height: "28px",
-              borderRadius: "6px",
+              width: "30px",
+              height: "30px",
+              borderRadius: "7px",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -548,7 +605,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
             }}
             title="Xem trước Video Player"
           >
-            <EyeFill size={12} />
+            <EyeFill size={13} />
           </button>
 
           {/* Action 5: Delete */}
@@ -559,9 +616,9 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
               background: "rgba(239, 68, 68, 0.08)",
               border: "1px solid rgba(239, 68, 68, 0.2)",
               color: "#f87171",
-              width: "28px",
-              height: "28px",
-              borderRadius: "6px",
+              width: "30px",
+              height: "30px",
+              borderRadius: "7px",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -570,7 +627,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
             }}
             title="Xóa video khỏi danh sách"
           >
-            <Trash3Fill size={11} />
+            <Trash3Fill size={12} />
           </button>
         </div>
       </div>

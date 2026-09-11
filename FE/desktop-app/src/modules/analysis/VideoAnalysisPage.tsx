@@ -862,7 +862,7 @@ export function VideoAnalysisPage({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "40px 42px minmax(260px, 2fr) 175px 145px 95px 250px",
+            gridTemplateColumns: "40px 36px 1fr 160px 145px 105px 330px",
             padding: "12px 16px",
             background: "linear-gradient(90deg, rgba(28, 36, 56, 0.95) 0%, rgba(18, 24, 38, 0.95) 100%)",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
@@ -872,6 +872,7 @@ export function VideoAnalysisPage({
             textTransform: "uppercase",
             letterSpacing: "0.6px",
             alignItems: "center",
+            gap: "8px",
             flexShrink: 0,
           }}
         >
@@ -997,6 +998,50 @@ export function VideoAnalysisPage({
                 />
               );
             })
+          )}
+
+          {state.paginatedVideos.length > 0 && state.paginatedVideos.length < 3 && (
+            <div
+              onClick={() => setShowAddModal(true)}
+              style={{
+                margin: "12px 14px",
+                padding: "20px 24px",
+                border: "1px dashed rgba(245, 158, 11, 0.3)",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, rgba(245, 158, 11, 0.03) 0%, rgba(15, 23, 42, 0.4) 100%)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                color: "#94a3b8",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "50%",
+                    background: "rgba(245, 158, 11, 0.15)",
+                    color: "#fbbf24",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <PlusLg size={15} />
+                </div>
+                <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f8fafc" }}>
+                  Nạp thêm video nguồn vào thư viện
+                </span>
+              </div>
+              <span style={{ fontSize: "11px", color: "#64748b" }}>
+                Bấm vào đây để nạp thêm video từ máy tính hoặc dán link video để phân tích & kết xuất hàng loạt
+              </span>
+            </div>
           )}
         </div>
 
