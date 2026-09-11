@@ -125,6 +125,7 @@ export function EditorWorkspace({
         (job) =>
           !job.id.startsWith("render-") &&
           !job.id.startsWith("export-") &&
+          !job.name?.startsWith("[Xuất]") &&
           !Boolean(job.parentJobId) &&
           Boolean(job.analysis) &&
           (

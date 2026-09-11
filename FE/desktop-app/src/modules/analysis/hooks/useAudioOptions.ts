@@ -17,7 +17,7 @@ export function useAudioOptions() {
     return localStorage.getItem("jacs_auto_ducking") !== "false";
   });
   const [autoQueueRender, setAutoQueueRender] = useState<boolean>(() => {
-    return localStorage.getItem("jacs_auto_queue_render") !== "false";
+    return localStorage.getItem("jacs_auto_queue_render") === "true";
   });
 
   const updateNarratorEnabled = (val: boolean) => {

@@ -240,6 +240,7 @@ export function BatchJobsPage({
       (job) =>
         !job.id.startsWith("render-") && // Crucial: Render output jobs must not be counted as timeline sources!
         !job.id.startsWith("export-") &&
+        !job.name?.startsWith("[Xuất]") &&
         !Boolean(job.parentJobId) &&
         Boolean(job.analysis) &&
         job.timelineReady === true // Only load videos explicitly transferred from Timeline!

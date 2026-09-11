@@ -125,7 +125,7 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
   updateEmphasizeHook,
   autoDucking,
   updateAutoDucking,
-  autoQueueRender = true,
+  autoQueueRender = false,
   updateAutoQueueRender,
   defaultLanguage,
   setDefaultLanguage,
