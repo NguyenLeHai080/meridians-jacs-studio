@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
-const { buildCaptionCues, buildSrt, normalizeSubtitleSegments } = require("../electron/subtitles.cjs");
+const { buildCaptionCues, buildSrt, buildWordByWordCues, normalizeSubtitleSegments, splitIntoPhrases } = require("../electron/subtitles.cjs");
 
 const root = path.resolve(__dirname, "..");
 const platformDir = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : null;
@@ -71,3 +71,17 @@ test("burns UTF-8 subtitles into a real output when bundled FFmpeg is available"
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("builds progressive word-by-word cues with highlighted active words", () => {
+  const cues = buildWordByWordCues([
+    { start: 0, end: 4, text: "Xin chào các bạn, chào mừng đến với studio." }
+  ], 4, "", { style: "gold" });
+
+  assert.ok(cues.length >= 8);
+  assert.equal(cues[0].start, 0);
+  assert.ok(cues.at(-1).end <= 4);
+  assert.match(cues[0].text, /<font color="#FFE478"><b>Xin<\/b><\/font>/);
+  assert.match(cues[1].text, /Xin <font color="#FFE478"><b>chào<\/b><\/font>/);
+  assert.ok(cues.every((c) => c.end > c.start));
+});
+

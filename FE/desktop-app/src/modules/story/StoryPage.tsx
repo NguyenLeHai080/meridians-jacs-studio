@@ -113,7 +113,15 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
   const storyJobs = useMemo(
     () =>
       jobs.filter(
-        (job) => job.analysis?.voiceScript || job.analysis?.scenes?.length
+        (job) =>
+          !job.id.startsWith("render-") &&
+          !job.id.startsWith("export-") &&
+          !Boolean(job.parentJobId) &&
+          Boolean(job.analysis) &&
+          Boolean(
+            (job.analysis?.voiceScript && job.analysis.voiceScript.trim().length > 0) ||
+            (job.analysis?.scenes && job.analysis.scenes.length > 0)
+          )
       ),
     [jobs]
   );
@@ -333,6 +341,26 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
       };
     });
 
+    const clips = scenes.map((s, idx) => ({
+      sceneId: s.id || `scene-${idx + 1}`,
+      order: idx,
+      sourceSceneId: s.id || `scene-${idx + 1}`,
+      trimIn: 0,
+      trimOut: 0,
+    }));
+    const cuts = scenes.map((s, idx) => ({
+      sceneId: s.id || `scene-${idx + 1}`,
+      sourceSceneId: s.id || `scene-${idx + 1}`,
+      order: idx,
+      sourceStart: s.sourceTimeStart ?? parseTimeToSec(s.sourceStart || s.start || "00:00"),
+      sourceEnd: s.sourceTimeEnd ?? parseTimeToSec(s.sourceEnd || s.end || "00:00"),
+      startSeconds: s.sourceTimeStart ?? parseTimeToSec(s.sourceStart || s.start || "00:00"),
+      endSeconds: s.sourceTimeEnd ?? parseTimeToSec(s.sourceEnd || s.end || "00:00"),
+      trimIn: 0,
+      trimOut: 0,
+      text: s.voiceover || s.translation || "",
+    }));
+
     onUpdateJob(selected.id, {
       analysis: {
         ...selected.analysis,
@@ -352,6 +380,10 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
       languages: [voiceLanguage],
       requiresScriptApproval: false,
       sourceOnly: false,
+      timelineClips: clips,
+      cutClips: cuts as any,
+      narrationText: draft.trim(),
+      subtitleText: draft.trim(),
       keepOriginalAudio: selected.keepOriginalAudio ?? (selected.narratorEnabled === false ? true : false),
       removeOriginalBgm: selected.removeOriginalBgm,
       isolateVocals: selected.isolateVocals,
@@ -366,6 +398,98 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
     } else {
       onNavigate("timeline");
     }
+  }
+
+  async function handleBatchApproveAllScripts() {
+    if (!storyJobs.length) {
+      showToast("⚠️ Không có kịch bản nào để duyệt.");
+      return;
+    }
+
+    const ok = await popup.confirm(
+      "Duyệt Hàng Loạt Tất Cả Kịch Bản",
+      `Bạn có muốn duyệt toàn bộ ${storyJobs.length} kịch bản với cấu hình giọng đọc hiện tại và đưa sẵn sàng sang Timeline / Render?`,
+      "Duyệt Tất Cả ➔",
+      "Hủy"
+    );
+
+    if (!ok) return;
+
+    storyJobs.forEach((job) => {
+      let timelineCursor = 0;
+      const scenes = (job.analysis?.scenes || []).map((scene, index) => {
+        const vo = scene.voiceover || scene.translation || "";
+        const words = vo.split(/\s+/).filter(Boolean).length;
+        const rate = voiceRate > 0 ? voiceRate : 1.0;
+        const sceneDur = Math.max(3, Math.round(words / (2.8 * rate)));
+        const startSec = timelineCursor;
+        const endSec = timelineCursor + sceneDur;
+        timelineCursor = endSec;
+
+        const srcStart = scene.sourceStart || scene.start || "00:00";
+        const srcStartSec = parseTimeToSec(srcStart);
+        const srcEnd = scene.sourceEnd || formatSeconds(srcStartSec + sceneDur);
+
+        return {
+          ...scene,
+          voiceover: vo,
+          translation: vo,
+          start: formatSeconds(startSec),
+          end: formatSeconds(endSec),
+          timeStart: startSec,
+          timeEnd: endSec,
+          sourceStart: srcStart,
+          sourceEnd: srcEnd,
+          sourceTimeStart: srcStartSec,
+          sourceTimeEnd: parseTimeToSec(srcEnd),
+        };
+      });
+
+      const clips = scenes.map((s, idx) => ({
+        sceneId: s.id || `scene-${idx + 1}`,
+        order: idx,
+        sourceSceneId: s.id || `scene-${idx + 1}`,
+        trimIn: 0,
+        trimOut: 0,
+      }));
+
+      const cuts = scenes.map((s, idx) => ({
+        sceneId: s.id || `scene-${idx + 1}`,
+        sourceSceneId: s.id || `scene-${idx + 1}`,
+        order: idx,
+        sourceStart: s.sourceTimeStart ?? parseTimeToSec(s.sourceStart || s.start || "00:00"),
+        sourceEnd: s.sourceTimeEnd ?? parseTimeToSec(s.sourceEnd || s.end || "00:00"),
+        startSeconds: s.sourceTimeStart ?? parseTimeToSec(s.sourceStart || s.start || "00:00"),
+        endSeconds: s.sourceTimeEnd ?? parseTimeToSec(s.sourceEnd || s.end || "00:00"),
+        trimIn: 0,
+        trimOut: 0,
+        text: s.voiceover || s.translation || "",
+      }));
+
+      const fullNarrationText = job.analysis?.voiceScript || scenes.map((s) => s.voiceover || s.translation).filter(Boolean).join(" ");
+
+      onUpdateJob(job.id, {
+        analysis: {
+          summary: job.analysis?.summary || "Kịch bản AI",
+          score: job.analysis?.score || 9.5,
+          ...(job.analysis || {}),
+          scenes,
+          voiceScript: job.analysis?.voiceScript || fullNarrationText,
+        } as any,
+        durationSeconds: timelineCursor || job.durationSeconds,
+        requiresScriptApproval: false,
+        sourceOnly: false,
+        timelineClips: clips,
+        cutClips: cuts as any,
+        narrationText: fullNarrationText,
+        subtitleText: fullNarrationText,
+        narratorVoice: job.narratorVoice || voiceId,
+        languages: job.languages?.length ? job.languages : [voiceLanguage],
+        status: "completed",
+      });
+    });
+
+    showToast(`🎉 Đã duyệt thành công tất cả ${storyJobs.length} kịch bản!`);
   }
 
   // Unified Exclusive Voice Synthesizer Handler (High Quality Microsoft Neural / Edge TTS with Speed Control)
@@ -482,6 +606,12 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
     setLoadingVoiceKey(null);
   }
 
+  useEffect(() => {
+    return () => {
+      stopGlobalAudio();
+    };
+  }, []);
+
   return (
     <div
       className="story-workspace-root animate-fade-in"
@@ -549,6 +679,29 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
           >
             <CheckLg size={12} /> Lưu Bản Thảo
           </button>
+
+          {storyJobs.length > 1 && (
+            <button
+              type="button"
+              onClick={handleBatchApproveAllScripts}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "rgba(16, 185, 129, 0.15)",
+                border: "1px solid rgba(16, 185, 129, 0.35)",
+                color: "#34d399",
+                padding: "7px 14px",
+                borderRadius: "7px",
+                fontSize: "12px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+              title="Duyệt tất cả kịch bản cùng lúc"
+            >
+              <CheckCircleFill size={12} /> Duyệt Tất Cả ({storyJobs.length})
+            </button>
+          )}
 
           <button
             type="button"

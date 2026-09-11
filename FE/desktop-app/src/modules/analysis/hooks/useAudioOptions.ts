@@ -16,6 +16,9 @@ export function useAudioOptions() {
   const [autoDucking, setAutoDucking] = useState<boolean>(() => {
     return localStorage.getItem("jacs_auto_ducking") !== "false";
   });
+  const [autoQueueRender, setAutoQueueRender] = useState<boolean>(() => {
+    return localStorage.getItem("jacs_auto_queue_render") !== "false";
+  });
 
   const updateNarratorEnabled = (val: boolean) => {
     setNarratorEnabled(val);
@@ -42,6 +45,11 @@ export function useAudioOptions() {
     try { localStorage.setItem("jacs_auto_ducking", String(val)); } catch {}
   };
 
+  const updateAutoQueueRender = (val: boolean) => {
+    setAutoQueueRender(val);
+    try { localStorage.setItem("jacs_auto_queue_render", String(val)); } catch {}
+  };
+
   return {
     narratorEnabled,
     updateNarratorEnabled,
@@ -53,5 +61,7 @@ export function useAudioOptions() {
     updateEmphasizeHook,
     autoDucking,
     updateAutoDucking,
+    autoQueueRender,
+    updateAutoQueueRender,
   };
 }

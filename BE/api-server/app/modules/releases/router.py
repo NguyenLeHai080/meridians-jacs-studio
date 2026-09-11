@@ -12,9 +12,22 @@ async def create_release(payload: ReleaseCreate, _: dict = Depends(require_auth)
     return store.create("releases", {**payload.model_dump(mode="json"), "status": "draft"})
 
 
+def _release_sort_key(x: dict):
+    v = x.get("version") or ""
+    parts = []
+    for p in str(v).lstrip("v").split("-")[0].split("."):
+        if p.isdigit():
+            parts.append(int(p))
+    date_str = x.get("created_at") or x.get("published_at") or ""
+    if not isinstance(date_str, str):
+        date_str = ""
+    return (parts, date_str)
+
+
 @router.get("", response_model=list[ReleaseResponse])
 async def list_releases(_: dict = Depends(require_auth)):
-    return store.list("releases")
+    items = store.list("releases")
+    return sorted(items, key=_release_sort_key, reverse=True)
 
 
 @router.post("/{release_id}/publish", response_model=ReleaseResponse)

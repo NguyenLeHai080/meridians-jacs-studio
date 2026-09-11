@@ -5,6 +5,7 @@ import { StatusPill } from "../../shared/StatusPill";
 import { Pagination } from "../../shared/Pagination";
 import { Modal } from "../../shared/Modal";
 import { popup } from "../../shared/popup";
+import { toSeconds, stripSceneMetadata } from "../editor/utils/editorTime";
 import {
   CameraReelsFill,
   FolderFill,
@@ -68,6 +69,74 @@ export function RenderPage({
     () => jobs.filter((job) => !job.sourceOnly),
     [jobs]
   );
+
+  const readyToRenderSources = useMemo(
+    () => jobs.filter((job) => job.sourceOnly && (job.analysis?.scenes?.length || job.analysis?.voiceScript)),
+    [jobs]
+  );
+
+  function handleQueueAllReadySources() {
+    if (!onUpdateJob) return;
+    readyToRenderSources.forEach((job) => {
+      const scenes = job.analysis?.scenes || [];
+      let cursor = 0;
+      const cuts = (job as any).cutClips && (job as any).cutClips.length > 0
+        ? (job as any).cutClips
+        : scenes.map((s: any, idx: number) => {
+            const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start || 0);
+            const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start) || (s.duration ? toSeconds(s.duration) : 5));
+            const srcEnd = s.sourceTimeEnd ?? (srcStart + sceneDur);
+            const tStart = cursor;
+            const tEnd = cursor + sceneDur;
+            cursor = tEnd;
+            const text = stripSceneMetadata(s.voiceover || s.translation || s.subtitle || s.detail || "").trim();
+            return {
+              sceneId: s.id || `scene-${idx + 1}`,
+              order: idx,
+              sourceSceneId: s.id || `scene-${idx + 1}`,
+              sourceStart: srcStart,
+              sourceEnd: srcEnd,
+              sourceTimeStart: srcStart,
+              sourceTimeEnd: srcEnd,
+              start: tStart,
+              end: tEnd,
+              duration: sceneDur,
+              text,
+              title: s.title || `Cảnh ${idx + 1}`,
+              subtitle: text,
+              subtitleText: text,
+            };
+          });
+
+      const subSegments = cuts.map((c: any) => ({
+        start: c.start ?? 0,
+        end: c.end ?? (c.duration || 5),
+        text: c.text,
+      })).filter((s: any) => s.text);
+
+      const fullNarrationText =
+        job.analysis?.voiceScript ||
+        scenes
+          .map((s: any) => s.voiceover || s.translation || s.subtitle || s.detail)
+          .filter(Boolean)
+          .join(" ");
+
+      onUpdateJob(job.id, {
+        sourceOnly: false,
+        status: "queued",
+        stage: "queued",
+        progress: 0,
+        requiresScriptApproval: false,
+        timelineClips: cuts as any,
+        cutClips: cuts,
+        subtitleSegments: subSegments,
+        durationSeconds: cursor || job.durationSeconds || 60,
+        narrationText: job.narrationText || fullNarrationText,
+        subtitleText: job.subtitleText || fullNarrationText,
+      });
+    });
+    popup.success(`✓ Đã đưa ${readyToRenderSources.length} video vào hàng đợi render!`);
+  }
 
   const runningJobs = useMemo(
     () => renderJobs.filter((j) => j.status === "running" || j.status === "queued"),
@@ -203,6 +272,56 @@ export function RenderPage({
           )}
         </div>
       </div>
+
+      {/* Ready To Render Banner */}
+      {readyToRenderSources.length > 0 && (
+        <div
+          style={{
+            background: "linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.08))",
+            border: "1px solid rgba(16, 185, 129, 0.35)",
+            borderRadius: "8px",
+            padding: "8px 14px",
+            marginBottom: "10px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "10px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "16px" }}>💡</span>
+            <div>
+              <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#34d399" }}>
+                Có {readyToRenderSources.length} video đã phân tích AI sẵn sàng để Render!
+              </div>
+              <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                Các video từ tab Phân Tích đã có kịch bản và phân cảnh, bấm để đưa ngay vào hàng đợi xuất video hoàn chỉnh.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleQueueAllReadySources}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "linear-gradient(135deg, #059669, #10b981)",
+              border: "none",
+              color: "#ffffff",
+              padding: "6px 14px",
+              borderRadius: "6px",
+              fontSize: "11.5px",
+              fontWeight: 800,
+              cursor: "pointer",
+              boxShadow: "0 0 12px rgba(16, 185, 129, 0.4)",
+            }}
+          >
+            🚀 Đưa Tất Cả Vào Render Ngay ({readyToRenderSources.length})
+          </button>
+        </div>
+      )}
 
       {/* 2. KPI Summary Bar */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "8px", marginBottom: "12px", flexShrink: 0 }}>

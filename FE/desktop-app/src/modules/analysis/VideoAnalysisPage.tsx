@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { AnalysisResult, AnalysisScene, DurationMappingRule, Job, NavKey, ProviderPoolItem, TimelineClip } from "../../core/types";
 import { getRuntime } from "../../core/runtime";
 import { popup } from "../../shared/popup";
 import { Film, PlusLg } from "react-bootstrap-icons";
+import { toSeconds, stripSceneMetadata } from "../editor/utils/editorTime";
 
 // Subcomponents
 import { AnalysisToolbar } from "./components/AnalysisToolbar";
@@ -70,13 +71,18 @@ export function VideoAnalysisPage({
   // Running jobs & progress
   const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<Record<string, { progress: number; stage: string }>>({});
+  const opToJobIdMap = useRef<Map<string, string>>(new Map());
 
   // Listen to live analysis progress events from backend/Electron
   useEffect(() => {
     const unsubscribe = getRuntime().onAnalysisProgress?.((value) => {
       if (!value.operationId) return;
-      const match = value.operationId.match(/^analysis-(job-[^-\s]+|\d+)/);
-      const targetId = match ? match[1] : value.operationId;
+      const mappedId = opToJobIdMap.current.get(value.operationId);
+      const strippedId = value.operationId.startsWith("analysis-")
+        ? value.operationId.replace(/^analysis-/, "").replace(/-\d+$/, "")
+        : value.operationId;
+      const targetId = mappedId || strippedId;
+
       setBatchProgress((prev) => ({
         ...prev,
         [targetId]: { progress: value.progress, stage: value.stage },
@@ -169,6 +175,7 @@ export function VideoAnalysisPage({
     }
 
     const opId = `analysis-${job.id}-${Date.now()}`;
+    opToJobIdMap.current.set(opId, job.id);
     const targetMins =
       state.targetDuration === "full"
         ? job.durationSeconds && job.durationSeconds > 10
@@ -218,6 +225,50 @@ export function VideoAnalysisPage({
       });
 
       const newName = (analysis as any).videoTitle || job.name;
+      const scenes = (analysis as any).scenes || [];
+
+      let cursor = 0;
+      const cuts = scenes.map((s: any, idx: number) => {
+        const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start || 0);
+        const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start) || (s.duration ? toSeconds(s.duration) : 5));
+        const srcEnd = s.sourceTimeEnd ?? (srcStart + sceneDur);
+        const tStart = cursor;
+        const tEnd = cursor + sceneDur;
+        cursor = tEnd;
+        const text = stripSceneMetadata(s.voiceover || s.translation || s.subtitle || s.detail || "").trim();
+        return {
+          sceneId: s.id || `scene-${idx + 1}`,
+          order: idx,
+          sourceSceneId: s.id || `scene-${idx + 1}`,
+          sourceStart: srcStart,
+          sourceEnd: srcEnd,
+          sourceTimeStart: srcStart,
+          sourceTimeEnd: srcEnd,
+          start: tStart,
+          end: tEnd,
+          duration: sceneDur,
+          text,
+          title: s.title || `Cảnh ${idx + 1}`,
+          subtitle: text,
+          subtitleText: text,
+        };
+      });
+
+      const subSegments = cuts.map((c: any) => ({
+        start: c.start,
+        end: c.end,
+        text: c.text,
+      })).filter((s: any) => s.text);
+
+      const fullNarrationText =
+        (analysis as any).voiceScript ||
+        scenes
+          .map((s: any) => s.voiceover || s.translation || s.subtitle || s.detail)
+          .filter(Boolean)
+          .join(" ");
+
+      const isAutoRender = Boolean(state.autoQueueRender);
+
       if (onUpdateJob) {
         onUpdateJob(job.id, {
           name: newName,
@@ -226,6 +277,12 @@ export function VideoAnalysisPage({
           status: "completed",
           stage: "completed",
           progress: 100,
+          sourceOnly: true,
+          requiresScriptApproval: false,
+          timelineClips: cuts as any,
+          cutClips: cuts,
+          subtitleSegments: subSegments,
+          durationSeconds: cursor || job.durationSeconds || 60,
           analysis,
           narratorEnabled: state.narratorEnabled,
           narratorVoice: voice,
@@ -238,10 +295,48 @@ export function VideoAnalysisPage({
           removeOriginalBgm: state.removeOriginalBgm,
           isolateVocals: state.removeOriginalBgm,
           customPrompt: prompt,
+          subtitleText: fullNarrationText,
+          narrationText: fullNarrationText,
         });
       }
+
+      if (isAutoRender && onAddJob) {
+        const renderJobId = `render-${Date.now()}-${job.id}`;
+        onAddJob({
+          id: renderJobId,
+          parentJobId: job.id,
+          name: `[Xuất] ${newName}`,
+          source: job.source,
+          sourceType: job.sourceType,
+          localPath: job.localPath,
+          sourceOnly: false,
+          mode: "local-gpu",
+          durationSeconds: cursor || job.durationSeconds || 60,
+          aspectRatio: job.aspectRatio || "9:16",
+          narratorEnabled: state.narratorEnabled,
+          narratorVoice: voice,
+          languages: [lang],
+          cutClips: cuts,
+          timelineClips: cuts as any,
+          subtitleSegments: subSegments,
+          scenes: scenes as any,
+          analysis,
+          subtitleStyle: job.subtitleStyle || "gold",
+          subtitleText: fullNarrationText,
+          narrationText: fullNarrationText,
+          status: "queued",
+          stage: "queued",
+          progress: 0,
+          createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        });
+      }
+
       state.setExpandedJobIds((prev) => new Set(prev).add(job.id));
-      state.showToast(`🎉 Phân tích AI thành công: ${newName} (${analysis.scenes?.length || 0} phân cảnh)`);
+      if (isAutoRender) {
+        state.showToast(`🎉 Phân tích AI xong & Đưa vào Hàng Đợi Render: ${newName}`);
+      } else {
+        state.showToast(`🎉 Phân tích AI thành công: ${newName} (${scenes.length} phân cảnh)`);
+      }
     } catch (err: any) {
       if (onUpdateJob) {
         onUpdateJob(job.id, {
@@ -370,6 +465,219 @@ export function VideoAnalysisPage({
       onNavigate("story");
     }
     state.showToast(`📝 Đã mở kịch bản thuyết minh của ${job.name}!`);
+  }
+
+  function handleQueueSingleToRender(job: Job) {
+    if (!job.analysis?.scenes?.length && !job.analysis?.voiceScript) {
+      state.showToast("⚠️ Video chưa được phân tích AI. Vui lòng phân tích trước khi render.");
+      return;
+    }
+    const scenes = job.analysis?.scenes || [];
+    let cursor = 0;
+    const cuts = (job as any).cutClips && (job as any).cutClips.length > 0
+      ? (job as any).cutClips
+      : scenes.map((s: any, idx: number) => {
+          const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start || 0);
+          const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start) || (s.duration ? toSeconds(s.duration) : 5));
+          const srcEnd = s.sourceTimeEnd ?? (srcStart + sceneDur);
+          const tStart = cursor;
+          const tEnd = cursor + sceneDur;
+          cursor = tEnd;
+          const text = stripSceneMetadata(s.voiceover || s.translation || s.subtitle || s.detail || "").trim();
+          return {
+            sceneId: s.id || `scene-${idx + 1}`,
+            order: idx,
+            sourceSceneId: s.id || `scene-${idx + 1}`,
+            sourceStart: srcStart,
+            sourceEnd: srcEnd,
+            sourceTimeStart: srcStart,
+            sourceTimeEnd: srcEnd,
+            start: tStart,
+            end: tEnd,
+            duration: sceneDur,
+            text,
+            title: s.title || `Cảnh ${idx + 1}`,
+            subtitle: text,
+            subtitleText: text,
+          };
+        });
+
+    const subSegments = cuts.map((c: any) => ({
+      start: c.start ?? 0,
+      end: c.end ?? (c.duration || 5),
+      text: c.text,
+    })).filter((s: any) => s.text);
+
+    const fullNarrationText =
+      job.analysis?.voiceScript ||
+      scenes
+        .map((s: any) => s.voiceover || s.translation || s.subtitle || s.detail)
+        .filter(Boolean)
+        .join(" ");
+
+    if (onUpdateJob) {
+      onUpdateJob(job.id, {
+        timelineClips: cuts as any,
+        cutClips: cuts,
+        subtitleSegments: subSegments,
+        durationSeconds: cursor || job.durationSeconds || 60,
+        narrationText: job.narrationText || fullNarrationText,
+        subtitleText: job.subtitleText || fullNarrationText,
+      });
+    }
+
+    if (onAddJob) {
+      const renderJobId = `render-${Date.now()}-${job.id}`;
+      onAddJob({
+        id: renderJobId,
+        parentJobId: job.id,
+        name: `[Xuất] ${job.videoTitle || job.name}`,
+        source: job.source,
+        sourceType: job.sourceType,
+        localPath: job.localPath,
+        sourceOnly: false,
+        mode: "local-gpu",
+        durationSeconds: cursor || job.durationSeconds || 60,
+        aspectRatio: job.aspectRatio || "9:16",
+        narratorEnabled: job.narratorEnabled ?? true,
+        narratorVoice: job.narratorVoice,
+        languages: job.languages || ["vi"],
+        cutClips: cuts,
+        timelineClips: cuts as any,
+        subtitleSegments: subSegments,
+        scenes: scenes as any,
+        analysis: job.analysis,
+        audioLayers: job.audioLayers,
+        subtitleStyle: job.subtitleStyle || "gold",
+        subtitleText: fullNarrationText,
+        narrationText: fullNarrationText,
+        status: "queued",
+        stage: "queued",
+        progress: 0,
+        createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+      });
+    }
+    state.showToast(`🚀 Đã đưa "${job.name}" vào Hàng Đợi Render!`);
+  }
+
+  function handleBatchQueueToRender(targetJobIds?: string[]) {
+    const ids = targetJobIds || (state.selectedJobIds.size > 0 ? Array.from(state.selectedJobIds) : state.sourceCandidates.map((j) => j.id));
+    const targetJobs = state.sourceCandidates.filter(
+      (j) => ids.includes(j.id) && (j.analysis?.scenes?.length || j.analysis?.voiceScript)
+    );
+
+    if (targetJobs.length === 0) {
+      state.showToast("⚠️ Chưa có video nào được phân tích AI hoàn tất để đưa vào Render.");
+      return;
+    }
+
+    targetJobs.forEach((j, idx) => {
+      const scenes = j.analysis?.scenes || [];
+      let cursor = 0;
+      const cuts = (j as any).cutClips && (j as any).cutClips.length > 0
+        ? (j as any).cutClips
+        : scenes.map((s: any, sIdx: number) => {
+            const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start || 0);
+            const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start) || (s.duration ? toSeconds(s.duration) : 5));
+            const srcEnd = s.sourceTimeEnd ?? (srcStart + sceneDur);
+            const tStart = cursor;
+            const tEnd = cursor + sceneDur;
+            cursor = tEnd;
+            const text = stripSceneMetadata(s.voiceover || s.translation || s.subtitle || s.detail || "").trim();
+            return {
+              sceneId: s.id || `scene-${sIdx + 1}`,
+              order: sIdx,
+              sourceSceneId: s.id || `scene-${sIdx + 1}`,
+              sourceStart: srcStart,
+              sourceEnd: srcEnd,
+              sourceTimeStart: srcStart,
+              sourceTimeEnd: srcEnd,
+              start: tStart,
+              end: tEnd,
+              duration: sceneDur,
+              text,
+              title: s.title || `Cảnh ${sIdx + 1}`,
+              subtitle: text,
+              subtitleText: text,
+            };
+          });
+
+      const subSegments = cuts.map((c: any) => ({
+        start: c.start ?? 0,
+        end: c.end ?? (c.duration || 5),
+        text: c.text,
+      })).filter((s: any) => s.text);
+
+      const fullNarrationText =
+        j.analysis?.voiceScript ||
+        scenes
+          .map((s: any) => s.voiceover || s.translation || s.subtitle || s.detail)
+          .filter(Boolean)
+          .join(" ");
+
+      if (onUpdateJob) {
+        onUpdateJob(j.id, {
+          timelineClips: cuts as any,
+          cutClips: cuts,
+          subtitleSegments: subSegments,
+          durationSeconds: cursor || j.durationSeconds || 60,
+          narrationText: j.narrationText || fullNarrationText,
+          subtitleText: j.subtitleText || fullNarrationText,
+        });
+      }
+
+      if (onAddJob) {
+        const renderJobId = `render-${Date.now()}-${idx}-${j.id}`;
+        onAddJob({
+          id: renderJobId,
+          parentJobId: j.id,
+          name: `[Xuất] ${j.videoTitle || j.name}`,
+          source: j.source,
+          sourceType: j.sourceType,
+          localPath: j.localPath,
+          sourceOnly: false,
+          mode: "local-gpu",
+          durationSeconds: cursor || j.durationSeconds || 60,
+          aspectRatio: j.aspectRatio || "9:16",
+          narratorEnabled: j.narratorEnabled ?? true,
+          narratorVoice: j.narratorVoice,
+          languages: j.languages || ["vi"],
+          cutClips: cuts,
+          timelineClips: cuts as any,
+          subtitleSegments: subSegments,
+          scenes: scenes as any,
+          analysis: j.analysis,
+          audioLayers: j.audioLayers,
+          subtitleStyle: j.subtitleStyle || "gold",
+          subtitleText: fullNarrationText,
+          narrationText: fullNarrationText,
+          status: "queued",
+          stage: "queued",
+          progress: 0,
+          createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        });
+      }
+    });
+
+    state.setSelectedJobIds(new Set());
+    state.showToast(`🚀 Đã đưa ${targetJobs.length} video vào Hàng Đợi Render! Đang chuyển trang...`);
+    if (onNavigate) {
+      onNavigate("render");
+    }
+  }
+
+  function handleBatchExportToTimeline(targetJobIds?: string[]) {
+    const ids = targetJobIds || (state.selectedJobIds.size > 0 ? Array.from(state.selectedJobIds) : []);
+    const targetJobs = state.sourceCandidates.filter(
+      (j) => ids.includes(j.id) && (j.analysis?.scenes?.length || j.analysis?.voiceScript)
+    );
+
+    if (targetJobs.length === 0) {
+      state.showToast("⚠️ Hãy chọn ít nhất 1 video đã phân tích để mở trên bàn dựng Timeline.");
+      return;
+    }
+
+    handleExportToTimeline(targetJobs[0]);
   }
 
   async function handlePickFiles() {
@@ -566,6 +874,8 @@ export function VideoAnalysisPage({
         runningCount={state.runningCount}
         onDeleteSelected={handleDeleteSelected}
         showToast={state.showToast}
+        onBatchQueueToRender={handleBatchQueueToRender}
+        onBatchExportToTimeline={handleBatchExportToTimeline}
       />
 
       {/* 2. Main Master-Detail Table */}
@@ -704,6 +1014,7 @@ export function VideoAnalysisPage({
                   onExportSingleSceneToTimeline={handleExportSingleSceneToTimeline}
                   onDeleteScene={handleDeleteScene}
                   showToast={state.showToast}
+                  onQueueToRender={handleQueueSingleToRender}
                 />
               );
             })
@@ -891,6 +1202,8 @@ export function VideoAnalysisPage({
         updateAutoDucking={state.updateAutoDucking}
         defaultLanguage={state.defaultLanguage}
         setDefaultLanguage={state.setDefaultLanguage}
+        autoQueueRender={state.autoQueueRender}
+        updateAutoQueueRender={state.updateAutoQueueRender}
         onSubmitBatch={(pId, prompt, lang) => {
           if (analysisTargetJob) {
             setShowBatchModal(false);

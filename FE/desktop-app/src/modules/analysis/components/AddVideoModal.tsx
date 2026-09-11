@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { FolderFill, PlusLg, Upload, XLg } from "react-bootstrap-icons";
 
 interface AddVideoModalProps {
@@ -22,7 +23,7 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div
       style={{
         position: "fixed",
@@ -165,4 +166,6 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 };

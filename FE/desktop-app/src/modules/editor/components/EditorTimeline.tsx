@@ -3,6 +3,7 @@ import type { Job } from "../../../core/types";
 import { Icon } from "../../../shared/Icon";
 import type { EditorScene } from "../editor.types";
 import { formatSeconds, toSeconds } from "../utils/editorTime";
+import { SAMPLE_LIBRARY_MUSIC } from "../constants/presets";
 
 export interface ClipLayoutItem {
   scene: EditorScene;
@@ -57,6 +58,9 @@ export interface EditorTimelineProps {
   sourceJob?: Job;
   speakingSceneId: string | null;
   playSceneAudio: (text?: string, scId?: string, offsetSeconds?: number) => void;
+  selectedBgm?: string;
+  customBgmTitle?: string | null;
+  bgmVolume?: number;
 }
 
 export function EditorTimeline({
@@ -95,6 +99,9 @@ export function EditorTimeline({
   sourceJob,
   speakingSceneId,
   playSceneAudio,
+  selectedBgm = "mus-1",
+  customBgmTitle,
+  bgmVolume = 40,
 }: EditorTimelineProps) {
   return (
     <footer className="ts-timeline-footer">
@@ -159,17 +166,17 @@ export function EditorTimeline({
             type="button"
             className="ts-play-space-btn"
             onClick={() => setPlaying((p) => !p)}
+            title="Phát / Tạm dừng (Phím Space)"
           >
-            <Icon name={playing ? "pause" : "play"} size={13} /> {playing ? "Pause Space" : "Play Space"}
+            <Icon name={playing ? "pause" : "play"} size={13} /> {playing ? "Tạm dừng" : "Phát video"}
           </button>
-          <button type="button" className="ts-segment-btn" onClick={addNewSceneSegment}>
+          <button
+            type="button"
+            className="ts-segment-btn"
+            onClick={addNewSceneSegment}
+            title="Thêm phân cảnh mới vào timeline"
+          >
             ⊕ Thêm cảnh
-          </button>
-          <button type="button" className="ts-segment-btn" onClick={splitActiveScene}>
-            ✂ Tách cảnh
-          </button>
-          <button type="button" className="ts-segment-btn" onClick={deleteActiveScene}>
-            🗑️ Xóa cảnh
           </button>
         </div>
 
@@ -582,16 +589,25 @@ export function EditorTimeline({
                 onContextMenu={(e) => handleClipContextMenu(e, "bgm-global", "bgm")}
               >
                 <div className="ts-audio-waveform-row">
-                  <span style={{ fontSize: "10px", color: "#f59e0b", marginRight: "6px", fontWeight: 700 }}>
-                    🎵 BGM: Hoà Cùng Yêu Dấu Nỗi Buồn (Lo-Fi)
+                  <span style={{ fontSize: "10px", color: trackMutes.bgm ? "#94a3b8" : "#f59e0b", marginRight: "6px", fontWeight: 700 }}>
+                    🎵 BGM: {
+                      selectedBgm === "custom"
+                        ? (customBgmTitle || "Nhạc tải lên từ máy")
+                        : selectedBgm === "none"
+                        ? "Không có nhạc nền"
+                        : (SAMPLE_LIBRARY_MUSIC.find((m) => m.id === selectedBgm)?.title || "Hoà Cùng Yêu Dấu Nỗi Buồn (Lo-Fi)")
+                    } {trackMutes.bgm ? "· 🔇 Tắt" : `· 🔊 ${bgmVolume}%`}
                   </span>
                   {Array.from({ length: 24 }).map((_, wIdx) => (
                     <span
                       key={wIdx}
                       className="ts-waveform-bar"
                       style={{
-                        height: `${[25, 45, 60, 35, 55, 40, 65, 30, 50, 35, 60, 45][wIdx % 12]}%`,
-                        background: "#f59e0b",
+                        height: trackMutes.bgm || bgmVolume === 0
+                          ? "15%"
+                          : `${[25, 45, 60, 35, 55, 40, 65, 30, 50, 35, 60, 45][wIdx % 12]}%`,
+                        background: trackMutes.bgm ? "#64748b" : "#f59e0b",
+                        opacity: playing && !trackMutes.bgm ? 1 : 0.6,
                       }}
                     />
                   ))}

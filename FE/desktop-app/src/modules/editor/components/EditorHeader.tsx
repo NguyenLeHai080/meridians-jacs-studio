@@ -27,6 +27,7 @@ export interface EditorHeaderProps {
   handleExportFull: () => void;
   handleExportScenes: () => void;
   setIsConfigModalOpen: (open: boolean) => void;
+  onGoToBatch?: () => void;
 }
 
 export function EditorHeader({
@@ -53,6 +54,7 @@ export function EditorHeader({
   handleExportFull,
   handleExportScenes,
   setIsConfigModalOpen,
+  onGoToBatch,
 }: EditorHeaderProps) {
   return (
     <header className="ts-top-header">
@@ -147,36 +149,29 @@ export function EditorHeader({
 
         <button
           type="button"
-          className="ts-export-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsExportDropdownOpen((v) => !v);
+          className="ts-export-btn ts-goto-batch-btn"
+          onClick={onGoToBatch}
+          title="Hoàn tất và chuyển sang danh sách Xử lý hàng loạt"
+          style={{
+            background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+            color: "#ffffff",
+            fontWeight: 700,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "7px",
+            padding: "6px 14px",
+            borderRadius: "7px",
+            boxShadow: "0 2px 10px rgba(16, 185, 129, 0.4)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            cursor: "pointer",
+            fontSize: "12px",
+            letterSpacing: "0.3px",
+            transition: "all 0.2s ease",
           }}
         >
-          ⚡ Export video ⌵
+          <span>Xử lý hàng loạt</span>
+          <span style={{ fontSize: "14px", fontWeight: "bold" }}>➔</span>
         </button>
-
-        {isExportDropdownOpen && (
-          <div className="ts-export-dropdown-menu">
-            <button type="button" className="ts-export-menu-item highlight" onClick={handleExportFull}>
-              ⚡ Xuất 1 Video Hoàn Chỉnh (Ghép đầy đủ)
-            </button>
-            <button type="button" className="ts-export-menu-item" onClick={handleExportScenes}>
-              ✂️ Tách Từng Phân Cảnh Riêng ({editorScenesCount} video)
-            </button>
-            <button
-              type="button"
-              className="ts-export-menu-item"
-              onClick={() => {
-                setIsExportDropdownOpen(false);
-                setProjectMessage("✓ Đã sao chép toàn bộ phụ đề .SRT vào clipboard");
-                setTimeout(() => setProjectMessage(""), 2500);
-              }}
-            >
-              📄 Xuất file phụ đề rời (.SRT)
-            </button>
-          </div>
-        )}
 
         <button type="button" className="ts-header-gear" onClick={() => setIsConfigModalOpen(true)} title="Cài đặt dự án">
           <Icon name="sliders" size={14} />

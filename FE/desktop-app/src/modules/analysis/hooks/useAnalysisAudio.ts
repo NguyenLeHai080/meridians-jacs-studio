@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getRuntime } from "../../../core/runtime";
 import { playAudioStream, stopGlobalAudio } from "../../../core/audio-player";
 import { cleanVoiceoverText } from "../utils/analysisHelpers";
@@ -57,6 +57,12 @@ export function useAnalysisAudio(defaultLanguage = "vi", defaultVoiceId = "vi-ad
       showToast?.("Không thể phát thử giọng đọc trên thiết bị này.");
     }
   };
+
+  useEffect(() => {
+    return () => {
+      stopGlobalAudio();
+    };
+  }, []);
 
   return {
     playingVoiceKey,

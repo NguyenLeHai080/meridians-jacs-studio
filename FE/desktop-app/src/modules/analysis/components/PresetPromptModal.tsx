@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { PencilSquare, XLg } from "react-bootstrap-icons";
 import { PRESET_PROMPTS, type PresetPrompt } from "../constants/prompts";
 
@@ -25,7 +26,7 @@ export const PresetPromptModal: React.FC<PresetPromptModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div
       style={{
         position: "fixed",
@@ -338,4 +339,6 @@ export const PresetPromptModal: React.FC<PresetPromptModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 };

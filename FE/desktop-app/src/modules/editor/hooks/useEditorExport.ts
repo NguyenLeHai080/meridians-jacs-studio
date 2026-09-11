@@ -15,12 +15,17 @@ export interface UseEditorExportParams {
   subtitlesVisible: boolean;
   subtitleStyle: "gold" | "white" | "neon" | "box";
   sequenceDuration: number;
+  selectedBgm?: string;
+  bgmVolume?: number;
+  bgmAudioPath?: string | null;
   setIsExportDropdownOpen: (open: boolean) => void;
   setProjectMessage: (msg: string) => void;
   onNavigate: (key: NavKey) => void;
   onAddJob?: (job: Job) => void;
   onUpdateJob?: (jobId: string, values: Partial<Job>) => void;
   defaultVoiceForLang: (lang?: string, gender?: string) => string;
+  sceneAudioDurations?: Record<string, number>;
+  voiceSpeed?: number;
 }
 
 export function useEditorExport({
@@ -34,19 +39,24 @@ export function useEditorExport({
   subtitlesVisible,
   subtitleStyle,
   sequenceDuration,
+  selectedBgm,
+  bgmVolume,
+  bgmAudioPath,
   setIsExportDropdownOpen,
   setProjectMessage,
   onNavigate,
   onAddJob,
   onUpdateJob,
   defaultVoiceForLang,
+  sceneAudioDurations,
+  voiceSpeed,
 }: UseEditorExportParams) {
   const handleExportFull = useCallback(() => {
     setIsExportDropdownOpen(false);
     if (!sourceJob || !onAddJob) return;
 
     let timelineCursor = 0;
-    const timelineSubtitleSegments: Array<{ start: number; end: number; text: string }> = [];
+    const timelineSubtitleSegments: Array<{ start: number; end: number; voiceDuration?: number; text: string }> = [];
 
     const fullScenes = editorScenes.map((s, idx) => {
       const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start));
@@ -57,10 +67,12 @@ export function useEditorExport({
       timelineCursor += sceneDur;
 
       const sceneText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "").trim();
+      const voiceDur = s.id ? sceneAudioDurations?.[s.id] : undefined;
       if (sceneText) {
         timelineSubtitleSegments.push({
           start: tStart,
           end: tEnd,
+          voiceDuration: voiceDur,
           text: sceneText,
         });
       }
@@ -121,8 +133,10 @@ export function useEditorExport({
     // Save timeline state back to source job
     if (onUpdateJob && sourceJob.id) {
       onUpdateJob(sourceJob.id, {
+        timelineReady: true,
         cutClips,
         timelineClips: cutClips as any,
+        scenes: fullScenes as any,
         analysis: {
           summary: sourceJob.analysis?.summary || `Dự án timeline (${editorScenes.length} phân cảnh)`,
           score: sourceJob.analysis?.score || 9.5,
@@ -135,12 +149,14 @@ export function useEditorExport({
     }
 
     onAddJob({
-      id: `export-full-${Date.now()}`,
+      id: `render-full-${Date.now()}-${sourceJob.id}`,
+      parentJobId: sourceJob.id,
       name: `${effectiveTitle} (Xuất 1 Video Hoàn Chỉnh)`,
       source: sourceJob.source,
       sourceType: sourceJob.sourceType,
       localPath: sourceJob.localPath,
       durationSeconds: totalDuration,
+      sourceOnly: false,
       mode: "local-gpu",
       aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
       keepOriginalAudio: !isOriginalAudioMuted,
@@ -149,6 +165,9 @@ export function useEditorExport({
       autoDucking: true,
       removeOriginalBgm: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
       isolateVocals: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
+      backgroundMusic: !Boolean(trackMutes.bgm) && Boolean(bgmAudioPath && selectedBgm !== "none" && (bgmVolume ?? 40) > 0),
+      backgroundMusicVolume: bgmVolume ?? 40,
+      backgroundMusicPath: bgmAudioPath || undefined,
       narratorEnabled: sourceJob.narratorEnabled === false ? false : !isVoiceMuted && hasAnyNarration,
       narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
       narratorVoice: effectiveVoice,
@@ -157,6 +176,8 @@ export function useEditorExport({
       subtitleText: fullNarrationText,
       narrationText: fullNarrationText,
       subtitleSegments: timelineSubtitleSegments as any,
+      speed: Number(voiceSpeed) || 1.0,
+      voiceSpeed: Number(voiceSpeed) || 1.0,
       cutClips,
       timelineClips: cutClips as any,
       analysis: {
@@ -175,7 +196,7 @@ export function useEditorExport({
       synced: true,
     });
     setProjectMessage("🚀 Đã đưa 1 Video hoàn chỉnh vào hàng đợi Render!");
-    setTimeout(() => onNavigate("render"), 800);
+    setTimeout(() => onNavigate("batch"), 800);
   }, [
     sourceJob,
     onAddJob,
@@ -211,18 +232,27 @@ export function useEditorExport({
     const voicePackObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === effectiveVoice.toLowerCase());
     const effectiveTitle = sourceJob.analysis?.videoTitle || sourceJob.name;
 
+    if (onUpdateJob && sourceJob.id) {
+      onUpdateJob(sourceJob.id, {
+        timelineReady: true,
+      });
+    }
+
     editorScenes.forEach((scene, index) => {
       const sceneDur = Math.max(0.5, toSeconds(scene.end) - toSeconds(scene.start));
       const srcStartSec = scene.sourceTimeStart ?? toSeconds(scene.sourceStart || scene.start);
       const srcEndSec = srcStartSec + sceneDur;
       const sceneText = stripSceneMetadata(scene.subtitle || scene.voiceover || scene.translation || scene.detail || "").trim();
+      const voiceDur = scene.id ? sceneAudioDurations?.[scene.id] : undefined;
       onAddJob({
-        id: `export-scene-${Date.now()}-${index + 1}`,
+        id: `render-scene-${Date.now()}-${index + 1}-${sourceJob.id}`,
+        parentJobId: sourceJob.id,
         name: `${effectiveTitle} · Cảnh ${index + 1}: ${scene.title}`,
         source: sourceJob.source,
         sourceType: sourceJob.sourceType,
         localPath: sourceJob.localPath,
         durationSeconds: sceneDur,
+        sourceOnly: false,
         mode: "local-gpu",
         aspectRatio: aspectRatio === "4:5" ? "9:16" : aspectRatio,
         keepOriginalAudio: !isOriginalAudioMuted,
@@ -231,6 +261,9 @@ export function useEditorExport({
         autoDucking: true,
         removeOriginalBgm: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
         isolateVocals: Boolean(removeOriginalBgm || sourceJob.removeOriginalBgm || sourceJob.isolateVocals),
+        backgroundMusic: !Boolean(trackMutes.bgm) && Boolean(bgmAudioPath && selectedBgm !== "none" && (bgmVolume ?? 40) > 0),
+        backgroundMusicVolume: bgmVolume ?? 40,
+        backgroundMusicPath: bgmAudioPath || undefined,
         narratorEnabled: sourceJob.narratorEnabled === false ? false : !isVoiceMuted && Boolean(sceneText),
         narratorGender: (voicePackObj?.gender as any) || sourceJob.narratorGender || "male",
         narratorVoice: effectiveVoice,
@@ -249,7 +282,9 @@ export function useEditorExport({
             title: scene.title,
           },
         ],
-        subtitleSegments: sceneText ? [{ start: 0, end: sceneDur, text: sceneText }] : [],
+        subtitleSegments: sceneText ? [{ start: 0, end: sceneDur, voiceDuration: voiceDur, text: sceneText }] : [],
+        speed: Number(voiceSpeed) || 1.0,
+        voiceSpeed: Number(voiceSpeed) || 1.0,
         analysis: {
           summary: sourceJob.analysis?.summary || `Phân cảnh ${index + 1}: ${scene.title}`,
           voiceScript: sceneText,
@@ -281,7 +316,7 @@ export function useEditorExport({
       });
     });
     setProjectMessage(`🚀 Đã thêm ${editorScenes.length} phân cảnh riêng lẻ vào hàng đợi Render!`);
-    setTimeout(() => onNavigate("render"), 800);
+    setTimeout(() => onNavigate("batch"), 800);
   }, [
     sourceJob,
     onAddJob,
@@ -293,6 +328,9 @@ export function useEditorExport({
     removeOriginalBgm,
     subtitlesVisible,
     subtitleStyle,
+    selectedBgm,
+    bgmVolume,
+    bgmAudioPath,
     defaultVoiceForLang,
     setIsExportDropdownOpen,
     setProjectMessage,

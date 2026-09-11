@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  ArrowRepeat,
   CheckCircleFill,
   ChevronDown,
   ChevronRight,
@@ -39,7 +40,22 @@ interface AnalysisVideoRowProps {
   onExportSingleSceneToTimeline: (job: Job, scene: AnalysisScene, idx: number) => void;
   onDeleteScene: (jobId: string, idx: number) => void;
   showToast: (msg: string) => void;
+  onQueueToRender?: (job: Job) => void;
 }
+
+const formatAnalysisStage = (stage?: string) => {
+  if (!stage) return "Đang phân tích dữ liệu video...";
+  const s = stage.toLowerCase();
+  if (s.includes("downloading") || s.includes("tải video")) return "Đang tải video...";
+  if (s.includes("probing")) return "Đang đọc cấu trúc & âm thanh...";
+  if (s.includes("extracting-frames") || s.includes("frames")) return "Đang bóc tách khung hình AI...";
+  if (s.includes("transcribed") || s.includes("transcript")) return "Đã có transcript, đang viết kịch bản...";
+  if (s.includes("requesting-provider") || s.includes("provider")) return "Đang kết nối AI bóc tách ngữ cảnh...";
+  if (s.includes("generating_voice") || s.includes("voice")) return "Đang tạo giọng đọc...";
+  if (s.includes("matching_scenes") || s.includes("scenes")) return "Đang phân đoạn phân cảnh...";
+  if (s.includes("completed")) return "Hoàn tất phân tích AI";
+  return stage;
+};
 
 export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
   job,
@@ -65,6 +81,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
   onExportSingleSceneToTimeline,
   onDeleteScene,
   showToast,
+  onQueueToRender,
 }) => {
   const isCompleted = job.status === "completed" || Boolean(job.analysis?.scenes?.length);
   const isFailed = job.status === "failed";
@@ -200,52 +217,64 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
         </div>
 
         {/* Status Badge & Live Progress */}
-        <div style={{ paddingRight: "8px" }}>
+        <div style={{ paddingRight: "8px", minWidth: "155px" }}>
           {isRunning ? (
             <div>
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  fontSize: "10.5px",
-                  fontWeight: 700,
+                  alignItems: "center",
+                  fontSize: "11px",
+                  fontWeight: 800,
                   color: "#fbbf24",
-                  marginBottom: "3px",
+                  marginBottom: "4px",
                 }}
               >
-                <span>⚡ Đang phân tích...</span>
-                <span>{prog.progress}%</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                  <ArrowRepeat size={12} className="spin-fast" color="#fbbf24" />
+                  <span>⚡ Đang phân tích...</span>
+                </span>
+                <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#fef08a", fontWeight: 800 }}>
+                  {prog.progress}%
+                </span>
               </div>
               <div
                 style={{
                   width: "100%",
-                  height: "4px",
-                  background: "rgba(0,0,0,0.4)",
+                  height: "5px",
+                  background: "rgba(0,0,0,0.5)",
                   borderRadius: "10px",
                   overflow: "hidden",
+                  border: "1px solid rgba(245, 158, 11, 0.25)",
+                  position: "relative",
                 }}
               >
                 <div
+                  className="progress-bar-animated-stripes"
                   style={{
-                    width: `${prog.progress}%`,
+                    width: `${Math.max(6, prog.progress)}%`,
                     height: "100%",
-                    background: "linear-gradient(90deg, #d97706, #f59e0b)",
-                    transition: "width 0.3s ease",
+                    background: "linear-gradient(90deg, #d97706, #f59e0b, #fbbf24)",
+                    borderRadius: "10px",
+                    transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                    boxShadow: "0 0 10px rgba(245, 158, 11, 0.6)",
                   }}
                 />
               </div>
               <span
                 style={{
                   fontSize: "9.5px",
-                  color: "#64748b",
-                  marginTop: "2px",
+                  color: "#cbd5e1",
+                  marginTop: "3px",
                   display: "block",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                 }}
+                title={prog.stage}
               >
-                {prog.stage || "Đang xử lý khung hình..."}
+                {formatAnalysisStage(prog.stage)}
               </span>
             </div>
           ) : isCompleted ? (
@@ -370,15 +399,40 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
             {isRunning ? "Đang chạy..." : isCompleted ? "Chạy lại" : "Phân tích"}
           </button>
 
-          {/* Export to Timeline */}
+          {/* Bước 2: Kịch bản & Voice (Phân tích xong sang Kịch bản) */}
           {isCompleted && (
+            <button
+              type="button"
+              onClick={() => onExportToStory(job)}
+              style={{
+                background: "linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.25))",
+                border: "1px solid rgba(245, 158, 11, 0.45)",
+                color: "#fbbf24",
+                padding: "4px 9px",
+                borderRadius: "5px",
+                fontSize: "11px",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                boxShadow: "0 0 10px rgba(245, 158, 11, 0.15)",
+              }}
+              title="Chuyển sang Bước 2: Kịch bản & Voice để biên tập và duyệt kịch bản"
+            >
+              📝 Kịch bản ➔
+            </button>
+          )}
+
+          {/* Timeline - Chỉ hiển thị khi kịch bản ĐÃ ĐƯỢC DUYỆT */}
+          {isCompleted && (job.analysis?.storyPlan?.status === "approved" || (job.timelineClips && job.timelineClips.length > 0)) && (
             <button
               type="button"
               onClick={() => onExportToTimeline(job)}
               style={{
-                background: "rgba(245, 158, 11, 0.12)",
-                border: "1px solid rgba(245, 158, 11, 0.3)",
-                color: "#fbbf24",
+                background: "rgba(56, 189, 248, 0.12)",
+                border: "1px solid rgba(56, 189, 248, 0.3)",
+                color: "#38bdf8",
                 padding: "4px 8px",
                 borderRadius: "5px",
                 fontSize: "11px",
@@ -388,7 +442,7 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 alignItems: "center",
                 gap: "4px",
               }}
-              title="Chuyển sang bàn dựng Timeline"
+              title="Kịch bản đã duyệt - Mở bàn dựng Timeline"
             >
               <CollectionPlayFill size={11} /> Timeline
             </button>
