@@ -53,9 +53,10 @@ export const AnalysisSceneList: React.FC<AnalysisSceneListProps> = ({
   return (
     <div
       style={{
-        background: "#0e111a",
-        borderTop: "1px solid rgba(245, 158, 11, 0.2)",
-        padding: "12px 16px 16px 36px",
+        background: "linear-gradient(180deg, rgba(14, 18, 30, 0.95) 0%, rgba(9, 12, 22, 0.98) 100%)",
+        borderTop: "1px solid rgba(245, 158, 11, 0.25)",
+        boxShadow: "inset 0 4px 20px rgba(0, 0, 0, 0.4)",
+        padding: "14px 18px 18px 40px",
       }}
     >
       <div

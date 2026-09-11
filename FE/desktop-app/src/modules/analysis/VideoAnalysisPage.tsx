@@ -850,26 +850,27 @@ export function VideoAnalysisPage({
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          background: "rgba(18, 21, 31, 0.75)",
+          background: "linear-gradient(180deg, rgba(18, 24, 38, 0.85) 0%, rgba(11, 15, 26, 0.95) 100%)",
           border: "1px solid rgba(255, 255, 255, 0.08)",
-          borderRadius: "10px",
+          borderRadius: "14px",
           overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+          boxShadow: "0 12px 36px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+          backdropFilter: "blur(20px)",
         }}
       >
         {/* Table Header */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "36px 36px minmax(240px, 1.8fr) 150px 140px 90px 220px",
-            padding: "10px 14px",
-            background: "rgba(26, 30, 43, 0.8)",
+            gridTemplateColumns: "40px 42px minmax(260px, 2fr) 175px 145px 95px 250px",
+            padding: "12px 16px",
+            background: "linear-gradient(90deg, rgba(28, 36, 56, 0.95) 0%, rgba(18, 24, 38, 0.95) 100%)",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             fontSize: "11px",
             fontWeight: 800,
             color: "#94a3b8",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
+            letterSpacing: "0.6px",
             alignItems: "center",
             flexShrink: 0,
           }}
@@ -882,15 +883,28 @@ export function VideoAnalysisPage({
                 state.selectedJobIds.size === state.filteredVideos.length
               }
               onChange={state.handleSelectAll}
-              style={{ cursor: "pointer" }}
+              style={{
+                cursor: "pointer",
+                width: "15px",
+                height: "15px",
+                accentColor: "#f59e0b",
+              }}
             />
           </div>
           <div></div>
-          <div>VIDEO NGUỒN & THÔNG TIN</div>
-          <div>TRẠNG THÁI PHÂN TÍCH</div>
-          <div>TIÊU HAO TOKEN/CREDIT</div>
-          <div style={{ textAlign: "center" }}>ĐIỂM AI</div>
-          <div style={{ textAlign: "right" }}>THAO TÁC</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>📹</span> Video Nguồn & Thông Tin
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>📊</span> Trạng Thái AI
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>⚡</span> Tiêu Hao Token
+          </div>
+          <div style={{ textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
+            <span>⭐</span> Điểm AI
+          </div>
+          <div style={{ textAlign: "right", paddingRight: "8px" }}>THAO TÁC</div>
         </div>
 
         {/* Table Body */}
@@ -993,22 +1007,22 @@ export function VideoAnalysisPage({
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              padding: "8px 14px",
-              background: "rgba(26, 30, 43, 0.85)",
+              padding: "10px 18px",
+              background: "linear-gradient(90deg, rgba(22, 28, 44, 0.95) 0%, rgba(15, 20, 32, 0.95) 100%)",
               borderTop: "1px solid rgba(255, 255, 255, 0.08)",
               flexWrap: "wrap",
               gap: "10px",
               flexShrink: 0,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>
                 Hiển thị{" "}
-                <strong>
+                <strong style={{ color: "#f8fafc" }}>
                   {(state.parentPage - 1) * state.parentPageSize + 1} -{" "}
                   {Math.min(state.parentPage * state.parentPageSize, state.filteredVideos.length)}
                 </strong>{" "}
-                trên tổng số <strong>{state.filteredVideos.length}</strong> video
+                trên tổng số <strong style={{ color: "#fbbf24" }}>{state.filteredVideos.length}</strong> video
               </span>
               <select
                 value={state.parentPageSize}
@@ -1017,18 +1031,21 @@ export function VideoAnalysisPage({
                   state.setParentPage(1);
                 }}
                 style={{
-                  background: "#10131c",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  borderRadius: "5px",
-                  padding: "3px 6px",
+                  background: "rgba(15, 23, 42, 0.8)",
+                  border: "1px solid rgba(255, 255, 255, 0.14)",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
                   color: "#f8fafc",
                   fontSize: "11px",
+                  fontWeight: 600,
                   outline: "none",
+                  cursor: "pointer",
                 }}
               >
                 <option value={5}>5 video / trang</option>
                 <option value={10}>10 video / trang</option>
                 <option value={20}>20 video / trang</option>
+                <option value={50}>50 video / trang</option>
               </select>
             </div>
 
@@ -1038,13 +1055,15 @@ export function VideoAnalysisPage({
                 onClick={() => state.setParentPage(1)}
                 disabled={state.parentPage <= 1}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage <= 1 ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage <= 1 ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage <= 1 ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 « Đầu
@@ -1054,34 +1073,48 @@ export function VideoAnalysisPage({
                 onClick={() => state.setParentPage((p) => Math.max(1, p - 1))}
                 disabled={state.parentPage <= 1}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage <= 1 ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage <= 1 ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage <= 1 ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 ‹ Trước
               </button>
 
-              <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#fbbf24", padding: "0 4px" }}>
+              <div
+                style={{
+                  fontSize: "11.5px",
+                  fontWeight: 800,
+                  color: "#fbbf24",
+                  padding: "3px 10px",
+                  background: "rgba(245, 158, 11, 0.12)",
+                  border: "1px solid rgba(245, 158, 11, 0.25)",
+                  borderRadius: "6px",
+                }}
+              >
                 Trang {state.parentPage} / {state.totalParentPages}
-              </span>
+              </div>
 
               <button
                 type="button"
                 onClick={() => state.setParentPage((p) => Math.min(state.totalParentPages, p + 1))}
                 disabled={state.parentPage >= state.totalParentPages}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage >= state.totalParentPages ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage >= state.totalParentPages ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage >= state.totalParentPages ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 Sau ›
@@ -1091,13 +1124,15 @@ export function VideoAnalysisPage({
                 onClick={() => state.setParentPage(state.totalParentPages)}
                 disabled={state.parentPage >= state.totalParentPages}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage >= state.totalParentPages ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage >= state.totalParentPages ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage >= state.totalParentPages ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 Cuối »

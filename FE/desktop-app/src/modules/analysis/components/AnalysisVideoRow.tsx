@@ -9,6 +9,8 @@ import {
   EyeFill,
   Film,
   LightningChargeFill,
+  PlayFill,
+  ChatQuoteFill,
   Trash3Fill,
   XCircleFill,
 } from "react-bootstrap-icons";
@@ -89,99 +91,133 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
   const tokenInfo = formatTokenUsage(job);
 
   return (
-    <div style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
+    <div
+      style={{
+        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+        background: isSelected
+          ? "rgba(245, 158, 11, 0.08)"
+          : isExpanded
+          ? "rgba(255, 255, 255, 0.02)"
+          : "transparent",
+        transition: "all 0.15s ease",
+      }}
+    >
       {/* Level 1: Parent Video Row */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "36px 36px minmax(240px, 1.8fr) 150px 140px 90px 220px",
-          padding: "10px 14px",
+          gridTemplateColumns: "40px 42px minmax(260px, 2fr) 175px 145px 95px 250px",
+          padding: "11px 16px",
           alignItems: "center",
-          background: isRunning
-            ? "rgba(245, 158, 11, 0.05)"
-            : isSelected
-            ? "rgba(217, 119, 6, 0.08)"
-            : isExpanded
-            ? "rgba(255, 255, 255, 0.02)"
-            : "transparent",
-          transition: "background 0.2s ease",
+          background: isRunning ? "rgba(245, 158, 11, 0.05)" : "transparent",
         }}
       >
-        {/* Select Checkbox */}
+        {/* 1. Select Checkbox */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <input
             type="checkbox"
             checked={isSelected}
             onChange={() => onToggleSelect(job.id)}
-            style={{ cursor: "pointer" }}
+            style={{
+              cursor: "pointer",
+              width: "15px",
+              height: "15px",
+              accentColor: "#f59e0b",
+            }}
           />
         </div>
 
-        {/* Expand Chevron */}
+        {/* 2. Expand Chevron */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
           <button
             type="button"
             onClick={() => onToggleExpand(job.id)}
             style={{
-              background: isExpanded ? "rgba(245, 158, 11, 0.15)" : "rgba(255,255,255,0.06)",
+              background: isExpanded ? "rgba(245, 158, 11, 0.2)" : "rgba(255, 255, 255, 0.05)",
               color: isExpanded ? "#fbbf24" : "#94a3b8",
-              border: "1px solid rgba(255,255,255,0.1)",
+              border: isExpanded
+                ? "1px solid rgba(245, 158, 11, 0.45)"
+                : "1px solid rgba(255, 255, 255, 0.1)",
               width: "26px",
               height: "26px",
-              borderRadius: "5px",
+              borderRadius: "6px",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
+              boxShadow: isExpanded ? "0 0 10px rgba(245, 158, 11, 0.2)" : "none",
+              transition: "all 0.15s ease",
             }}
             title={isExpanded ? "Thu gọn phân cảnh" : "Mở rộng phân cảnh"}
           >
-            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
         </div>
 
-        {/* Video Info & Thumbnail */}
+        {/* 3. Video Info & Thumbnail */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "10px",
+            gap: "12px",
             minWidth: 0,
-            paddingRight: "10px",
+            paddingRight: "12px",
           }}
         >
+          {/* Thumbnail preview button */}
           <div
             onClick={() => onOpenPreviewPlayer(job)}
             style={{
-              width: "48px",
-              height: "32px",
-              borderRadius: "5px",
-              background: "#10131c",
-              border: "1px solid rgba(255,255,255,0.12)",
+              width: "52px",
+              height: "36px",
+              borderRadius: "7px",
+              background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+              border: "1px solid rgba(245, 158, 11, 0.3)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               color: "#fbbf24",
               cursor: "pointer",
               flexShrink: 0,
-              transition: "transform 0.15s ease",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.4)",
+              position: "relative",
+              overflow: "hidden",
+              transition: "all 0.15s ease",
             }}
             title="Bấm để mở trình phát video và xem kịch bản đồng bộ"
           >
             <Film size={15} />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(0,0,0,0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: 0,
+                transition: "opacity 0.15s ease",
+              }}
+              className="thumb-hover-overlay"
+            >
+              <PlayFill size={14} color="#f59e0b" />
+            </div>
           </div>
 
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <strong
               onClick={() => onOpenPreviewPlayer(job)}
               style={{
-                fontSize: "12.5px",
+                fontSize: "13px",
+                fontWeight: 700,
                 color: "#f8fafc",
                 display: "block",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 cursor: "pointer",
+                letterSpacing: "-0.15px",
+                lineHeight: "1.3",
               }}
               title={job.name}
             >
@@ -194,19 +230,31 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
-                marginTop: "2px",
+                marginTop: "3px",
               }}
             >
-              <span style={{ fontFamily: "monospace", color: "#fbbf24" }}>
+              <span
+                style={{
+                  fontFamily: "monospace",
+                  color: "#fbbf24",
+                  background: "rgba(245, 158, 11, 0.12)",
+                  border: "1px solid rgba(245, 158, 11, 0.25)",
+                  padding: "1px 5px",
+                  borderRadius: "4px",
+                  fontWeight: 700,
+                  fontSize: "10px",
+                }}
+              >
                 ⏱️ {formatDuration(job.durationSeconds)}
               </span>
-              <span>•</span>
+              <span style={{ color: "rgba(255, 255, 255, 0.2)" }}>•</span>
               <span
                 style={{
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  maxWidth: "260px",
+                  maxWidth: "240px",
+                  color: "#64748b",
                 }}
                 title={job.localPath || job.source}
               >
@@ -216,8 +264,8 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
           </div>
         </div>
 
-        {/* Status Badge & Live Progress */}
-        <div style={{ paddingRight: "8px", minWidth: "155px" }}>
+        {/* 4. Status Badge & Live Progress */}
+        <div style={{ paddingRight: "8px" }}>
           {isRunning ? (
             <div>
               <div
@@ -232,8 +280,8 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 }}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                  <ArrowRepeat size={12} className="spin-fast" color="#fbbf24" />
-                  <span>⚡ Đang phân tích...</span>
+                  <ArrowRepeat size={11} className="spin-fast" color="#fbbf24" />
+                  <span>⚡ Phân tích AI...</span>
                 </span>
                 <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#fef08a", fontWeight: 800 }}>
                   {prog.progress}%
@@ -247,7 +295,6 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                   borderRadius: "10px",
                   overflow: "hidden",
                   border: "1px solid rgba(245, 158, 11, 0.25)",
-                  position: "relative",
                 }}
               >
                 <div
@@ -283,20 +330,30 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: "4px",
-                  background: "rgba(245, 158, 11, 0.12)",
-                  border: "1px solid rgba(245, 158, 11, 0.25)",
-                  color: "#fbbf24",
-                  padding: "2px 7px",
-                  borderRadius: "5px",
+                  gap: "5px",
+                  background: "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.2))",
+                  border: "1px solid rgba(16, 185, 129, 0.35)",
+                  color: "#34d399",
+                  padding: "3px 9px",
+                  borderRadius: "20px",
                   fontSize: "11px",
                   fontWeight: 700,
+                  boxShadow: "0 0 12px rgba(16, 185, 129, 0.12)",
                 }}
               >
                 <CheckCircleFill size={10} /> Đã Phân Tích
               </span>
-              <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "2px" }}>
-                {scenes.length} phân cảnh trích xuất
+              <div
+                style={{
+                  fontSize: "10px",
+                  color: "#94a3b8",
+                  marginTop: "3px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "3px",
+                }}
+              >
+                <span>🎬</span> {scenes.length} phân cảnh trích xuất
               </div>
             </div>
           ) : isFailed ? (
@@ -305,12 +362,12 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "4px",
-                background: "rgba(239, 68, 68, 0.15)",
-                border: "1px solid rgba(239, 68, 68, 0.35)",
+                background: "rgba(239, 68, 68, 0.12)",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
                 color: "#f87171",
-                padding: "2px 7px",
-                borderRadius: "5px",
-                fontSize: "11px",
+                padding: "3px 8px",
+                borderRadius: "20px",
+                fontSize: "10.5px",
                 fontWeight: 700,
               }}
             >
@@ -325,9 +382,9 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
                 background: "rgba(255, 255, 255, 0.05)",
                 border: "1px solid rgba(255, 255, 255, 0.08)",
                 color: "#94a3b8",
-                padding: "2px 7px",
-                borderRadius: "5px",
-                fontSize: "11px",
+                padding: "3px 8px",
+                borderRadius: "20px",
+                fontSize: "10.5px",
                 fontWeight: 700,
               }}
             >
@@ -336,148 +393,180 @@ export const AnalysisVideoRow: React.FC<AnalysisVideoRowProps> = ({
           )}
         </div>
 
-        {/* Token / Credit Consumption Column */}
+        {/* 5. Token / Cost Column */}
         <div>
           <div
             style={{
               fontSize: "11.5px",
               fontWeight: 800,
               color: tokenInfo.isUsed ? "#fbbf24" : "#64748b",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
             }}
           >
-            {tokenInfo.text}
+            <span>⚡</span> {tokenInfo.text.replace(/^[⚡\s]+/, "")}
           </div>
           <div
             style={{
-              fontSize: "10px",
-              color: tokenInfo.isUsed ? "#94a3b8" : "#475569",
+              fontSize: "10.5px",
+              color: tokenInfo.isUsed ? "#38bdf8" : "#475569",
               fontWeight: 600,
+              fontFamily: "monospace",
+              marginTop: "2px",
             }}
           >
             {tokenInfo.subText}
           </div>
         </div>
 
-        {/* AI Score */}
-        <div style={{ textAlign: "center" }}>
+        {/* 6. AI Score */}
+        <div style={{ display: "flex", justifyContent: "center" }}>
           <div
             style={{
-              fontSize: "12.5px",
+              background: isCompleted
+                ? "linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.05))"
+                : "rgba(255, 255, 255, 0.03)",
+              border: isCompleted
+                ? "1px solid rgba(245, 158, 11, 0.35)"
+                : "1px solid rgba(255, 255, 255, 0.06)",
+              padding: "3px 9px",
+              borderRadius: "20px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "3px",
+              fontSize: "11.5px",
               fontWeight: 800,
               color: isCompleted ? "#fbbf24" : "#64748b",
+              boxShadow: isCompleted ? "0 0 10px rgba(245, 158, 11, 0.15)" : "none",
             }}
           >
-            ⭐ {formatAiScore(job.analysis?.score)}
+            <span>★</span> {formatAiScore(job.analysis?.score)}
           </div>
         </div>
 
-        {/* Row Actions */}
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "5px" }}>
-          {/* Run Single Analysis Button */}
+        {/* 7. Row Actions */}
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "6px" }}>
+          {/* Action 1: Re-run AI Analysis */}
           <button
             type="button"
             onClick={() => onOpenAnalysisConfigForJob(job)}
             disabled={isRunning}
             style={{
               background: isCompleted
-                ? "rgba(245, 158, 11, 0.12)"
+                ? "rgba(255, 255, 255, 0.05)"
                 : "linear-gradient(135deg, #d97706, #f59e0b)",
-              color: isCompleted ? "#fbbf24" : "#12151f",
-              border: isCompleted ? "1px solid rgba(245, 158, 11, 0.3)" : "none",
-              padding: "4px 8px",
-              borderRadius: "5px",
+              color: isCompleted ? "#cbd5e1" : "#12151f",
+              border: isCompleted ? "1px solid rgba(255, 255, 255, 0.12)" : "none",
+              padding: "5px 9px",
+              borderRadius: "6px",
               fontSize: "11px",
               fontWeight: 700,
               cursor: isRunning ? "not-allowed" : "pointer",
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
               gap: "4px",
+              transition: "all 0.15s ease",
             }}
-            title="Cài đặt mô hình AI & phong cách để phân tích video này"
+            title="Cài đặt mô hình AI & chạy phân tích"
           >
-            <LightningChargeFill size={11} />{" "}
-            {isRunning ? "Đang chạy..." : isCompleted ? "Chạy lại" : "Phân tích"}
+            {isCompleted ? <ArrowRepeat size={11} /> : <LightningChargeFill size={11} />}
+            <span>{isRunning ? "Đang chạy..." : isCompleted ? "Chạy lại" : "Phân tích"}</span>
           </button>
 
-          {/* Bước 2: Kịch bản & Voice (Phân tích xong sang Kịch bản) */}
+          {/* Action 2: Sang Kịch Bản (Primary Highlight CTA) */}
           {isCompleted && (
             <button
               type="button"
               onClick={() => onExportToStory(job)}
               style={{
-                background: "linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.25))",
-                border: "1px solid rgba(245, 158, 11, 0.45)",
-                color: "#fbbf24",
-                padding: "4px 9px",
-                borderRadius: "5px",
+                background: "linear-gradient(135deg, #d97706, #f59e0b)",
+                border: "none",
+                color: "#0f172a",
+                padding: "5px 11px",
+                borderRadius: "6px",
                 fontSize: "11px",
-                fontWeight: 700,
+                fontWeight: 800,
                 cursor: "pointer",
-                display: "flex",
+                display: "inline-flex",
                 alignItems: "center",
-                gap: "4px",
-                boxShadow: "0 0 10px rgba(245, 158, 11, 0.15)",
+                gap: "5px",
+                boxShadow: "0 2px 10px rgba(245, 158, 11, 0.35)",
+                transition: "all 0.15s ease",
               }}
-              title="Chuyển sang Bước 2: Kịch bản & Voice để biên tập và duyệt kịch bản"
+              title="Chuyển sang Bước 2: Kịch bản & Lời thoại AI"
             >
-              📝 Kịch bản ➔
+              <ChatQuoteFill size={11} />
+              <span>Kịch bản ➔</span>
             </button>
           )}
 
-          {/* Timeline - Chỉ hiển thị khi kịch bản ĐÃ ĐƯỢC DUYỆT */}
-          {isCompleted && (job.analysis?.storyPlan?.status === "approved" || (job.timelineClips && job.timelineClips.length > 0)) && (
-            <button
-              type="button"
-              onClick={() => onExportToTimeline(job)}
-              style={{
-                background: "rgba(56, 189, 248, 0.12)",
-                border: "1px solid rgba(56, 189, 248, 0.3)",
-                color: "#38bdf8",
-                padding: "4px 8px",
-                borderRadius: "5px",
-                fontSize: "11px",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-              title="Kịch bản đã duyệt - Mở bàn dựng Timeline"
-            >
-              <CollectionPlayFill size={11} /> Timeline
-            </button>
-          )}
+          {/* Action 3: Timeline - Chỉ hiển thị khi kịch bản ĐÃ ĐƯỢC DUYỆT hoặc có timelineClips */}
+          {isCompleted &&
+            (job.analysis?.storyPlan?.status === "approved" ||
+              (job.timelineClips && job.timelineClips.length > 0)) && (
+              <button
+                type="button"
+                onClick={() => onExportToTimeline(job)}
+                style={{
+                  background: "linear-gradient(135deg, #0284c7, #0ea5e9)",
+                  border: "none",
+                  color: "#ffffff",
+                  padding: "5px 9px",
+                  borderRadius: "6px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  boxShadow: "0 2px 10px rgba(14, 165, 233, 0.25)",
+                }}
+                title="Kịch bản đã duyệt - Mở bàn dựng Timeline"
+              >
+                <CollectionPlayFill size={11} />
+                <span>Timeline</span>
+              </button>
+            )}
 
-          {/* View Player */}
+          {/* Action 4: View Player */}
           <button
             type="button"
             onClick={() => onOpenPreviewPlayer(job)}
             style={{
-              background: "rgba(255, 255, 255, 0.06)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              color: "#e2e8f0",
-              padding: "4px 7px",
-              borderRadius: "5px",
-              fontSize: "11px",
+              background: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              color: "#94a3b8",
+              width: "28px",
+              height: "28px",
+              borderRadius: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
             title="Xem trước Video Player"
           >
             <EyeFill size={12} />
           </button>
 
-          {/* Delete */}
+          {/* Action 5: Delete */}
           <button
             type="button"
             onClick={() => onDeleteJob(job.id, job.name)}
             style={{
-              background: "rgba(239, 68, 68, 0.1)",
-              border: "1px solid rgba(239, 68, 68, 0.25)",
+              background: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
               color: "#f87171",
-              padding: "4px 7px",
-              borderRadius: "5px",
-              fontSize: "11px",
+              width: "28px",
+              height: "28px",
+              borderRadius: "6px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               cursor: "pointer",
+              transition: "all 0.15s ease",
             }}
             title="Xóa video khỏi danh sách"
           >
