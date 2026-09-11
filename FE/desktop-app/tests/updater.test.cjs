@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { createMacSwapScript, downloadRelease, releaseKind, trustedUrl, validateRelease } = require("../electron/updater.cjs");
+const { createMacAsarSwapScript, createMacSwapScript, downloadRelease, releaseKind, trustedUrl, validateRelease } = require("../electron/updater.cjs");
 
 function release(overrides = {}) {
   return {
@@ -74,6 +74,11 @@ test("generates a detached macOS replacement script and classifies installers", 
   const script = createMacSwapScript({ currentApp: "/Applications/JACS Studio.app", newApp: "/tmp/extracted/JACS Studio.app", pid: 1234, cleanupDirectory: "/tmp/extracted" });
   assert.match(script, /kill -0 1234/);
   assert.match(script, /mv "\$target" "\$backup"/);
+
+  const asarScript = createMacAsarSwapScript({ currentApp: "/Applications/JACS Studio.app", newAsar: "/tmp/extracted/resources/app.asar", pid: 1234, cleanupDirectory: "/tmp/extracted" });
+  assert.match(asarScript, /kill -0 1234/);
+  assert.match(asarScript, /cp -f "\$replacement" "\$target"/);
+
   assert.equal(releaseKind("JACS Studio Setup.exe", "windows"), "windows-installer");
   assert.equal(releaseKind("JACS Studio.zip", "macos"), "macos-zip");
 });

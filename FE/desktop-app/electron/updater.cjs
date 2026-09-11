@@ -152,6 +152,22 @@ rm -rf "$backup" "$cleanup"
 `;
 }
 
+function createMacAsarSwapScript({ currentApp, newAsar, pid, cleanupDirectory }) {
+  return `#!/bin/sh
+set -eu
+target=${shellQuote(path.join(currentApp, "Contents", "Resources", "app.asar"))}
+replacement=${shellQuote(newAsar)}
+cleanup=${shellQuote(cleanupDirectory)}
+while kill -0 ${Number(pid)} 2>/dev/null; do sleep 1; done
+backup="\${target}.previous-$(date +%s)"
+cp "$target" "$backup" 2>/dev/null || true
+cp -f "$replacement" "$target"
+open ${shellQuote(currentApp)} >/dev/null 2>&1 || true
+rm -f "$backup"
+rm -rf "$cleanup"
+`;
+}
+
 async function installRelease({ filePath, kind, platform, appModule, execPath = process.execPath, tempDirectory }) {
   if (!fs.existsSync(filePath)) throw new Error("Không tìm thấy file cập nhật đã tải");
   if (platform === "windows") {
@@ -255,15 +271,38 @@ exit
     throw new Error(`Không giải nén được bản cập nhật: ${extraction.stderr || "ditto failed"}`);
   }
   const replacement = findMacApp(extractDirectory);
-  if (!replacement) throw new Error("ZIP cập nhật không chứa ứng dụng macOS");
   const currentApp = macBundlePath(execPath);
   if (!currentApp.endsWith(".app") || !fs.existsSync(currentApp)) throw new Error("Không xác định được thư mục ứng dụng hiện tại");
-  const scriptPath = path.join(extractDirectory, "install-update.sh");
-  await fsp.writeFile(scriptPath, createMacSwapScript({ currentApp, newApp: replacement, pid: process.pid, cleanupDirectory: extractDirectory }), { mode: 0o700 });
-  const child = childProcess.spawn("/bin/sh", [scriptPath], { detached: true, stdio: "ignore" });
-  child.unref();
-  appModule.quit();
-  return { status: "installing" };
+
+  if (replacement) {
+    const scriptPath = path.join(extractDirectory, "install-update.sh");
+    await fsp.writeFile(scriptPath, createMacSwapScript({ currentApp, newApp: replacement, pid: process.pid, cleanupDirectory: extractDirectory }), { mode: 0o700 });
+    const child = childProcess.spawn("/bin/sh", [scriptPath], { detached: true, stdio: "ignore" });
+    child.unref();
+    appModule.quit();
+    return { status: "installing" };
+  }
+
+  // Support OTA asar update package on macOS
+  const asarCandidates = [
+    path.join(extractDirectory, "resources", "app.asar"),
+    path.join(extractDirectory, "app.asar"),
+  ];
+  const newAsar = asarCandidates.find((c) => fs.existsSync(c));
+  if (newAsar) {
+    const targetAsar = path.join(currentApp, "Contents", "Resources", "app.asar");
+    if (!fs.existsSync(path.dirname(targetAsar))) {
+      throw new Error("Không tìm thấy thư mục Resources của ứng dụng macOS hiện tại");
+    }
+    const scriptPath = path.join(extractDirectory, "install-update.sh");
+    await fsp.writeFile(scriptPath, createMacAsarSwapScript({ currentApp, newAsar, pid: process.pid, cleanupDirectory: extractDirectory }), { mode: 0o700 });
+    const child = childProcess.spawn("/bin/sh", [scriptPath], { detached: true, stdio: "ignore" });
+    child.unref();
+    appModule.quit();
+    return { status: "installing" };
+  }
+
+  throw new Error("ZIP cập nhật không chứa ứng dụng macOS hoặc file app.asar");
 }
 
-module.exports = { compareVersions, createMacSwapScript, downloadRelease, findMacApp, installRelease, macBundlePath, releaseKind, sha512File, trustedUrl, validateRelease, versionParts };
+module.exports = { compareVersions, createMacAsarSwapScript, createMacSwapScript, downloadRelease, findMacApp, installRelease, macBundlePath, releaseKind, sha512File, trustedUrl, validateRelease, versionParts };
