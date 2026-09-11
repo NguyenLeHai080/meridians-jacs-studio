@@ -300,43 +300,8 @@ export function VideoAnalysisPage({
         });
       }
 
-      if (isAutoRender && onAddJob) {
-        const renderJobId = `render-${Date.now()}-${job.id}`;
-        onAddJob({
-          id: renderJobId,
-          parentJobId: job.id,
-          name: `[Xuất] ${newName}`,
-          source: job.source,
-          sourceType: job.sourceType,
-          localPath: job.localPath,
-          sourceOnly: false,
-          mode: "local-gpu",
-          durationSeconds: cursor || job.durationSeconds || 60,
-          aspectRatio: job.aspectRatio || "9:16",
-          narratorEnabled: state.narratorEnabled,
-          narratorVoice: voice,
-          languages: [lang],
-          cutClips: cuts,
-          timelineClips: cuts as any,
-          subtitleSegments: subSegments,
-          scenes: scenes as any,
-          analysis,
-          subtitleStyle: job.subtitleStyle || "gold",
-          subtitleText: fullNarrationText,
-          narrationText: fullNarrationText,
-          status: "queued",
-          stage: "queued",
-          progress: 0,
-          createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
-        });
-      }
-
       state.setExpandedJobIds((prev) => new Set(prev).add(job.id));
-      if (isAutoRender) {
-        state.showToast(`🎉 Phân tích AI xong & Đưa vào Hàng Đợi Render: ${newName}`);
-      } else {
-        state.showToast(`🎉 Phân tích AI thành công: ${newName} (${scenes.length} phân cảnh)`);
-      }
+      state.showToast(`🎉 Phân tích AI thành công: ${newName} (${scenes.length} phân cảnh)`);
     } catch (err: any) {
       if (onUpdateJob) {
         onUpdateJob(job.id, {

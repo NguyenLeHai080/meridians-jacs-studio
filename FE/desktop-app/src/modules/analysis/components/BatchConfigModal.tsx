@@ -1034,26 +1034,6 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
                 ))}
               </select>
             </div>
-
-            {/* SECTION 6: Auto Queue to Render */}
-            <div style={{ background: "rgba(18, 23, 35, 0.75)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "12px", padding: "12px 16px" }}>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={autoQueueRender}
-                  onChange={(e) => updateAutoQueueRender?.(e.target.checked)}
-                  style={{ accentColor: "#f59e0b", width: "17px", height: "17px", marginTop: "2px", cursor: "pointer" }}
-                />
-                <div>
-                  <strong style={{ fontSize: "12.5px", color: "#fbbf24", display: "flex", alignItems: "center", gap: "6px" }}>
-                    🚀 6. Xuất bản tự động: Đưa vào Hàng Đợi Render ngay sau khi phân tích xong
-                  </strong>
-                  <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginTop: "3px", lineHeight: "1.4" }}>
-                    Khi AI phân tích hoàn tất, video sẽ tự động chuyển sang trạng thái sẵn sàng xuất bản trong tab <strong>Kết Xuất (Render)</strong> với đầy đủ phân cảnh, giọng đọc và phụ đề, bắt đầu xuất MP4 nền tự động.
-                  </span>
-                </div>
-              </label>
-            </div>
           </div>
 
           {/* Sticky Modal Footer */}
