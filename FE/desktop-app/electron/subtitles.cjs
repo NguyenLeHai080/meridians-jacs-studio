@@ -147,6 +147,9 @@ function normalizeSubtitleSegments(segments, duration, fallbackText) {
     };
     const vDur = Number(segment?.voiceDuration || segment?.audioDuration || 0);
     if (vDur > 0) res.voiceDuration = vDur;
+    if (Array.isArray(segment?.words) && segment.words.length > 0) {
+      res.words = segment.words;
+    }
     return res;
   }).filter((segment) => segment.text).sort((left, right) => left.start - right.start);
 
@@ -213,6 +216,100 @@ function getHighlightColor(style) {
   return "#FFE478";
 }
 
+/** Build word-by-word cues directly from millisecond-accurate audio word boundaries */
+function buildCuesFromWordBoundaries(words, segStart, segEnd, total, highlightColor = "#FFE478") {
+  if (!Array.isArray(words) || !words.length) return [];
+
+  // Group words into phrases breaking on punctuation or when phrase reaches 7-8 words
+  const phrases = [];
+  let cur = [];
+  for (const w of words) {
+    const text = String(w?.text ?? w?.w ?? "").trim();
+    if (!text) continue;
+    cur.push({
+      text,
+      start: Number(w?.start ?? w?.s ?? 0),
+      end: Number(w?.end ?? w?.e ?? 0),
+    });
+    const hasPunct = /[.,!?;:]$/.test(text);
+    if ((hasPunct && cur.length >= 3) || cur.length >= 7) {
+      phrases.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length > 0) {
+    if (phrases.length > 0 && cur.length <= 2) {
+      phrases[phrases.length - 1] = phrases[phrases.length - 1].concat(cur);
+    } else {
+      phrases.push(cur);
+    }
+  }
+
+  if (!phrases.length) return [];
+
+  // 50ms anticipation lead so visual highlight matches voice onset right on beat
+  const LEAD = 0.05;
+  const cues = [];
+
+  for (let pIdx = 0; pIdx < phrases.length; pIdx++) {
+    const pWords = phrases[pIdx];
+    const isLastPhrase = pIdx === phrases.length - 1;
+    const nextPhrase = !isLastPhrase ? phrases[pIdx + 1] : null;
+
+    for (let wIdx = 0; wIdx < pWords.length; wIdx++) {
+      const isLastWordInPhrase = wIdx === pWords.length - 1;
+      const wObj = pWords[wIdx];
+      const nextWord = !isLastWordInPhrase ? pWords[wIdx + 1] : null;
+
+      // Check if wObj.start is relative to snippet or absolute to timeline
+      const wStart = wObj.start < segStart ? segStart + wObj.start : wObj.start;
+      const wEnd = wObj.end < segStart ? segStart + wObj.end : wObj.end;
+
+      let nStart;
+      if (nextWord) {
+        nStart = nextWord.start < segStart ? segStart + nextWord.start : nextWord.start;
+      } else if (nextPhrase && nextPhrase[0]) {
+        nStart = nextPhrase[0].start < segStart ? segStart + nextPhrase[0].start : nextPhrase[0].start;
+      } else {
+        nStart = wEnd;
+      }
+
+      const cStart = Math.max(segStart, Number((wStart - LEAD).toFixed(3)));
+      const cEnd = Math.max(cStart + 0.06, Number((nStart - LEAD).toFixed(3)));
+
+      const wordsToShow = pWords.slice(0, wIdx + 1).map((w, idx) => {
+        if (idx === wIdx) {
+          return `<font color="${highlightColor}"><b>${w.text}</b></font>`;
+        }
+        return w.text;
+      });
+
+      cues.push({
+        start: cStart,
+        end: cEnd,
+        text: wordsToShow.join(" "),
+      });
+    }
+
+    // If last phrase, hold final full phrase until segment end (minus 40ms lead-out)
+    if (isLastPhrase) {
+      const lastW = pWords[pWords.length - 1];
+      const lastEnd = lastW.end < segStart ? segStart + lastW.end : lastW.end;
+      const holdStart = Number((lastEnd - LEAD).toFixed(3));
+      const holdEnd = segEnd < total ? Math.max(holdStart + 0.1, Number((segEnd - 0.04).toFixed(3))) : segEnd;
+      if (holdEnd > holdStart + 0.1) {
+        cues.push({
+          start: holdStart,
+          end: holdEnd,
+          text: pWords.map((w) => w.text).join(" "),
+        });
+      }
+    }
+  }
+
+  return cues;
+}
+
 /** Build progressive word-by-word SRT cues synchronized with spoken voice cadence */
 function buildWordByWordCues(segments, duration, fallbackText, options = {}) {
   const source = normalizeSubtitleSegments(segments, duration, fallbackText);
@@ -222,6 +319,15 @@ function buildWordByWordCues(segments, duration, fallbackText, options = {}) {
   const cues = [];
 
   for (const segment of source) {
+    // If exact millisecond word boundaries exist from audio speech reading, prioritize them!
+    if (Array.isArray(segment.words) && segment.words.length > 0) {
+      const wordCues = buildCuesFromWordBoundaries(segment.words, segment.start, segment.end, total, highlightColor);
+      if (wordCues.length > 0) {
+        cues.push(...wordCues);
+        continue;
+      }
+    }
+
     const segSpan = Math.max(0.1, segment.end - segment.start);
     const hasCjk = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/u.test(segment.text);
 
@@ -279,8 +385,8 @@ function buildWordByWordCues(segments, duration, fallbackText, options = {}) {
         rawBounds.push(acc);
       }
 
-      // 160ms anticipation lead so words reveal right as spoken instead of 1 word late
-      const LEAD_OFFSET = 0.16;
+      // 280ms anticipation lead so words reveal right as spoken instead of 1 word late
+      const LEAD_OFFSET = 0.28;
       let wordCursor = phraseCursor;
 
       for (let wIdx = 0; wIdx < phraseWords.length; wIdx++) {
@@ -373,6 +479,7 @@ function buildSrt(segments, duration, fallbackText, options = {}) {
 
 module.exports = {
   buildCaptionCues,
+  buildCuesFromWordBoundaries,
   buildSrt,
   buildWordByWordCues,
   estimateSpokenDuration,

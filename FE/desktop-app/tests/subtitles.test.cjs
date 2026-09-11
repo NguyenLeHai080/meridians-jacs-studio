@@ -85,3 +85,30 @@ test("builds progressive word-by-word cues with highlighted active words", () =>
   assert.ok(cues.every((c) => c.end > c.start));
 });
 
+test("builds precise word-by-word cues from exact audio word boundaries", () => {
+  const sampleWords = [
+    { w: "Chào", s: 0.1, e: 0.4 },
+    { w: "mừng", s: 0.4, e: 0.7 },
+    { w: "bạn", s: 0.7, e: 1.0 },
+    { w: "đến", s: 1.0, e: 1.3 },
+    { w: "studio.", s: 1.3, e: 1.8 },
+  ];
+  const cues = buildWordByWordCues([
+    { start: 0, end: 3.0, text: "Chào mừng bạn đến studio.", words: sampleWords },
+  ], 3.0, "", { style: "gold" });
+
+  assert.ok(cues.length >= 5);
+  assert.match(cues[0].text, /<font color="#FFE478"><b>Chào<\/b><\/font>/);
+  assert.equal(cues[0].start, 0.05); // 0.1s - 0.05s anticipation lead
+  assert.ok(cues.every((c) => c.end > c.start));
+  assert.equal(cues[cues.length - 1].text, "Chào mừng bạn đến studio."); // hold cue until segment end
+  assert.equal(cues[cues.length - 1].end, 3.0); // full total duration at video end
+
+  // Also test with trailing duration in scene
+  const cues2 = buildWordByWordCues([
+    { start: 0, end: 3.0, text: "Chào mừng bạn đến studio.", words: sampleWords },
+  ], 5.0, "", { style: "gold" });
+  assert.equal(cues2[cues2.length - 1].end, 2.96); // 3.0 - 0.04s lead-out when not at video end
+});
+
+

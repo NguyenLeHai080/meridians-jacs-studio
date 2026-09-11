@@ -75,7 +75,7 @@ export function computeActiveWordIndex(
   words: string[],
   currentOffset: number,
   totalVoiceDur: number,
-  leadInSeconds: number = 0.16
+  leadInSeconds: number = 0.28
 ): number {
   if (words.length === 0 || currentOffset < 0) return -1;
   // Apply anticipation lead-in so word highlights right on syllable onset instead of 1 word late

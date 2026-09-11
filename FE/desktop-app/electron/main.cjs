@@ -2221,6 +2221,13 @@ async function generateAudioStream(text, languageCode = "vi", gender = "female",
       const buffer = Buffer.from(await res.arrayBuffer());
       if (buffer.length > 200) {
         fs.writeFileSync(outputPath, buffer);
+        const wbHeader = res.headers.get("x-word-boundaries");
+        if (wbHeader) {
+          try {
+            const wbJson = Buffer.from(wbHeader, "base64").toString("utf-8");
+            fs.writeFileSync(`${outputPath}.words.json`, wbJson, "utf-8");
+          } catch { /* best effort */ }
+        }
         return outputPath;
       }
     }
@@ -2636,6 +2643,14 @@ async function synthesizeSceneAlignedNarration({
       const snippetStart = currentTime;
       const playedDur = actualDur;
 
+      let snipWords = null;
+      const wordsJsonPath = `${snip}.words.json`;
+      if (fs.existsSync(wordsJsonPath)) {
+        try {
+          snipWords = JSON.parse(fs.readFileSync(wordsJsonPath, "utf-8"));
+        } catch {}
+      }
+
       timelinePieces.push(snip);
       alignedSegments.push({
         start: snippetStart,
@@ -2643,6 +2658,7 @@ async function synthesizeSceneAlignedNarration({
         voiceDuration: playedDur,
         audioDuration: playedDur,
         text: seg.text,
+        words: Array.isArray(snipWords) ? snipWords : undefined,
       });
       currentTime += playedDur;
     }
@@ -3132,6 +3148,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
           end: Math.min(subtitleEnd, Number(segment.end)),
           voiceDuration: Number(segment.voiceDuration || segment.audioDuration || 0) || undefined,
           text: stripSceneMetadata(segment.text || "").trim(),
+          words: Array.isArray(segment.words) ? segment.words : undefined,
         })).filter((segment) => segment.text && segment.end > segment.start)
       : (Array.isArray(options.subtitleSegments)
           ? options.subtitleSegments.map((segment) => ({
@@ -3139,6 +3156,7 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
               end: Math.min(subtitleEnd, Number(segment.end) - clipStart),
               voiceDuration: Number(segment.voiceDuration || segment.audioDuration || 0) || undefined,
               text: stripSceneMetadata(segment.text || "").trim(),
+              words: Array.isArray(segment.words) ? segment.words : undefined,
             })).filter((segment) => segment.text && segment.end > segment.start)
           : []);
     const fallbackText = stripSceneMetadata(String(options.subtitleText || options.narrationText || "")).trim().slice(0, 12000);
@@ -4289,7 +4307,14 @@ Return ONLY valid JSON with no markdown wrapping. Mảng 'scenes' phải có đ�
       if (res.ok) {
         const buffer = Buffer.from(await res.arrayBuffer());
         if (buffer.length > 200) {
-          try { fs.writeFileSync(diskCacheFile, buffer); } catch {}
+          try {
+            fs.writeFileSync(diskCacheFile, buffer);
+            const wbHeader = res.headers.get("x-word-boundaries");
+            if (wbHeader) {
+              const wbJson = Buffer.from(wbHeader, "base64").toString("utf-8");
+              fs.writeFileSync(`${diskCacheFile}.words.json`, wbJson, "utf-8");
+            }
+          } catch {}
           const dataUrl = `data:audio/mpeg;base64,${buffer.toString("base64")}`;
           if (ttsMemoryCache.size > 300) {
             const firstKey = ttsMemoryCache.keys().next().value;

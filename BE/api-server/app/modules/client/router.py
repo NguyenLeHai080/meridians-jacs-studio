@@ -163,6 +163,7 @@ class SpeechSynthesisPayload(BaseModel):
 @router.post("/synthesize-speech")
 async def client_synthesize_speech(payload: SpeechSynthesisPayload):
     import asyncio
+    import base64
     import hashlib
     import json
     import logging
@@ -185,10 +186,23 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_key = hashlib.sha256(f"{voice_key}:{clean_text}:{api_key[:8]}".encode()).hexdigest()
     cache_file = cache_dir / f"{cache_key}.mp3"
+    cache_words_file = cache_dir / f"{cache_key}.words.json"
 
     if cache_file.exists() and cache_file.stat().st_size > 100:
         cached_data = await asyncio.to_thread(cache_file.read_bytes)
-        return Response(content=cached_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(cached_data)), "X-Cache": "HIT"})
+        resp_headers = {
+            "Content-Type": "audio/mpeg",
+            "Content-Length": str(len(cached_data)),
+            "X-Cache": "HIT",
+            "Access-Control-Expose-Headers": "X-Word-Boundaries, X-Cache, X-Engine",
+        }
+        if cache_words_file.exists():
+            try:
+                wb_bytes = await asyncio.to_thread(cache_words_file.read_bytes)
+                resp_headers["X-Word-Boundaries"] = base64.b64encode(wb_bytes).decode("ascii")
+            except Exception:
+                pass
+        return Response(content=cached_data, media_type="audio/mpeg", headers=resp_headers)
 
     # 1. ELEVENLABS AI VOICE (Top 1 World for Human Rhythm, Emotion, Breath Pauses)
     eleven_map = {
@@ -231,7 +245,7 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
             content = await asyncio.to_thread(_fetch_elevenlabs)
             if len(content) > 200:
                 await asyncio.to_thread(cache_file.write_bytes, content)
-                return Response(content=content, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(content)), "X-Cache": "MISS", "X-Engine": "ElevenLabs"})
+                return Response(content=content, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(content)), "X-Cache": "MISS", "X-Engine": "ElevenLabs", "Access-Control-Expose-Headers": "X-Word-Boundaries, X-Cache, X-Engine"})
         except (urllib.error.URLError, TimeoutError, OSError) as err:
             logger.warning("ElevenLabs Error: %s", err)
 
@@ -284,39 +298,74 @@ async def client_synthesize_speech(payload: SpeechSynthesisPayload):
         pitch = "+0Hz"
 
     try:
-        communicate = edge_tts.Communicate(clean_text, voice_name, rate=rate, pitch=pitch)
+        communicate = edge_tts.Communicate(clean_text, voice_name, rate=rate, pitch=pitch, boundary="WordBoundary")
         audio_chunks = []
+        words = []
         async for chunk in communicate.stream():
             if chunk.get("type") == "audio" and "data" in chunk:
                 audio_chunks.append(chunk["data"])
+            elif chunk.get("type") == "WordBoundary":
+                start = round(chunk["offset"] / 10_000_000.0, 3)
+                dur = round(chunk["duration"] / 10_000_000.0, 3)
+                words.append({"w": chunk["text"], "s": start, "e": round(start + dur, 3)})
 
         if not audio_chunks:
             # Fallback with default rate/pitch
-            communicate = edge_tts.Communicate(clean_text, voice_name, rate="+0%", pitch="+0Hz")
+            communicate = edge_tts.Communicate(clean_text, voice_name, rate="+0%", pitch="+0Hz", boundary="WordBoundary")
+            words = []
             async for chunk in communicate.stream():
                 if chunk.get("type") == "audio" and "data" in chunk:
                     audio_chunks.append(chunk["data"])
+                elif chunk.get("type") == "WordBoundary":
+                    start = round(chunk["offset"] / 10_000_000.0, 3)
+                    dur = round(chunk["duration"] / 10_000_000.0, 3)
+                    words.append({"w": chunk["text"], "s": start, "e": round(start + dur, 3)})
 
         if audio_chunks:
             audio_data = b"".join(audio_chunks)
             if len(audio_data) > 100:
                 try:
                     await asyncio.to_thread(cache_file.write_bytes, audio_data)
+                    if words:
+                        await asyncio.to_thread(cache_words_file.write_text, json.dumps(words, ensure_ascii=False))
                 except OSError as write_err:
                     logger.debug("Failed to write TTS cache: %s", write_err)
-                return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralProsody"})
+                resp_headers = {
+                    "Content-Type": "audio/mpeg",
+                    "Content-Length": str(len(audio_data)),
+                    "X-Cache": "MISS",
+                    "X-Engine": "NeuralProsody",
+                    "Access-Control-Expose-Headers": "X-Word-Boundaries, X-Cache, X-Engine",
+                }
+                if words:
+                    resp_headers["X-Word-Boundaries"] = base64.b64encode(json.dumps(words).encode("utf-8")).decode("ascii")
+                return Response(content=audio_data, media_type="audio/mpeg", headers=resp_headers)
     except Exception as e:
         logger.warning("TTS Stream Error: %s", e)
         try:
             fallback_voice = "vi-VN-NamMinhNeural" if payload.gender == "male" else "vi-VN-HoaiMyNeural"
-            communicate = edge_tts.Communicate(clean_text, fallback_voice, rate="+0%", pitch="+0Hz")
+            communicate = edge_tts.Communicate(clean_text, fallback_voice, rate="+0%", pitch="+0Hz", boundary="WordBoundary")
             audio_chunks = []
+            words = []
             async for chunk in communicate.stream():
                 if chunk.get("type") == "audio" and "data" in chunk:
                     audio_chunks.append(chunk["data"])
+                elif chunk.get("type") == "WordBoundary":
+                    start = round(chunk["offset"] / 10_000_000.0, 3)
+                    dur = round(chunk["duration"] / 10_000_000.0, 3)
+                    words.append({"w": chunk["text"], "s": start, "e": round(start + dur, 3)})
             if audio_chunks:
                 audio_data = b"".join(audio_chunks)
-                return Response(content=audio_data, media_type="audio/mpeg", headers={"Content-Type": "audio/mpeg", "Content-Length": str(len(audio_data)), "X-Cache": "MISS", "X-Engine": "NeuralFallback"})
+                resp_headers = {
+                    "Content-Type": "audio/mpeg",
+                    "Content-Length": str(len(audio_data)),
+                    "X-Cache": "MISS",
+                    "X-Engine": "NeuralFallback",
+                    "Access-Control-Expose-Headers": "X-Word-Boundaries, X-Cache, X-Engine",
+                }
+                if words:
+                    resp_headers["X-Word-Boundaries"] = base64.b64encode(json.dumps(words).encode("utf-8")).decode("ascii")
+                return Response(content=audio_data, media_type="audio/mpeg", headers=resp_headers)
         except Exception as retry_err:
             logger.error("TTS Ultimate Fallback Error: %s", retry_err)
 
