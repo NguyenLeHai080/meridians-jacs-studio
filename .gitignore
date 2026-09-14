@@ -40,7 +40,9 @@ FE/desktop-app/bin/win32-x64/ffmpeg.exe
 FE/desktop-app/bin/win32-x64/ffprobe.exe
 FE/desktop-app/bin/win32-x64/yt-dlp.exe
 FE/desktop-app/bin/**/*.exe
-FE/desktop-app/voice-runtime/
+FE/desktop-app/voice-runtime/*
+!FE/desktop-app/voice-runtime/voice_worker.py
+FE/desktop-app/scratch_test/
 scratch/
 .pnpm-store/
 .vite/

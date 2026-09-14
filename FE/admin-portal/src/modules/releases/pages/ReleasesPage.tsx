@@ -70,7 +70,7 @@ export const ReleasesPage: React.FC<ReleasesPageProps> = ({
       html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
         <p>Bạn có chắc muốn xóa bản phát hành <b>v${r.version}</b> (${r.platform})?</p>
         <p style="font-size: 12.5px; color: #64748b; margin-top: 6px;">
-          Kênh: <b>${r.channel}</b> | Dung lượng: <b>${(r.file_size_bytes / (1024 * 1024)).toFixed(1)} MB</b>
+          Kênh: <b>${r.channel}</b> | Dung lượng: <b>${(((r.file_size_bytes ?? r.file_size ?? 0) / (1024 * 1024))).toFixed(1)} MB</b>
         </p>
       </div>`,
       icon: "warning",
@@ -134,54 +134,67 @@ export const ReleasesPage: React.FC<ReleasesPageProps> = ({
             </tr>
           </thead>
           <tbody>
-            {filteredReleases.map((r) => (
-              <tr key={r.id}>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <Rocket size={15} color="var(--primary)" />
-                    <strong>v{r.version}</strong>
-                  </div>
-                </td>
-                <td>{r.platform}</td>
-                <td>
-                  <span className="pill-status pill-active" style={{ fontSize: "0.72rem" }}>
-                    {r.channel.toUpperCase()}
-                  </span>
-                </td>
-                <td>
-                  <span className="code-chip" style={{ fontSize: "0.7rem" }} title={r.sha256}>
-                    {r.sha256.slice(0, 12)}...
-                  </span>
-                </td>
-                <td>{(r.file_size_bytes / (1024 * 1024)).toFixed(1)} MB</td>
-                <td style={{ fontSize: "0.78rem" }}>
-                  {new Date(r.published_at).toLocaleString(
+            {filteredReleases.map((r) => {
+              const hash = r.sha256 || r.sha512 || "";
+              const rawSize = r.file_size_bytes ?? r.file_size ?? 0;
+              const sizeDisplay = rawSize > 0 ? `${(rawSize / (1024 * 1024)).toFixed(1)} MB` : "—";
+              const timeStr = r.published_at || r.created_at;
+              const formattedTime = timeStr
+                ? new Date(timeStr).toLocaleString(
                     language === "vi" ? "vi-VN" : language === "jp" ? "ja-JP" : "en-US"
-                  )}
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <div className="table-actions-row">
-                    <a
-                      href={r.download_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-icon-action action-edit"
-                      title="Download"
-                    >
-                      <Download size={13} />
-                    </a>
-                    <button
-                      type="button"
-                      className="btn-icon-action action-delete"
-                      onClick={() => void handleDelete(r)}
-                      title={t("delete")}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  )
+                : "—";
+              const versionClean = String(r.version || "").replace(/^v+/, "");
+
+              return (
+                <tr key={r.id || `${r.version}-${r.platform}`}>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      <Rocket size={15} color="var(--primary)" />
+                      <strong>v{versionClean}</strong>
+                    </div>
+                  </td>
+                  <td>{r.platform}</td>
+                  <td>
+                    <span className="pill-status pill-active" style={{ fontSize: "0.72rem" }}>
+                      {(r.channel || "stable").toUpperCase()}
+                    </span>
+                  </td>
+                  <td>
+                    {hash ? (
+                      <span className="code-chip" style={{ fontSize: "0.7rem" }} title={hash}>
+                        {hash.slice(0, 12)}...
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>—</span>
+                    )}
+                  </td>
+                  <td>{sizeDisplay}</td>
+                  <td style={{ fontSize: "0.78rem" }}>{formattedTime}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <div className="table-actions-row">
+                      <a
+                        href={r.download_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-icon-action action-edit"
+                        title="Download"
+                      >
+                        <Download size={13} />
+                      </a>
+                      <button
+                        type="button"
+                        className="btn-icon-action action-delete"
+                        onClick={() => void handleDelete(r)}
+                        title={t("delete")}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {filteredReleases.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ textAlign: "center", padding: "3rem", color: "var(--text-muted)" }}>

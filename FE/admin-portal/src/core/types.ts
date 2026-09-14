@@ -243,8 +243,10 @@ export type SystemInfo = {
 export type LegalTerms = {
   title: string;
   disclaimer: string;
-  ai_usage: string;
   license_rights: string;
+  content_warranty?: string;
+  ai_usage: string;
+  limitation_of_liability?: string;
   dispute_resolution: string;
   updated_at?: string;
 };

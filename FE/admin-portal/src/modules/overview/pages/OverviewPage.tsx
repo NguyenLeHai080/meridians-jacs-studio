@@ -2,8 +2,12 @@ import React, { useState, useEffect, useCallback } from "react";
 import type { License, ClientSession, BillingTransaction, BillingSummary } from "../../../core/types";
 import { useOverview } from "../hooks/useOverview";
 import { OverviewKpiCards } from "../components/OverviewKpiCards";
+import { QuickActionsBar } from "../components/QuickActionsBar";
 import { RevenueChart } from "../components/RevenueChart";
 import { DonutKeyStatus } from "../components/DonutKeyStatus";
+import { RecentOnlineSessions } from "../components/RecentOnlineSessions";
+import { RecentTransactionsTable } from "../components/RecentTransactionsTable";
+import { SystemHealthWidget } from "../components/SystemHealthWidget";
 import { licenseService } from "../../licenses/services/licenseService";
 import { sessionService } from "../../sessions/services/sessionService";
 import { billingService } from "../../billing/services/billingService";
@@ -30,6 +34,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   const [localSessions, setLocalSessions] = useState<ClientSession[]>(propSessions || []);
   const [localTransactions, setLocalTransactions] = useState<BillingTransaction[]>(propTransactions || []);
   const [localSummary, setLocalSummary] = useState<BillingSummary | null>(propBillingSummary || null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const activeLicenses = propLicenses || localLicenses;
   const activeSessions = propSessions || localSessions;
@@ -37,6 +42,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   const activeSummary = propBillingSummary !== undefined ? propBillingSummary : localSummary;
 
   const fetchOverviewData = useCallback(async () => {
+    setIsRefreshing(true);
     try {
       const [lics, sess, txs, sum] = await Promise.allSettled([
         licenseService.getLicenses(),
@@ -49,7 +55,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
       if (txs.status === "fulfilled") setLocalTransactions(txs.value);
       if (sum.status === "fulfilled") setLocalSummary(sum.value);
     } catch {
-      // Handled
+      // Handled gracefully
+    } finally {
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -68,6 +76,8 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
     thisMonthRevenue,
     totalRevenue,
     totalTransactions,
+    recentSessions,
+    recentTransactions,
   } = useOverview({
     licenses: activeLicenses,
     sessions: activeSessions,
@@ -76,7 +86,15 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
   });
 
   return (
-    <>
+    <div className="flex flex-col gap-5 animate-fade-in pb-10">
+      {/* 1. Quick Actions Bar */}
+      <QuickActionsBar
+        onNavigate={onNavigate}
+        onRefresh={fetchOverviewData}
+        loading={isRefreshing}
+      />
+
+      {/* 2. Top KPI Cards */}
       <OverviewKpiCards
         thisMonthRevenue={thisMonthRevenue}
         totalRevenue={totalRevenue}
@@ -88,8 +106,12 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         onNavigate={onNavigate}
       />
 
+      {/* 3. Analytics Charts Grid */}
       <div className="charts-grid-mintforge">
-        <RevenueChart />
+        <RevenueChart
+          transactions={activeTransactions}
+          sessions={activeSessions}
+        />
         <DonutKeyStatus
           totalLicenses={activeLicenses.length}
           activeLicensesCount={activeLicensesCount}
@@ -97,6 +119,21 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
           lifetimeKeysCount={lifetimeKeysCount}
         />
       </div>
-    </>
+
+      {/* 4. Real-time Monitoring & Transactions (2 Columns) */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-stretch">
+        <RecentOnlineSessions
+          sessions={recentSessions}
+          onNavigate={onNavigate}
+        />
+        <RecentTransactionsTable
+          transactions={recentTransactions}
+          onNavigate={onNavigate}
+        />
+      </div>
+
+      {/* 5. System Health & Security Shield Status */}
+      <SystemHealthWidget />
+    </div>
   );
 };

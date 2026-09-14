@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 
 from app.core.errors import AppError
-from app.core.security import require_auth
+from app.core.security import require_anti_tamper_signature, require_auth
 from app.core.store import store
 from app.modules.licensing.schemas import (
     CreateLicenseRequest,
@@ -369,7 +369,7 @@ async def update_allowed_models(license_id: UUID, payload: UpdateAllowedModelsRe
     return updated
 
 
-@router.post("/validate")
+@router.post("/validate", dependencies=[Depends(require_anti_tamper_signature)])
 async def validate_license(payload: ValidateLicenseRequest, request: Request):
     client_ip = request.client.host if request.client else None
     match = _active_license(payload.key, payload.hwid, client_ip)
@@ -389,7 +389,7 @@ async def validate_license(payload: ValidateLicenseRequest, request: Request):
     }
 
 
-@router.post("/heartbeat")
+@router.post("/heartbeat", dependencies=[Depends(require_anti_tamper_signature)])
 async def license_heartbeat(payload: LicenseHeartbeatRequest, request: Request):
     """Revalidate a running desktop session without issuing a new token."""
     client_ip = request.client.host if request.client else None

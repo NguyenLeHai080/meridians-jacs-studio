@@ -106,7 +106,7 @@ async function main() {
       // The bundled worker is a plain Python speech bridge. It is identical
       // in both staging apps and safely falls back to macOS `say` on Intel if
       // the host cannot execute the arm64 PyInstaller binary.
-      x64ArchFiles: "Contents/Resources/voice-runtime/jacs-voice-worker",
+      x64ArchFiles: "**/*",
       force: true,
     });
     fs.writeFileSync(configPath, JSON.stringify({ ...baseConfig, directories: { output: releaseDir }, extraResources: [voiceResources] }, null, 2));

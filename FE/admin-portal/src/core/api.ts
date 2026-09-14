@@ -1,6 +1,8 @@
-// Production serves the API behind the same hostname; local Vite keeps the
-// explicit API origin so the dev server can run independently.
-const API_URL = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "")).replace(/\/$/, "");
+import { clearToken } from "./session";
+
+// Both Nginx (/api/) and Vite dev server (server.proxy["/api"]) proxy to the backend (:8000),
+// so using relative paths routes through the same origin (no CORS preflight issues).
+const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
 export type ApiError = { error?: { code?: string; message?: string; request_id?: string } };
 
@@ -32,6 +34,12 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, token?
   const raw = response.status === 204 ? undefined : await response.json().catch(() => undefined);
   const body = raw as (T & ApiError & { data?: T }) | undefined;
   if (!response.ok) {
+    if (response.status === 401) {
+      clearToken();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("unauthorized"));
+      }
+    }
     const details = body?.error;
     throw new ApiRequestError(
       details?.message ?? `API request failed (HTTP ${response.status})`,

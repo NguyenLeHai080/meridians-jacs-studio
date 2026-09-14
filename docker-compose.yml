@@ -21,7 +21,7 @@ services:
       context: ./BE/api-server
     environment:
       JACS_ENV: development
-      JACS_CORS_ORIGINS: http://localhost:5173,http://localhost:4173
+      JACS_CORS_ORIGINS: http://localhost:5173,http://localhost:4173,http://localhost,http://127.0.0.1:5173,http://jacs.local
       JACS_STORE_BACKEND: postgres
       JACS_DATABASE_URL: postgresql://jacs:jacs-dev-password@postgres:5432/jacs
     ports: ["8000:8000"]

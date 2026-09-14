@@ -127,3 +127,19 @@ def revoke_token(authorization: str | None) -> None:
             )
         except (BinasciiError, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError):
             return
+
+
+from app.core.security.anti_tamper import AntiTamperGuard, require_anti_tamper_signature
+
+__all__ = [
+    "AntiTamperGuard",
+    "authorization_scheme",
+    "current_user",
+    "hash_password",
+    "issue_token",
+    "require_anti_tamper_signature",
+    "require_auth",
+    "revoke_token",
+    "verify_password",
+]
+

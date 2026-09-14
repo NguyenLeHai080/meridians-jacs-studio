@@ -22,16 +22,23 @@ class ReleaseCreate(BaseModel):
     signature: str | None = None
     force_update: bool = False
 class ReleaseResponse(BaseModel):
-    id: UUID | str
+    model_config = {"extra": "allow"}
+
+    id: UUID | str | None = None
     version: str
     platform: str
     channel: str = "stable"
     download_url: str
-    sha512: str
+    sha512: str = ""
+    sha256: str | None = None
+    file_size_bytes: int | None = None
+    file_size: int | None = None
     release_notes: str = ""
     force_update: bool = False
+    is_mandatory: bool = False
     signature: str | None = None
     rollout_percent: int = 100
     min_app_version: str | None = None
     status: str = "published"
+    published_at: str | None = None
     created_at: str | None = None

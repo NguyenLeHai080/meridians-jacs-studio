@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Activity,
-  ArrowUpDown,
   Check,
   CheckCircle2,
   Clock,
@@ -9,7 +8,6 @@ import {
   Copy,
   Cpu,
   Eye,
-  Info,
   Layers,
   Laptop,
   RefreshCw,
@@ -22,11 +20,15 @@ import {
   XCircle,
   AlertTriangle,
   Zap,
-  ExternalLink,
   ChevronRight,
+  ChevronLeft,
+  Home,
+  Sliders,
+  Filter,
 } from "lucide-react";
 import { getToken } from "../../../core/session";
 import { apiRequest } from "../../../core/api";
+import { showToast } from "../../../core/swal";
 
 export interface RequestLogRow {
   id: string;
@@ -125,6 +127,16 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
 
+  const onNotifyRef = useRef(onNotify);
+  useEffect(() => {
+    onNotifyRef.current = onNotify;
+  }, [onNotify]);
+
+  const notify = useCallback((msg: string, type: "success" | "error" = "success") => {
+    showToast(msg, type);
+    if (onNotifyRef.current) onNotifyRef.current(msg, type);
+  }, []);
+
   const fetchLogs = useCallback(async (quiet = false) => {
     if (!token) return;
     try {
@@ -143,7 +155,7 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
         }
       }
     } catch {
-      // ignore
+      // ignore network hiccups silently during auto-refresh
     } finally {
       if (!quiet) setLoading(false);
     }
@@ -165,7 +177,7 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(text);
-    onNotify?.("Đã sao chép vào bộ nhớ tạm", "success");
+    notify("Đã sao chép vào bộ nhớ tạm", "success");
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
@@ -255,7 +267,7 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
 
       const matchModel = selectedModel === "all" || r.model.toLowerCase() === selectedModel.toLowerCase();
       const matchStatus = selectedStatus === "all" || r.status.toLowerCase() === selectedStatus.toLowerCase();
-      
+
       const matchDevice =
         selectedDevice === "all" ||
         (r.client_name && r.client_name.toLowerCase() === selectedDevice.toLowerCase()) ||
@@ -279,44 +291,60 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
   }, [logs]);
 
   return (
-    <div style={{ padding: "20px 24px", color: "#0f172a", maxWidth: "1680px", margin: "0 auto" }}>
-      {/* Top Breadcrumb & Actions */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", flexWrap: "wrap", gap: "16px" }}>
+    <div className="w-full max-w-full space-y-6">
+      {/* 1. Spacious Single-Tier Header with Breadcrumb & Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div style={{ fontSize: "11.5px", color: "#64748b", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-            <span>DỊCH VỤ & MÔ HÌNH AI</span>
-            <span>/</span>
-            <span style={{ color: "#0f172a", fontWeight: 800 }}>NHẬT KÝ REQUESTS TOÀN CỤC</span>
+          {/* Breadcrumb Navigation Trail */}
+          <nav className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2.5">
+            <span className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors">
+              <Home size={12} className="text-slate-400" />
+              <span>JACS Studio</span>
+            </span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="text-slate-500">Dịch Vụ AI</span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+              Nhật Ký Requests Toàn Cục
+            </span>
+          </nav>
+
+          {/* Title and Status */}
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-600 to-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 shrink-0">
+              <Activity size={22} className="stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight m-0">
+                  Nhật Ký Toàn Bộ Request AI & Giám Sát Độ Trễ
+                </h1>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Thời gian thực (Real-time DB)</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Giám sát 100% lượt gọi API, trích xuất cảnh multimodal, tạo kịch bản, độ trễ ms và mã lỗi từ Desktop Tool theo máy khách hàng.
+              </p>
+            </div>
           </div>
-          <h1 style={{ fontSize: "1.65rem", fontWeight: 850, color: "#0f172a", margin: 0, letterSpacing: "-0.4px" }}>
-            Nhật Ký Toàn Bộ Request AI & Giám Sát Độ Trễ
-          </h1>
-          <p style={{ color: "#64748b", fontSize: "13px", margin: "3px 0 0" }}>
-            Giám sát thời gian thực 100% lượt gọi API, trích xuất cảnh multimodal, tạo kịch bản, độ trễ ms và mã lỗi từ Desktop Tool theo máy người dùng.
-          </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center flex-wrap sm:flex-nowrap">
           {/* Auto Refresh Toggle */}
           <button
             type="button"
             onClick={() => setAutoRefresh(!autoRefresh)}
-            style={{
-              background: autoRefresh ? "#f0fdf4" : "#f8fafc",
-              border: autoRefresh ? "1px solid #bbf7d0" : "1px solid #cbd5e1",
-              borderRadius: "8px",
-              padding: "7px 12px",
-              fontSize: "12px",
-              fontWeight: 700,
-              color: autoRefresh ? "#16a34a" : "#64748b",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
+            className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-xl border transition-all duration-150 active:scale-95 ${
+              autoRefresh
+                ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
+            }`}
           >
-            <span style={{ color: autoRefresh ? "#16a34a" : "#94a3b8" }}>●</span>
-            {autoRefresh ? "Tự động làm mới (12s)" : "Đã tạm dừng auto"}
+            <span className={`w-2 h-2 rounded-full ${autoRefresh ? "bg-emerald-500" : "bg-slate-400"}`} />
+            <span>{autoRefresh ? "Tự động làm mới (12s)" : "Tạm dừng auto"}</span>
           </button>
 
           {/* Refresh Button */}
@@ -324,292 +352,155 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
             type="button"
             onClick={() => fetchLogs()}
             disabled={loading}
-            style={{
-              background: "#ffffff",
-              border: "1px solid #cbd5e1",
-              borderRadius: "8px",
-              padding: "7px 14px",
-              fontSize: "12.5px",
-              fontWeight: 700,
-              color: "#334155",
-              cursor: loading ? "not-allowed" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-400 border border-slate-300/90 rounded-xl shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50"
           >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            {loading ? "Đang đồng bộ..." : "Làm Mới"}
+            <RefreshCw size={14} className={loading ? "animate-spin text-emerald-600" : "text-slate-500"} />
+            <span>{loading ? "Đang đồng bộ..." : "Làm mới"}</span>
           </button>
         </div>
       </div>
 
-      {/* 4 KPI Summary Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", marginBottom: "20px" }}>
+      {/* 2. 4 Glassmorphic KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Requests */}
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "12px",
-            padding: "16px 18px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
               Tổng Lượt Request
             </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#eff6ff", color: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <Layers size={16} />
             </div>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: "#0f172a", marginTop: "6px" }}>
-            {summary?.total_requests ? summary.total_requests.toLocaleString() : logs.length} <span style={{ fontSize: "13px", color: "#64748b", fontWeight: 600 }}>lượt</span>
+          <div className="text-2xl font-black text-slate-900">
+            {summary?.total_requests ? summary.total_requests.toLocaleString() : logs.length.toLocaleString()}{" "}
+            <span className="text-xs font-semibold text-slate-400">lượt</span>
           </div>
-          <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px" }}>
-            Ghi nhận trực tiếp từ database
-          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Ghi nhận trực tiếp từ database</div>
         </div>
 
         {/* Card 2: Success Rate */}
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "12px",
-            padding: "16px 18px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-emerald-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
               Tỷ Lệ Thành Công
             </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#f0fdf4", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <CheckCircle2 size={16} />
             </div>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: "#16a34a", marginTop: "6px" }}>
+          <div className="text-2xl font-black text-emerald-600">
             {summary?.success_rate_pct ?? 100}%
           </div>
-          <div style={{ fontSize: "11.5px", color: "#16a34a", fontWeight: 700, marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
-            <Zap size={12} /> {summary?.smoothness_status || "Hệ thống hoạt động mượt mà"}
+          <div className="text-[11px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
+            <Zap size={12} className="text-emerald-500" />
+            <span>{summary?.smoothness_status || "Hệ thống hoạt động mượt mà"}</span>
           </div>
         </div>
 
         {/* Card 3: Avg Latency */}
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "12px",
-            padding: "16px 18px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-amber-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
               Độ Trễ Trung Bình
             </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#fffbeb", color: "#d97706", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
               <Clock size={16} />
             </div>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: "#0f172a", marginTop: "6px" }}>
-            {summary?.avg_latency_ms !== undefined ? Math.round(summary.avg_latency_ms).toLocaleString() : (logs.length > 0 ? Math.round(logs.reduce((acc, l) => acc + l.latency_ms, 0) / logs.length).toLocaleString() : 0)} <span style={{ fontSize: "13px", color: "#d97706", fontWeight: 700 }}>ms</span>
+          <div className="text-2xl font-black text-slate-900">
+            {summary?.avg_latency_ms !== undefined
+              ? Math.round(summary.avg_latency_ms).toLocaleString()
+              : logs.length > 0
+              ? Math.round(logs.reduce((acc, l) => acc + l.latency_ms, 0) / logs.length).toLocaleString()
+              : 0}{" "}
+            <span className="text-xs font-bold text-amber-600">ms</span>
           </div>
-          <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px" }}>
-            Thời gian phản hồi AI thực tế
-          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Thời gian phản hồi AI thực tế</div>
         </div>
 
         {/* Card 4: Failed Requests */}
-        <div
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "12px",
-            padding: "16px 18px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-rose-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
               Lỗi Phát Sinh
             </span>
-            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#fef2f2", color: "#dc2626", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
               <XCircle size={16} />
             </div>
           </div>
-          <div style={{ fontSize: "24px", fontWeight: 850, color: (summary?.failed_requests ?? 0) > 0 ? "#dc2626" : "#0f172a", marginTop: "6px" }}>
-            {summary?.failed_requests ?? 0} <span style={{ fontSize: "13px", color: "#64748b", fontWeight: 600 }}>lỗi</span>
+          <div className={`text-2xl font-black ${(summary?.failed_requests ?? 0) > 0 ? "text-rose-600" : "text-slate-900"}`}>
+            {summary?.failed_requests ?? 0}{" "}
+            <span className="text-xs font-semibold text-slate-400">lỗi</span>
           </div>
-          <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "4px" }}>
-            Rate limit, timeout hoặc lỗi kết nối
-          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Rate limit, timeout hoặc mạng</div>
         </div>
       </div>
 
-      {/* Active Device Focused Filter Banner */}
+      {/* Active Focused Device Filter Banner */}
       {activeSelectedDevice && (
-        <div
-          style={{
-            background: "linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)",
-            border: "1px solid #86efac",
-            borderRadius: "12px",
-            padding: "14px 18px",
-            marginBottom: "18px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "14px",
-            boxShadow: "0 2px 6px rgba(22, 163, 74, 0.06)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div
-              style={{
-                width: "42px",
-                height: "42px",
-                borderRadius: "10px",
-                background: "#16a34a",
-                color: "#ffffff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 2px 5px rgba(22, 163, 74, 0.25)",
-              }}
-            >
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-white border border-emerald-300 rounded-2xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0">
               <Laptop size={20} />
             </div>
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "15px", fontWeight: 850, color: "#0f172a" }}>
-                  {activeSelectedDevice.device_name}
-                </span>
-                <span
-                  style={{
-                    padding: "2px 7px",
-                    borderRadius: "5px",
-                    fontSize: "11px",
-                    fontWeight: 750,
-                    background: "#dcfce7",
-                    color: "#15803d",
-                    border: "1px solid #86efac",
-                  }}
-                >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-black text-slate-900">{activeSelectedDevice.device_name}</span>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                   ● Đang lọc máy này
                 </span>
                 {activeSelectedDevice.license_key && (
-                  <span
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: "11px",
-                      color: "#475569",
-                      background: "#f1f5f9",
-                      padding: "2px 6px",
-                      borderRadius: "4px",
-                    }}
-                  >
+                  <span className="font-mono text-[11px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
                     Key: {activeSelectedDevice.license_key}
                   </span>
                 )}
               </div>
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "#475569",
-                  marginTop: "3px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "14px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <span>🪙 Số dư: <strong style={{ color: "#d97706" }}>{activeSelectedDevice.credit_balance.toLocaleString()} Credits</strong></span>
+              <div className="text-xs text-slate-600 mt-1 flex items-center gap-3 flex-wrap">
+                <span>🪙 Số dư: <strong className="text-amber-600">{activeSelectedDevice.credit_balance.toLocaleString()} Credits</strong></span>
                 <span>⚡ Tổng Request: <strong>{activeSelectedDevice.total_requests.toLocaleString()}</strong></span>
-                <span>🎯 Tỷ lệ thành công: <strong style={{ color: "#16a34a" }}>{activeSelectedDevice.success_rate_pct}%</strong></span>
-                <span>⏱️ Độ trễ TB: <strong style={{ color: "#2563eb" }}>{activeSelectedDevice.avg_latency_ms}ms</strong></span>
+                <span>🎯 Thành công: <strong className="text-emerald-600">{activeSelectedDevice.success_rate_pct}%</strong></span>
+                <span>⏱️ Độ trễ TB: <strong className="text-blue-600">{activeSelectedDevice.avg_latency_ms}ms</strong></span>
               </div>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setSelectedDeviceModal(activeSelectedDevice)}
-              style={{
-                background: "#16a34a",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "7px",
-                padding: "7px 13px",
-                fontSize: "12px",
-                fontWeight: 750,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                boxShadow: "0 2px 4px rgba(22, 163, 74, 0.2)",
-              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs transition-all active:scale-95"
             >
-              <Eye size={13} /> Xem Chi Tiết Máy
+              <Eye size={13} />
+              <span>Xem chi tiết máy</span>
             </button>
             <button
               type="button"
               onClick={() => setSelectedDevice("all")}
-              style={{
-                background: "#ffffff",
-                color: "#64748b",
-                border: "1px solid #cbd5e1",
-                borderRadius: "7px",
-                padding: "7px 11px",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition-all active:scale-95"
             >
-              Bỏ Lọc Máy
+              <span>Bỏ lọc máy</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Main Table Container */}
-      <div
-        style={{
-          background: "#ffffff",
-          border: "1px solid #e2e8f0",
-          borderRadius: "12px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Table Filter Bar */}
-        <div
-          style={{
-            padding: "14px 20px",
-            borderBottom: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "12px",
-            background: "#fafafa",
-          }}
-        >
-          {/* Record Count Badge */}
-          <div style={{ fontSize: "13px", fontWeight: 750, color: "#334155" }}>
-            Hiển thị <strong>{filteredLogs.length > 0 ? startIndex + 1 : 0}–{Math.min(startIndex + pageSize, totalItems)}</strong> / <strong>{totalItems}</strong> logs
+      {/* 3. Main Data Table Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Table Filter Toolbar */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs font-bold text-slate-700">
+            Hiển thị{" "}
+            <span className="text-slate-900">
+              {filteredLogs.length > 0 ? startIndex + 1 : 0}–{Math.min(startIndex + pageSize, totalItems)}
+            </span>{" "}
+            / <span className="text-slate-900">{totalItems}</span> logs
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            {/* Search Box */}
-            <div style={{ position: "relative", minWidth: "240px" }}>
-              <Search size={13} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Search Input */}
+            <div className="relative min-w-[240px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="Tìm Model, Key, Khách, Lỗi..."
@@ -618,46 +509,31 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
                   setLocalSearch(e.target.value);
                   setCurrentPage(1);
                 }}
-                style={{
-                  width: "100%",
-                  padding: "6px 10px 6px 30px",
-                  borderRadius: "7px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "12.5px",
-                  outline: "none",
-                  background: "#ffffff",
-                }}
+                className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-800 bg-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
               />
               {localSearch && (
                 <button
                   type="button"
                   onClick={() => setLocalSearch("")}
-                  style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <X size={13} />
                 </button>
               )}
             </div>
 
-            {/* Device Filter (Máy người dùng) */}
+            {/* Device Filter */}
             <select
               value={selectedDevice}
               onChange={(e) => {
                 setSelectedDevice(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{
-                padding: "6px 10px",
-                borderRadius: "7px",
-                border: selectedDevice !== "all" ? "1.5px solid #16a34a" : "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                fontWeight: 650,
-                color: selectedDevice !== "all" ? "#15803d" : "#334155",
-                background: selectedDevice !== "all" ? "#f0fdf4" : "#ffffff",
-                outline: "none",
-                cursor: "pointer",
-                maxWidth: "240px",
-              }}
+              className={`py-1.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                selectedDevice !== "all"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-400"
+                  : "bg-white text-slate-700 border-slate-300"
+              }`}
             >
               <option value="all">🖥️ Tất cả máy ({devices.length})</option>
               {devices.map((d) => (
@@ -674,17 +550,7 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
                 setSelectedModel(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{
-                padding: "6px 10px",
-                borderRadius: "7px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                fontWeight: 650,
-                color: "#334155",
-                background: "#ffffff",
-                outline: "none",
-                cursor: "pointer",
-              }}
+              className="py-1.5 px-3 rounded-xl text-xs font-bold bg-white text-slate-700 border border-slate-300 cursor-pointer"
             >
               <option value="all">Tất cả Model</option>
               {uniqueModels.map((m) => (
@@ -701,45 +567,35 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
                 setSelectedStatus(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{
-                padding: "6px 10px",
-                borderRadius: "7px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12.5px",
-                fontWeight: 650,
-                color: "#334155",
-                background: "#ffffff",
-                outline: "none",
-                cursor: "pointer",
-              }}
+              className="py-1.5 px-3 rounded-xl text-xs font-bold bg-white text-slate-700 border border-slate-300 cursor-pointer"
             >
               <option value="all">Tất cả trạng thái</option>
-              <option value="Oke">🟢 Oke (Thành công)</option>
+              <option value="Oke">🟢 Oke (200 OK)</option>
               <option value="Fail">🔴 Fail (Lỗi / Timeout)</option>
             </select>
           </div>
         </div>
 
-        {/* Main Logs Table */}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", minWidth: "1200px", borderCollapse: "collapse", fontSize: "13px", textAlign: "left" }}>
+        {/* High-End Single-Line Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1100px] border-collapse text-left text-xs">
             <thead>
-              <tr style={{ background: "#ffffff", borderBottom: "1px solid #f1f5f9", color: "#64748b", fontSize: "11px", fontWeight: 750, letterSpacing: "0.3px" }}>
-                <th style={{ padding: "12px 18px", width: "170px" }}>THỜI GIAN</th>
-                <th style={{ padding: "12px 14px", width: "220px" }}>TÁC VỤ & MODEL</th>
-                <th style={{ padding: "12px 14px", width: "220px" }}>KHÁCH HÀNG / MÁY</th>
-                <th style={{ padding: "12px 12px", width: "120px", textAlign: "center" }}>TRẠNG THÁI</th>
-                <th style={{ padding: "12px 14px", width: "120px", textAlign: "right" }}>TOKEN VÀO</th>
-                <th style={{ padding: "12px 14px", width: "110px", textAlign: "right" }}>TOKEN RA</th>
-                <th style={{ padding: "12px 14px", width: "130px", textAlign: "right" }}>CHI PHÍ</th>
-                <th style={{ padding: "12px 18px", width: "140px", textAlign: "right" }}>ĐỘ TRỄ</th>
-                <th style={{ padding: "12px 14px", width: "60px", textAlign: "center" }}>CHI TIẾT</th>
+              <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                <th className="py-3 px-4 w-[160px]">THỜI GIAN</th>
+                <th className="py-3 px-3 w-[220px]">MÔ HÌNH AI & TÁC VỤ</th>
+                <th className="py-3 px-3 w-[230px]">MÁY / KEY CLIENT</th>
+                <th className="py-3 px-3 w-[120px] text-center">TRẠNG THÁI</th>
+                <th className="py-3 px-3 w-[100px] text-right">TOKENS VÀO</th>
+                <th className="py-3 px-3 w-[100px] text-right">TOKENS RA</th>
+                <th className="py-3 px-3 w-[130px] text-right">CHI PHÍ & CREDIT</th>
+                <th className="py-3 px-3 w-[120px] text-right">ĐỘ TRỄ</th>
+                <th className="py-3 px-4 w-[70px] text-center">CHI TIẾT</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {paginatedLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ padding: "40px 20px", textAlign: "center", color: "#94a3b8" }}>
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     Không tìm thấy lượt gọi API nào phù hợp.
                   </td>
                 </tr>
@@ -747,63 +603,56 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
                 paginatedLogs.map((row) => {
                   const isFail = row.status === "Fail";
                   const lat = row.latency_ms;
-                  
-                  // Color grading for latency
-                  const latColor = lat < 2500 ? "#16a34a" : lat < 8000 ? "#d97706" : "#dc2626";
-                  const latBg = lat < 2500 ? "#f0fdf4" : lat < 8000 ? "#fffbeb" : "#fef2f2";
+                  const latColor =
+                    lat < 2500
+                      ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                      : lat < 8000
+                      ? "text-amber-700 bg-amber-50 border-amber-200"
+                      : "text-rose-700 bg-rose-50 border-rose-200";
 
-                  // HTTP Status label
                   const httpBadge = row.status_code
-                    ? (row.status_code === 200 ? "200 OK" : `${row.status_code} Error`)
-                    : (isFail ? "500 Error" : "200 OK");
+                    ? row.status_code === 200
+                      ? "200 OK"
+                      : `${row.status_code} Error`
+                    : isFail
+                    ? "500 Error"
+                    : "200 OK";
+
+                  const ts = formatTimestamp(row.timestamp);
 
                   return (
                     <tr
                       key={row.id}
-                      style={{
-                        borderBottom: "1px solid #f8fafc",
-                        transition: "background 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#fafafa")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      className="hover:bg-slate-50/80 transition-colors duration-100 whitespace-nowrap"
                     >
                       {/* 1. Timestamp */}
-                      <td style={{ padding: "12px 18px", color: "#334155", fontSize: "12px", whiteSpace: "nowrap" }}>
-                        {(() => {
-                          const ts = formatTimestamp(row.timestamp);
-                          return (
-                            <div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "5px", fontWeight: 700, color: "#1e293b" }}>
-                                <Clock size={12} color="#64748b" />
-                                <span>{ts.formatted}</span>
-                              </div>
-                              {ts.relative && (
-                                <div style={{ fontSize: "10.5px", color: "#94a3b8", marginTop: "2px", paddingLeft: "17px" }}>
-                                  {ts.relative}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <Clock size={12} className="text-slate-400 shrink-0" />
+                          <span>{ts.formatted}</span>
+                        </div>
+                        {ts.relative && (
+                          <div className="text-[10.5px] text-slate-400 pl-4.5">{ts.relative}</div>
+                        )}
                       </td>
 
-                      {/* 2. Task & Model */}
-                      <td style={{ padding: "12px 14px" }}>
-                        <div style={{ fontWeight: 750, color: "#0f172a", fontSize: "13px", fontFamily: "monospace", display: "flex", alignItems: "center", gap: "6px" }}>
+                      {/* 2. Model & Task */}
+                      <td className="py-3 px-3">
+                        <div className="font-mono font-bold text-slate-900 text-xs flex items-center gap-1.5">
                           <span>{row.model}</span>
                         </div>
-                        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
-                          <span style={{ fontWeight: 600, color: "#2563eb" }}>{row.feature_name || "Phân tích AI"}</span>
+                        <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                          <span className="font-semibold text-blue-600">{row.feature_name || "Phân tích AI"}</span>
                           <span>•</span>
                           <span>{row.provider}</span>
                         </div>
                       </td>
 
-                      {/* 3. Key & Customer / Machine */}
-                      <td style={{ padding: "12px 14px" }}>
+                      {/* 3. Machine / Key */}
+                      <td className="py-3 px-3">
                         <div>
-                          {/* Machine name badge - Clickable */}
-                          <div
+                          <button
+                            type="button"
                             onClick={() => {
                               const found = devices.find(
                                 (d) =>
@@ -836,165 +685,88 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
                                 });
                               }
                             }}
-                            title={`Click để xem chi tiết thông số & giám sát máy: ${row.client_name || "Desktop Client"}`}
-                            style={{
-                              fontSize: "12px",
-                              fontWeight: 750,
-                              color: "#1e40af",
-                              marginBottom: "3px",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "5px",
-                              cursor: "pointer",
-                              background: "#eff6ff",
-                              border: "1px solid #dbeafe",
-                              padding: "2px 7px",
-                              borderRadius: "5px",
-                              transition: "all 0.15s ease",
-                              maxWidth: "200px",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = "#dbeafe";
-                              e.currentTarget.style.borderColor = "#93c5fd";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = "#eff6ff";
-                              e.currentTarget.style.borderColor = "#dbeafe";
-                            }}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-[11px] max-w-[180px] truncate transition-colors cursor-pointer"
+                            title={`Xem chi tiết máy: ${row.client_name || "Desktop Client"}`}
                           >
-                            <Laptop size={12} color="#2563eb" />
-                            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {row.client_name || "Desktop Client"}
-                            </span>
-                          </div>
-
-                          <div>
-                            <span
-                              onClick={() => handleCopy(row.key)}
-                              title={`Click để sao chép Key: ${row.key}`}
-                              style={{
-                                fontFamily: "monospace",
-                                fontSize: "11px",
-                                fontWeight: 650,
-                                color: "#0369a1",
-                                background: "#f0f9ff",
-                                border: "1px solid #bae6fd",
-                                padding: "1px 5px",
-                                borderRadius: "4px",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "3px",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              <span>{row.key}</span>
-                              {copiedKey === row.key ? <Check size={10} color="#16a34a" /> : <Copy size={10} color="#38bdf8" />}
-                            </span>
-                          </div>
+                            <Laptop size={11} className="shrink-0 text-blue-600" />
+                            <span className="truncate">{row.client_name || "Desktop Client"}</span>
+                          </button>
+                        </div>
+                        <div className="mt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(row.key)}
+                            className="inline-flex items-center gap-1 font-mono text-[10.5px] font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 px-1.5 py-0.5 rounded border border-sky-200 transition-colors"
+                            title="Click để copy key"
+                          >
+                            <span>{row.key}</span>
+                            {copiedKey === row.key ? (
+                              <Check size={10} className="text-emerald-600" />
+                            ) : (
+                              <Copy size={10} className="text-sky-400" />
+                            )}
+                          </button>
                         </div>
                       </td>
 
                       {/* 4. Status Badge */}
-                      <td style={{ padding: "12px 12px", textAlign: "center" }}>
+                      <td className="py-3 px-3 text-center">
                         <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            fontSize: "11px",
-                            fontWeight: 800,
-                            background: isFail ? "#fee2e2" : "#ecfdf5",
-                            color: isFail ? "#dc2626" : "#059669",
-                            border: isFail ? "1px solid #fecaca" : "1px solid #a7f3d0",
-                            whiteSpace: "nowrap",
-                          }}
-                          title={row.error_message || (isFail ? "Lỗi gọi API" : "Hoàn thành 200 OK")}
+                          className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                            isFail
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          }`}
                         >
                           {httpBadge}
                         </span>
                         {row.error_message && (
                           <div
                             onClick={() => setSelectedRow(row)}
-                            style={{
-                              fontSize: "10px",
-                              color: "#dc2626",
-                              marginTop: "2px",
-                              maxWidth: "140px",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              cursor: "pointer",
-                              textDecoration: "underline",
-                            }}
-                            title={`Click để xem lỗi chi tiết: ${row.error_message}`}
+                            className="text-[10px] text-rose-600 underline truncate max-w-[120px] mx-auto mt-0.5 cursor-pointer"
+                            title={row.error_message}
                           >
                             {row.error_message}
                           </div>
                         )}
                       </td>
 
-                      {/* 5. Token In */}
-                      <td style={{ padding: "12px 14px", textAlign: "right", color: "#334155", fontWeight: 700, fontSize: "12.5px" }}>
+                      {/* 5. Tokens In */}
+                      <td className="py-3 px-3 text-right font-bold text-slate-700">
                         {row.tokens_in > 0 ? row.tokens_in.toLocaleString() : "0"}
                       </td>
 
-                      {/* 6. Token Out */}
-                      <td style={{ padding: "12px 14px", textAlign: "right", color: "#64748b", fontWeight: 650, fontSize: "12.5px" }}>
+                      {/* 6. Tokens Out */}
+                      <td className="py-3 px-3 text-right font-semibold text-slate-500">
                         {row.tokens_out > 0 ? row.tokens_out.toLocaleString() : "0"}
                       </td>
 
-                      {/* 7. Cost / Credit */}
-                      <td style={{ padding: "12px 14px", textAlign: "right" }}>
-                        <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#0f172a" }}>
+                      {/* 7. Cost & Credit */}
+                      <td className="py-3 px-3 text-right">
+                        <div className="font-bold text-slate-900">
                           {row.cost_vnd > 0 ? `${row.cost_vnd.toLocaleString()}đ` : "0đ"}
                         </div>
                         {row.credit_used > 0 && (
-                          <div style={{ fontSize: "10.5px", color: "#d97706", fontWeight: 750 }}>
+                          <div className="text-[10.5px] font-bold text-amber-600">
                             {row.credit_used.toFixed(2)} Cr
                           </div>
                         )}
                       </td>
 
                       {/* 8. Latency */}
-                      <td style={{ padding: "12px 18px", textAlign: "right" }}>
-                        <span
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "12px",
-                            fontWeight: 800,
-                            color: latColor,
-                            background: latBg,
-                            padding: "2px 7px",
-                            borderRadius: "5px",
-                            display: "inline-block",
-                            border: `1px solid ${latColor}30`,
-                          }}
-                        >
+                      <td className="py-3 px-3 text-right">
+                        <span className={`inline-block font-mono text-[11.5px] font-bold px-2 py-0.5 rounded-md border ${latColor}`}>
                           {lat.toLocaleString()}ms
                         </span>
                       </td>
 
                       {/* 9. View Details Action */}
-                      <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                      <td className="py-3 px-4 text-center">
                         <button
                           type="button"
                           onClick={() => setSelectedRow(row)}
-                          title="Xem chi tiết snapshot request"
-                          style={{
-                            background: "#f1f5f9",
-                            border: "1px solid #cbd5e1",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            color: "#475569",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
+                          className="inline-flex items-center justify-center p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 transition-colors"
+                          title="Xem chi tiết snapshot"
                         >
                           <Eye size={13} />
                         </button>
@@ -1007,37 +779,17 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
           </table>
         </div>
 
-        {/* Footer Pagination */}
-        <div
-          style={{
-            padding: "12px 20px",
-            borderTop: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "10px",
-            background: "#fafafa",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "12px", color: "#64748b" }}>Số dòng mỗi trang:</span>
+        {/* Table Pagination Footer */}
+        <div className="p-3.5 border-t border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <span>Số dòng mỗi trang:</span>
             <select
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
                 setCurrentPage(1);
               }}
-              style={{
-                padding: "3px 8px",
-                borderRadius: "5px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12px",
-                color: "#334155",
-                background: "#ffffff",
-                outline: "none",
-                cursor: "pointer",
-              }}
+              className="py-1 px-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white"
             >
               <option value={15}>15 dòng</option>
               <option value={30}>30 dòng</option>
@@ -1046,26 +798,18 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
             </select>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              style={{
-                padding: "5px 12px",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e1",
-                background: currentPage <= 1 ? "#f1f5f9" : "#ffffff",
-                color: currentPage <= 1 ? "#94a3b8" : "#334155",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: currentPage <= 1 ? "not-allowed" : "pointer",
-              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Trước
+              <ChevronLeft size={13} />
+              <span>Trước</span>
             </button>
 
-            <span style={{ fontSize: "12.5px", fontWeight: 750, color: "#334155" }}>
+            <span className="text-xs font-bold text-slate-800 px-2">
               Trang {currentPage} / {totalPages}
             </span>
 
@@ -1073,196 +817,109 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
               type="button"
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              style={{
-                padding: "5px 12px",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e1",
-                background: currentPage >= totalPages ? "#f1f5f9" : "#ffffff",
-                color: currentPage >= totalPages ? "#94a3b8" : "#334155",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
-              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Sau
+              <span>Sau</span>
+              <ChevronRight size={13} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Machine Details Inspector Modal */}
+      {/* 4. Modal: Device Telemetry Inspector */}
       {selectedDeviceModal && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.6)",
-            backdropFilter: "blur(4px)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setSelectedDeviceModal(null)}
         >
           <div
-            style={{
-              background: "#ffffff",
-              borderRadius: "16px",
-              maxWidth: "760px",
-              width: "100%",
-              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-              overflow: "hidden",
-              animation: "fadeIn 0.2s ease-out",
-            }}
+            className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div
-              style={{
-                padding: "18px 24px",
-                borderBottom: "1px solid #e2e8f0",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                background: "#f8fafc",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div
-                  style={{
-                    width: "40px",
-                    height: "40px",
-                    borderRadius: "10px",
-                    background: "#2563eb",
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxShadow: "0 2px 4px rgba(37, 99, 235, 0.25)",
-                  }}
-                >
+            <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-md">
                   <Laptop size={20} />
                 </div>
                 <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 850, color: "#0f172a" }}>
-                      {selectedDeviceModal.device_name}
-                    </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-slate-900 m-0">{selectedDeviceModal.device_name}</h3>
                     <span
-                      style={{
-                        padding: "2px 7px",
-                        borderRadius: "5px",
-                        fontSize: "11px",
-                        fontWeight: 750,
-                        background: selectedDeviceModal.status === "active" ? "#dcfce7" : "#f1f5f9",
-                        color: selectedDeviceModal.status === "active" ? "#15803d" : "#64748b",
-                        border: `1px solid ${selectedDeviceModal.status === "active" ? "#86efac" : "#cbd5e1"}`,
-                      }}
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                        selectedDeviceModal.status === "active"
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          : "bg-slate-100 text-slate-700 border-slate-300"
+                      }`}
                     >
-                      {selectedDeviceModal.status === "active" ? "● Hoạt Động" : "Tạm Dừng"}
+                      {selectedDeviceModal.status === "active" ? "● Hoạt động" : "Tạm dừng"}
                     </span>
                   </div>
-                  <div style={{ fontSize: "11.5px", color: "#64748b", marginTop: "2px", display: "flex", gap: "10px" }}>
+                  <div className="text-[11.5px] text-slate-500 mt-0.5 flex gap-3">
                     {selectedDeviceModal.license_key && <span>Key: <strong>{selectedDeviceModal.license_key}</strong></span>}
                     {selectedDeviceModal.hwid && <span>HWID: <strong>{selectedDeviceModal.hwid}</strong></span>}
                   </div>
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={() => setSelectedDeviceModal(null)}
-                style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
                 <X size={20} />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div style={{ padding: "22px 24px", maxHeight: "78vh", overflowY: "auto" }}>
-              {/* 4 Machine Telemetry KPI Cards */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "20px" }}>
-                {/* 1. Requests */}
-                <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>TỔNG REQUESTS</div>
-                  <div style={{ fontSize: "18px", fontWeight: 850, color: "#0f172a", marginTop: "4px" }}>
-                    {selectedDeviceModal.total_requests.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#16a34a", fontWeight: 700, marginTop: "2px" }}>
-                    {selectedDeviceModal.success_rate_pct}% thành công ({selectedDeviceModal.success_requests} Oke / {selectedDeviceModal.failed_requests} Fail)
-                  </div>
+            <div className="p-5 max-h-[75vh] overflow-y-auto space-y-5">
+              {/* 4 Mini Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500 uppercase">TỔNG REQUESTS</div>
+                  <div className="text-lg font-black text-slate-900 mt-1">{selectedDeviceModal.total_requests.toLocaleString()}</div>
+                  <div className="text-[11px] font-bold text-emerald-600 mt-0.5">{selectedDeviceModal.success_rate_pct}% thành công</div>
                 </div>
 
-                {/* 2. Latency */}
-                <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>ĐỘ TRỄ TRUNG BÌNH</div>
-                  <div style={{ fontSize: "18px", fontWeight: 850, color: "#2563eb", marginTop: "4px" }}>
-                    {selectedDeviceModal.avg_latency_ms.toLocaleString()} <span style={{ fontSize: "12px" }}>ms</span>
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                    {selectedDeviceModal.last_used_model ? `Model gần nhất: ${selectedDeviceModal.last_used_model}` : "Phản hồi AI"}
-                  </div>
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500 uppercase">ĐỘ TRỄ TB</div>
+                  <div className="text-lg font-black text-blue-600 mt-1">{selectedDeviceModal.avg_latency_ms} <span className="text-xs">ms</span></div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">{selectedDeviceModal.last_used_model || "Phản hồi AI"}</div>
                 </div>
 
-                {/* 3. Credits Balance */}
-                <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>SỐ DƯ CREDITS</div>
-                  <div style={{ fontSize: "18px", fontWeight: 850, color: "#d97706", marginTop: "4px" }}>
-                    {selectedDeviceModal.credit_balance.toLocaleString()} <span style={{ fontSize: "12px" }}>Cr</span>
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                    Đã dùng: <strong style={{ color: "#0f172a" }}>{selectedDeviceModal.credits_used.toFixed(2)}</strong> Cr · Quỹ: <strong>{((selectedDeviceModal.credit_balance || 0) + (selectedDeviceModal.credits_used || 0)).toFixed(1)}</strong> Cr
-                  </div>
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500 uppercase">SỐ DƯ CREDITS</div>
+                  <div className="text-lg font-black text-amber-600 mt-1">{selectedDeviceModal.credit_balance.toLocaleString()} <span className="text-xs">Cr</span></div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">Dùng: {selectedDeviceModal.credits_used.toFixed(1)} Cr</div>
                 </div>
 
-                {/* 4. Total Tokens & Cost */}
-                <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>TIÊU HAO TOKENS</div>
-                  <div style={{ fontSize: "18px", fontWeight: 850, color: "#0f172a", marginTop: "4px" }}>
-                    {selectedDeviceModal.total_tokens.toLocaleString()} <span style={{ fontSize: "12px", color: "#64748b" }}>tokens</span>
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                    Vào: <strong style={{ color: "#2563eb" }}>{(selectedDeviceModal.tokens_in || 0).toLocaleString()}</strong> · Ra: <strong style={{ color: "#16a34a" }}>{(selectedDeviceModal.tokens_out || 0).toLocaleString()}</strong> ({selectedDeviceModal.cost_vnd.toLocaleString()}đ)
-                  </div>
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500 uppercase">TIÊU HAO TOKENS</div>
+                  <div className="text-lg font-black text-slate-900 mt-1">{selectedDeviceModal.total_tokens.toLocaleString()}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{selectedDeviceModal.cost_vnd.toLocaleString()}đ</div>
                 </div>
               </div>
 
-              {/* Models & Features Breakdown */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "20px" }}>
-                {/* Top Models */}
-                <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px" }}>
-                  <div style={{ fontSize: "12px", fontWeight: 800, color: "#0f172a", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Cpu size={14} color="#2563eb" /> Mô Hình AI Máy Này Đang Dùng & Tiêu Hao Token
+              {/* Models Breakdown */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                  <div className="text-xs font-black text-slate-900 mb-3 flex items-center gap-1.5">
+                    <Cpu size={14} className="text-blue-600" />
+                    <span>Mô Hình AI Tiêu Thụ Nhiều Nhất</span>
                   </div>
-                  {(!selectedDeviceModal.top_models || selectedDeviceModal.top_models.length === 0) ? (
-                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>Chưa có dữ liệu gọi model</div>
+                  {!selectedDeviceModal.top_models || selectedDeviceModal.top_models.length === 0 ? (
+                    <div className="text-xs text-slate-400 py-3 text-center">Chưa có dữ liệu gọi model</div>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      {selectedDeviceModal.top_models.slice(0, 5).map((m) => {
+                    <div className="space-y-2.5">
+                      {selectedDeviceModal.top_models.slice(0, 4).map((m) => {
                         const pct = Math.round((m.count / Math.max(1, selectedDeviceModal.total_requests)) * 100);
                         return (
                           <div key={m.model}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11.5px", fontWeight: 650, color: "#334155", marginBottom: "2px" }}>
-                              <span style={{ fontFamily: "monospace", fontWeight: 750, color: "#0f172a" }}>{m.model}</span>
-                              <span><strong>{m.count}</strong> lượt ({pct}%)</span>
+                            <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                              <span className="font-mono text-slate-900 font-bold">{m.model}</span>
+                              <span>{m.count} ({pct}%)</span>
                             </div>
-                            {(m.tokens_in !== undefined || m.tokens_out !== undefined || m.credits_used !== undefined) && (
-                              <div style={{ fontSize: "10.5px", color: "#64748b", marginBottom: "4px", display: "flex", gap: "8px" }}>
-                                <span>Vào: <strong style={{ color: "#2563eb" }}>{(m.tokens_in || 0).toLocaleString()}</strong></span>
-                                <span>•</span>
-                                <span>Ra: <strong style={{ color: "#16a34a" }}>{(m.tokens_out || 0).toLocaleString()}</strong></span>
-                                {m.credits_used !== undefined && m.credits_used > 0 && (
-                                  <>
-                                    <span>•</span>
-                                    <span>Trừ: <strong style={{ color: "#d97706" }}>{m.credits_used.toFixed(2)} Cr</strong></span>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                            <div style={{ width: "100%", height: "5px", background: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
-                              <div style={{ width: `${pct}%`, height: "100%", background: "#2563eb", borderRadius: "3px" }} />
+                            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-600 rounded-full" style={{ width: `${pct}%` }} />
                             </div>
                           </div>
                         );
@@ -1271,156 +928,54 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
                   )}
                 </div>
 
-                {/* Top Features */}
-                <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "14px" }}>
-                  <div style={{ fontSize: "12px", fontWeight: 800, color: "#0f172a", marginBottom: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <Sparkles size={14} color="#16a34a" /> Tác Vụ Video Thực Hiện Nhiều Nhất
+                <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                  <div className="text-xs font-black text-slate-900 mb-3 flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-emerald-600" />
+                    <span>Tác Vụ Video Thực Hiện Nhiều Nhất</span>
                   </div>
-                  {(!selectedDeviceModal.top_features || selectedDeviceModal.top_features.length === 0) ? (
-                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>Chưa có dữ liệu tác vụ</div>
+                  {!selectedDeviceModal.top_features || selectedDeviceModal.top_features.length === 0 ? (
+                    <div className="text-xs text-slate-400 py-3 text-center">Chưa có dữ liệu tác vụ</div>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {selectedDeviceModal.top_features.slice(0, 5).map((f) => {
+                    <div className="space-y-2.5">
+                      {selectedDeviceModal.top_features.slice(0, 4).map((f) => {
                         const pct = Math.round((f.count / Math.max(1, selectedDeviceModal.total_requests)) * 100);
                         return (
                           <div key={f.feature}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", fontWeight: 650, color: "#334155", marginBottom: "2px" }}>
-                              <span>{f.feature}</span>
-                              <span><strong>{f.count}</strong> lần ({pct}%)</span>
+                            <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                              <span className="truncate max-w-[180px]">{f.feature}</span>
+                              <span>{f.count} ({pct}%)</span>
                             </div>
-                            <div style={{ width: "100%", height: "5px", background: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
-                              <div style={{ width: `${pct}%`, height: "100%", background: "#16a34a", borderRadius: "3px" }} />
+                            <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-emerald-600 rounded-full" style={{ width: `${pct}%` }} />
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   )}
-                </div>
-              </div>
-
-              {/* Recent Requests from this machine */}
-              <div>
-                <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#0f172a", marginBottom: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>📋 Lịch Sử 5 Request AI Gần Nhất Của Máy Này</span>
-                  <span style={{ fontSize: "11px", color: "#64748b", fontWeight: 600 }}>Thời gian thực</span>
-                </div>
-                <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
-                  {(() => {
-                    const devLogs = logs.filter(
-                      (l) =>
-                        l.client_name === selectedDeviceModal.device_name ||
-                        l.customer_name === selectedDeviceModal.customer_name ||
-                        (selectedDeviceModal.hwid && l.hwid === selectedDeviceModal.hwid)
-                    ).slice(0, 5);
-
-                    if (devLogs.length === 0) {
-                      return (
-                        <div style={{ padding: "18px", textAlign: "center", color: "#94a3b8", fontSize: "12px" }}>
-                          Không có lượt gọi AI trực tiếp nào được ghi nhận gần đây.
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                        <thead>
-                          <tr style={{ background: "#f8fafc", color: "#64748b", fontSize: "10.5px", fontWeight: 750 }}>
-                            <th style={{ padding: "8px 12px", textAlign: "left" }}>THỜI GIAN</th>
-                            <th style={{ padding: "8px 10px", textAlign: "left" }}>MODEL</th>
-                            <th style={{ padding: "8px 10px", textAlign: "center" }}>TRẠNG THÁI</th>
-                            <th style={{ padding: "8px 10px", textAlign: "right" }}>TOKENS</th>
-                            <th style={{ padding: "8px 12px", textAlign: "right" }}>ĐỘ TRỄ</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {devLogs.map((l) => (
-                            <tr key={l.id} style={{ borderTop: "1px solid #f1f5f9" }}>
-                              <td style={{ padding: "8px 12px", color: "#334155" }}>
-                                {formatTimestamp(l.timestamp).formatted}
-                              </td>
-                              <td style={{ padding: "8px 10px", fontFamily: "monospace", fontWeight: 700, color: "#0f172a" }}>
-                                {l.model}
-                              </td>
-                              <td style={{ padding: "8px 10px", textAlign: "center" }}>
-                                <span
-                                  style={{
-                                    padding: "2px 6px",
-                                    borderRadius: "4px",
-                                    fontSize: "10.5px",
-                                    fontWeight: 750,
-                                    background: l.status === "Oke" ? "#ecfdf5" : "#fee2e2",
-                                    color: l.status === "Oke" ? "#059669" : "#dc2626",
-                                  }}
-                                >
-                                  {l.status === "Oke" ? "200 OK" : "Error"}
-                                </span>
-                              </td>
-                              <td style={{ padding: "8px 10px", textAlign: "right", color: "#475569" }}>
-                                {l.total_tokens.toLocaleString()}
-                              </td>
-                              <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "monospace", fontWeight: 750, color: l.latency_ms < 2500 ? "#16a34a" : "#d97706" }}>
-                                {l.latency_ms}ms
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    );
-                  })()}
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div
-              style={{
-                padding: "14px 24px",
-                borderTop: "1px solid #e2e8f0",
-                background: "#f8fafc",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => {
                   setSelectedDevice(selectedDeviceModal.device_name);
                   setSelectedDeviceModal(null);
                   setCurrentPage(1);
-                  onNotify?.(`Đã lọc bảng nhật ký theo máy: ${selectedDeviceModal.device_name}`, "success");
+                  notify(`Đã lọc nhật ký theo máy: ${selectedDeviceModal.device_name}`, "success");
                 }}
-                style={{
-                  background: "#eff6ff",
-                  color: "#2563eb",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: "7px",
-                  padding: "7px 14px",
-                  fontSize: "12.5px",
-                  fontWeight: 750,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
               >
-                <Search size={13} /> Lọc Toàn Bộ Nhật Ký Theo Máy Này
+                <Search size={13} />
+                <span>Lọc Toàn Bộ Nhật Ký Theo Máy Này</span>
               </button>
-
               <button
                 type="button"
                 onClick={() => setSelectedDeviceModal(null)}
-                style={{
-                  background: "#2563eb",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "7px",
-                  padding: "7px 18px",
-                  fontSize: "12.5px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 transition-colors"
               >
                 Đóng
               </button>
@@ -1429,141 +984,99 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
         </div>
       )}
 
-      {/* Request Details Modal */}
+      {/* 5. Modal: Request Payload Snapshot */}
       {selectedRow && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.55)",
-            backdropFilter: "blur(4px)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setSelectedRow(null)}
         >
           <div
-            style={{
-              background: "#ffffff",
-              borderRadius: "14px",
-              maxWidth: "620px",
-              width: "100%",
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-              overflow: "hidden",
-              animation: "fadeIn 0.2s ease-out",
-            }}
+            className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div
-              style={{
-                padding: "16px 20px",
-                borderBottom: "1px solid #e2e8f0",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                background: "#f8fafc",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Activity size={18} color="#2563eb" />
-                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
+            <div className="p-4 px-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-blue-600">
+                <Activity size={18} />
+                <h3 className="text-sm font-black text-slate-900 m-0">
                   Chi Tiết Request AI #{selectedRow.id}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedRow(null)}
-                style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "4px" }}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Modal Content */}
-            <div style={{ padding: "20px", maxHeight: "75vh", overflowY: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-                <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700 }}>MÔ HÌNH (MODEL)</div>
-                  <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0f172a", marginTop: "2px", fontFamily: "monospace" }}>
-                    {selectedRow.model}
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#2563eb", marginTop: "2px" }}>{selectedRow.provider}</div>
+            {/* Modal Body */}
+            <div className="p-5 max-h-[70vh] overflow-y-auto space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500">MÔ HÌNH (MODEL)</div>
+                  <div className="font-mono font-bold text-slate-900 mt-1">{selectedRow.model}</div>
+                  <div className="text-[11px] text-blue-600 mt-0.5">{selectedRow.provider}</div>
                 </div>
 
-                <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700 }}>TÁC VỤ THỰC HIỆN</div>
-                  <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
-                    {selectedRow.feature_name || "Phân tích AI"}
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>{selectedRow.client_name || "Desktop Client"}</div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500">TÁC VỤ</div>
+                  <div className="font-bold text-slate-900 mt-1">{selectedRow.feature_name || "Phân tích AI"}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{selectedRow.client_name || "Desktop Client"}</div>
                 </div>
 
-                <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700 }}>ĐỘ TRỄ & TRẠNG THÁI</div>
-                  <div style={{ fontSize: "13.5px", fontWeight: 800, color: selectedRow.latency_ms < 3000 ? "#16a34a" : "#dc2626", marginTop: "2px" }}>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500">ĐỘ TRỄ & TRẠNG THÁI</div>
+                  <div className={`font-bold mt-1 ${selectedRow.latency_ms < 3000 ? "text-emerald-600" : "text-rose-600"}`}>
                     {selectedRow.latency_ms} ms · {selectedRow.status_code || (selectedRow.status === "Oke" ? 200 : 500)} {selectedRow.status}
                   </div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>{formatTimestamp(selectedRow.timestamp).formatted}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{formatTimestamp(selectedRow.timestamp).formatted}</div>
                 </div>
 
-                <div style={{ background: "#f8fafc", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700 }}>TOKENS & CHI PHÍ</div>
-                  <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>
-                    {selectedRow.total_tokens.toLocaleString()} tokens ({selectedRow.cost_vnd.toLocaleString()}đ)
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#d97706", marginTop: "2px" }}>Đã trừ: {selectedRow.credit_used} Credits</div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div className="text-[10.5px] font-bold text-slate-500">TOKENS & CHI PHÍ</div>
+                  <div className="font-bold text-slate-900 mt-1">{selectedRow.total_tokens.toLocaleString()} tokens ({selectedRow.cost_vnd.toLocaleString()}đ)</div>
+                  <div className="text-[11px] font-bold text-amber-600 mt-0.5">Đã trừ: {selectedRow.credit_used} Cr</div>
                 </div>
               </div>
 
               {/* Error Box if Fail */}
               {selectedRow.error_message && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "12px", marginBottom: "16px" }}>
-                  <div style={{ fontSize: "11.5px", fontWeight: 800, color: "#dc2626", display: "flex", alignItems: "center", gap: "5px", marginBottom: "4px" }}>
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3">
+                  <div className="text-xs font-bold text-rose-700 flex items-center gap-1.5 mb-1">
                     <AlertTriangle size={14} /> CHI TIẾT LỖI GỌI API:
                   </div>
-                  <div style={{ fontSize: "12px", color: "#991b1b", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  <div className="text-xs font-mono text-rose-800 break-words whitespace-pre-wrap">
                     {selectedRow.error_message}
                   </div>
                 </div>
               )}
 
-              {/* Raw JSON viewer */}
-              <div style={{ background: "#0f172a", borderRadius: "8px", padding: "12px", color: "#e2e8f0", fontFamily: "monospace", fontSize: "11.5px", position: "relative" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", borderBottom: "1px solid #334155", paddingBottom: "6px" }}>
-                  <span style={{ color: "#94a3b8", fontWeight: 700 }}>PAYLOAD SNAPSHOT</span>
+              {/* JSON Snapshot Viewer */}
+              <div className="bg-slate-900 rounded-2xl p-3.5 text-slate-200 font-mono text-[11px]">
+                <div className="flex justify-between items-center pb-2 mb-2 border-b border-slate-800">
+                  <span className="text-slate-400 font-bold">PAYLOAD SNAPSHOT</span>
                   <button
                     type="button"
                     onClick={() => handleCopy(JSON.stringify(selectedRow, null, 2))}
-                    style={{ background: "#1e293b", border: "1px solid #475569", borderRadius: "4px", color: "#94a3b8", fontSize: "11px", padding: "2px 6px", cursor: "pointer" }}
+                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-[10.5px] px-2 py-0.5 rounded transition-colors"
                   >
                     Sao chép JSON
                   </button>
                 </div>
-                <pre style={{ margin: 0, overflowX: "auto" }}>
+                <pre className="overflow-x-auto text-[10.5px] text-emerald-400">
                   {JSON.stringify(selectedRow, null, 2)}
                 </pre>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div style={{ padding: "12px 20px", borderTop: "1px solid #e2e8f0", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+            <div className="p-3 px-5 border-t border-slate-200 bg-slate-50 flex justify-end">
               <button
                 type="button"
                 onClick={() => setSelectedRow(null)}
-                style={{
-                  background: "#2563eb",
-                  color: "#ffffff",
-                  border: "none",
-                  borderRadius: "7px",
-                  padding: "6px 16px",
-                  fontSize: "12.5px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 transition-colors"
               >
                 Đóng
               </button>
@@ -1574,3 +1087,5 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
     </div>
   );
 };
+
+export default AiRequestLogsPage;

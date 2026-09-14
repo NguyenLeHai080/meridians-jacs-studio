@@ -43,8 +43,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     "analysis",
     "story",
     "timeline",
-    "brand",
-    "render",
     "batch",
   ];
 

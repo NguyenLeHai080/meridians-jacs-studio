@@ -74,7 +74,7 @@ class UpdateBankConfigRequest(BankConfigBase):
 
 
 class BillingTransactionBase(BaseModel):
-    license_id: str | None = None
+    license_id: UUID | str | None = None
     customer_name: str = Field(default="Khách hàng", max_length=160)
     amount: float = 0.0
     currency: str = Field(default="VND", max_length=16)
@@ -148,7 +148,7 @@ class UpdateCreditConfigRequest(CreditConfigBase):
 class SepayTransactionResponse(BaseModel):
     id: str
     sepay_code: str
-    license_id: str | None = None
+    license_id: UUID | str | None = None
     api_key_name: str = "Khách hàng"
     api_key_masked: str = "sk-******"
     deposit_amount: float = 0.0
@@ -231,7 +231,7 @@ class CreditTopupOrderResponse(BaseModel):
 class CreditTopupTransactionItem(BaseModel):
     id: str
     order_code: str
-    license_id: str | None = None
+    license_id: UUID | str | None = None
     license_key: str | None = None
     hwid: str | None = None
     customer_name: str

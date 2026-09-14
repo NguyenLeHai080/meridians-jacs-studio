@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
-const { buildCaptionCues, buildSrt, normalizeSubtitleSegments } = require("../electron/subtitles.cjs");
+const { buildCaptionCues, buildSrt, buildWordByWordCues, normalizeSubtitleSegments, splitIntoPhrases } = require("../electron/subtitles.cjs");
 
 const root = path.resolve(__dirname, "..");
 const platformDir = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : null;
@@ -71,3 +71,44 @@ test("burns UTF-8 subtitles into a real output when bundled FFmpeg is available"
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("builds progressive word-by-word cues with highlighted active words", () => {
+  const cues = buildWordByWordCues([
+    { start: 0, end: 4, text: "Xin chào các bạn, chào mừng đến với studio." }
+  ], 4, "", { style: "gold" });
+
+  assert.ok(cues.length >= 8);
+  assert.equal(cues[0].start, 0);
+  assert.ok(cues.at(-1).end <= 4);
+  assert.match(cues[0].text, /<font color="#FFE478"><b>Xin<\/b><\/font>/);
+  assert.match(cues[1].text, /Xin <font color="#FFE478"><b>chào<\/b><\/font>/);
+  assert.ok(cues.every((c) => c.end > c.start));
+});
+
+test("builds precise word-by-word cues from exact audio word boundaries", () => {
+  const sampleWords = [
+    { w: "Chào", s: 0.1, e: 0.4 },
+    { w: "mừng", s: 0.4, e: 0.7 },
+    { w: "bạn", s: 0.7, e: 1.0 },
+    { w: "đến", s: 1.0, e: 1.3 },
+    { w: "studio.", s: 1.3, e: 1.8 },
+  ];
+  const cues = buildWordByWordCues([
+    { start: 0, end: 3.0, text: "Chào mừng bạn đến studio.", words: sampleWords },
+  ], 3.0, "", { style: "gold" });
+
+  assert.ok(cues.length >= 5);
+  assert.match(cues[0].text, /<font color="#FFE478"><b>Chào<\/b><\/font>/);
+  assert.equal(cues[0].start, 0.05); // 0.1s - 0.05s anticipation lead
+  assert.ok(cues.every((c) => c.end > c.start));
+  assert.equal(cues[cues.length - 1].text, "Chào mừng bạn đến studio."); // hold cue until segment end
+  assert.equal(cues[cues.length - 1].end, 3.0); // full total duration at video end
+
+  // Also test with trailing duration in scene
+  const cues2 = buildWordByWordCues([
+    { start: 0, end: 3.0, text: "Chào mừng bạn đến studio.", words: sampleWords },
+  ], 5.0, "", { style: "gold" });
+  assert.equal(cues2[cues2.length - 1].end, 2.96); // 3.0 - 0.04s lead-out when not at video end
+});
+
+

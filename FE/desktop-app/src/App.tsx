@@ -34,6 +34,7 @@ import {
   renderQualityChecks,
   sceneSlug,
 } from "./core/job-engine";
+import { stopGlobalAudio } from "./core/audio-player";
 
 // Layout & Common Components
 import { Navbar, BottomDock, LicenseWarningBanner, AdminConfigSyncBanner, OtaUpdateBanner } from "./components/layout";
@@ -96,14 +97,16 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
       onNavigate={navigate}
     />
   ),
-  batch: ({ jobs, addJob, cancelJob, retryJob, deleteJobs, onOpenTimeline }) => (
+  batch: ({ jobs, addJob, updateJob, cancelJob, retryJob, deleteJobs, onOpenTimeline, navigate }) => (
     <BatchJobsPage
       jobs={jobs}
       onAddJob={addJob}
+      onUpdateJob={updateJob}
       onCancelJob={cancelJob}
       onRetryJob={retryJob}
       onDeleteJobs={deleteJobs}
       onOpenTimeline={onOpenTimeline}
+      onNavigate={navigate}
     />
   ),
   analysis: ({ jobs, addJob, updateJob, analysisSource, navigate, onOpenTimeline, deleteJobs, deleteSources }) => (
@@ -459,6 +462,7 @@ export function App() {
     const unlisten = getRuntime().onRenderProgress?.((data) => {
       if (!data.operationId) return;
       replaceJob(data.operationId, {
+        status: data.progress >= 100 ? "completed" : "running",
         progress: data.progress,
         stage: data.stage as Job["stage"],
         outputPath: data.outputPath,
@@ -501,7 +505,7 @@ export function App() {
 
         replaceJob(nextJob.id, { stage: "rendering", progress: 8 });
         const narrationText = nextJob.narratorEnabled
-          ? (nextJob.subtitleText || nextJob.analysis?.voiceScript || nextJob.analysis?.scenes?.map((s) => s.voiceover || s.translation || (s as any).subtitle || (s as any).text || (s as any).detail).filter(Boolean).join(" "))
+          ? ((nextJob as any).narrationText || nextJob.subtitleText || nextJob.analysis?.voiceScript || nextJob.analysis?.scenes?.map((s) => s.voiceover || s.translation || (s as any).subtitle || (s as any).subtitleText || (s as any).text || (s as any).detail).filter(Boolean).join(" "))
           : undefined;
 
         const subtitleSegments = (Array.isArray((nextJob as any).subtitleSegments) && (nextJob as any).subtitleSegments.length > 0)
@@ -525,6 +529,11 @@ export function App() {
             aspectRatio: nextJob.aspectRatio,
             preferredEngine: preferences.preferredEngine || "auto",
             keepOriginalAudio: nextJob.keepOriginalAudio,
+            interweaveAudio: nextJob.interweaveAudio,
+            originalAudioVolume: nextJob.originalAudioVolume,
+            autoDucking: nextJob.autoDucking,
+            removeOriginalBgm: Boolean(nextJob.removeOriginalBgm || (nextJob as any).isolateVocals),
+            isolateVocals: Boolean((nextJob as any).isolateVocals || nextJob.removeOriginalBgm),
             backgroundMusic: nextJob.backgroundMusic,
             backgroundMusicVolume: nextJob.backgroundMusicVolume,
             backgroundMusicPath: nextJob.backgroundMusicPath,
@@ -611,7 +620,12 @@ export function App() {
     });
   }, []);
 
+  useEffect(() => {
+    stopGlobalAudio();
+  }, [active]);
+
   const navigate = (key: NavKey) => {
+    stopGlobalAudio();
     if (toolConfig?.menu_locks?.[key]?.locked) {
       setLockedNoticeKey(key);
       return;
@@ -638,7 +652,33 @@ export function App() {
 
   const deleteJobs = (jobIds: string[]) => {
     setJobs((prev) => {
-      const next = prev.filter((j) => !jobIds.includes(j.id));
+      const next: Job[] = [];
+      for (const j of prev) {
+        if (!jobIds.includes(j.id)) {
+          next.push(j);
+        } else {
+          // If this is a dedicated export/render job, remove it from the list
+          const isDedicatedRenderJob =
+            j.id.startsWith("render-") ||
+            j.id.startsWith("export-") ||
+            Boolean(j.parentJobId);
+
+          if (isDedicatedRenderJob) {
+            continue;
+          }
+
+          // If this is a primary video project/source, NEVER delete it from workspace!
+          // Just reset its render queue state so it safely leaves the render queue table.
+          next.push({
+            ...j,
+            sourceOnly: true,
+            status: j.analysis?.scenes?.length ? "completed" : "queued",
+            stage: undefined,
+            progress: 0,
+            outputPath: undefined,
+          });
+        }
+      }
       persistJobs(next);
       return next;
     });
@@ -646,7 +686,10 @@ export function App() {
 
   const deleteSources = (sourceIds: string[]) => {
     setJobs((prev) => {
-      const next = prev.filter((j) => !sourceIds.includes(j.id));
+      // Deleting source files from Kho Nguồn / Phân Tích removes the source AND any child render jobs
+      const next = prev.filter(
+        (j) => !sourceIds.includes(j.id) && !sourceIds.includes(j.parentJobId || "")
+      );
       persistJobs(next);
       return next;
     });
@@ -658,11 +701,13 @@ export function App() {
   };
 
   const onAnalyzeSource = (source: Job) => {
+    stopGlobalAudio();
     setAnalysisSourceId(source.id);
     setActive("analysis");
   };
 
   const openTimeline = useCallback((sourceId?: string) => {
+    stopGlobalAudio();
     if (sourceId) setTimelineSourceId(sourceId);
     setActive("timeline");
   }, []);
@@ -858,29 +903,31 @@ export function App() {
         {/* Active Module Page Body */}
         <main className={`app-content-body ${active === "timeline" ? "page-content-fullscreen-studio" : ""}`}>
           <ErrorBoundary key={active} fallbackTitle={`Đã xảy ra lỗi khi mở màn hình "${NAV_ITEMS.find((i) => i.key === active)?.label || active}"`} onReset={() => setActive("overview")}>
-            <Page
-              jobs={jobs}
-              metrics={metrics}
-              navigate={navigate}
-              onOpenTimeline={openTimeline}
-              timelineSourceId={timelineSourceId}
-              addJob={addJob}
-              updateJob={updateJob}
-              cancelJob={cancelJob}
-              retryJob={retryJob}
-              deleteJobs={deleteJobs}
-              deleteSources={deleteSources}
-              onActivated={onActivated}
-              preferences={preferences}
-              onPreferencesChanged={setPreferences}
-              onAnalyzeSource={onAnalyzeSource}
-              analysisSource={analysisSource}
-              onOpenRenewal={handleOpenRenewalModal}
-              onOpenTopup={handleOpenCreditTopupModal}
-              creditBalance={creditBalance}
-              allowedModels={allowedModels}
-              onSyncAdminGrant={handleSyncAdminGrantFromPage}
-            />
+            <div key={active} className="app-page-wrapper page-enter">
+              <Page
+                jobs={jobs}
+                metrics={metrics}
+                navigate={navigate}
+                onOpenTimeline={openTimeline}
+                timelineSourceId={timelineSourceId}
+                addJob={addJob}
+                updateJob={updateJob}
+                cancelJob={cancelJob}
+                retryJob={retryJob}
+                deleteJobs={deleteJobs}
+                deleteSources={deleteSources}
+                onActivated={onActivated}
+                preferences={preferences}
+                onPreferencesChanged={setPreferences}
+                onAnalyzeSource={onAnalyzeSource}
+                analysisSource={analysisSource}
+                onOpenRenewal={handleOpenRenewalModal}
+                onOpenTopup={handleOpenCreditTopupModal}
+                creditBalance={creditBalance}
+                allowedModels={allowedModels}
+                onSyncAdminGrant={handleSyncAdminGrantFromPage}
+              />
+            </div>
           </ErrorBoundary>
         </main>
 

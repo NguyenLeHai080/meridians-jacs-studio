@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   RefreshCw,
   Search,
@@ -15,6 +15,8 @@ import {
   Copy,
   Check,
   Laptop,
+  Home,
+  Sliders,
 } from "lucide-react";
 import { apiRequest } from "../../../core/api";
 import { getToken } from "../../../core/session";
@@ -77,7 +79,7 @@ export const ApiOperationsPage: React.FC<ApiOperationsPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearch);
   const [reportData, setReportData] = useState<ApiOperationsReportData | null>(null);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -87,15 +89,20 @@ export const ApiOperationsPage: React.FC<ApiOperationsPageProps> = ({
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showFinanceModal, setShowFinanceModal] = useState(false);
 
-  const notify = (msg: string, type: "success" | "error" = "success") => {
+  const onNotifyRef = useRef(onNotify);
+  useEffect(() => {
+    onNotifyRef.current = onNotify;
+  }, [onNotify]);
+
+  const notify = useCallback((msg: string, type: "success" | "error" = "success") => {
     showToast(msg, type);
-    if (onNotify) onNotify(msg, type);
-  };
+    if (onNotifyRef.current) onNotifyRef.current(msg, type);
+  }, []);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(text);
-    notify("Đã copy vào bộ nhớ tạm");
+    notify("Đã sao chép vào bộ nhớ tạm", "success");
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
@@ -146,7 +153,7 @@ export const ApiOperationsPage: React.FC<ApiOperationsPageProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, notify]);
 
   useEffect(() => {
     fetchOperationsData();
@@ -213,289 +220,186 @@ export const ApiOperationsPage: React.FC<ApiOperationsPageProps> = ({
   };
 
   return (
-    <div className="view-container animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      {/* 1. Header with Breadcrumb & Refresh Action */}
-      <div className="view-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+    <div className="w-full max-w-full space-y-6">
+      {/* 1. Spacious Single-Tier Header with Breadcrumb & Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div style={{ fontSize: "12.5px", color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-            <span>MintForge</span>
-            <span>/</span>
-            <span style={{ color: "#334155", fontWeight: 700 }}>API</span>
+          {/* Breadcrumb Navigation Trail */}
+          <nav className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2.5">
+            <span className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors">
+              <Home size={12} className="text-slate-400" />
+              <span>JACS Studio</span>
+            </span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="text-slate-500">Telemetry & Vận Hành</span>
+            <ChevronRight size={12} className="text-slate-300" />
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-500/10 text-blue-700 border border-blue-500/20">
+              Báo Cáo Vận Hành API
+            </span>
+          </nav>
+
+          {/* Title and Status */}
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+              <Activity size={22} className="stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight m-0">
+                  Báo Cáo Vận Hành API & Khách Hàng
+                </h1>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/10 text-blue-700 border border-blue-500/20">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span>Real-time Telemetry DB</span>
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Báo cáo số liệu theo tài khoản, chủ sở hữu, Key Máy và kết quả xử lý trong 7 ngày gần nhất.
+              </p>
+            </div>
           </div>
-          <h1 className="view-title" style={{ fontSize: "1.75rem", fontWeight: 800, color: "#0f172a", margin: "4px 0" }}>
-            Báo cáo vận hành API
-          </h1>
-          <p className="view-subtitle" style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>
-            Báo cáo dữ liệu thật theo tài khoản, chủ sở hữu, API key và kết quả xử lý trong 7 ngày gần nhất.
-          </p>
         </div>
 
-        <div className="view-actions">
+        {/* Refresh Action */}
+        <div className="flex items-center gap-2.5 shrink-0 self-start md:self-center">
           <button
             type="button"
             onClick={fetchOperationsData}
             disabled={loading}
-            style={{
-              background: "#ffffff",
-              border: "1px solid #cbd5e1",
-              borderRadius: "8px",
-              padding: "7px 14px",
-              fontSize: "13px",
-              fontWeight: 650,
-              color: "#334155",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
-            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-400 border border-slate-300/90 rounded-xl shadow-xs transition-all duration-150 active:scale-95 disabled:opacity-50"
           >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            Làm mới
+            <RefreshCw size={14} className={loading ? "animate-spin text-blue-600" : "text-slate-500"} />
+            <span>{loading ? "Đang đồng bộ..." : "Làm mới"}</span>
           </button>
         </div>
       </div>
 
-      {/* 2. 4 Stat Cards Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
-        
+      {/* 2. 4 Glassmorphism KPI Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Stat 1: Lượt gọi */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "14px",
-            border: "1px solid #e2e8f0",
-            padding: "18px 20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-            display: "flex",
-            alignItems: "center",
-            gap: "14px",
-          }}
-        >
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "12px",
-              background: "#eff6ff",
-              color: "#2563eb",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Activity size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>Lượt gọi</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, margin: "2px 0" }}>
-              {summary.total_requests.toLocaleString()}
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Lượt Gọi API
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Activity size={16} />
             </div>
-            <div style={{ fontSize: "11px", color: "#94a3b8" }}>Bản ghi gần nhất đã tải</div>
           </div>
+          <div className="text-2xl font-black text-slate-900">
+            {summary.total_requests.toLocaleString()}{" "}
+            <span className="text-xs font-semibold text-slate-400">lượt</span>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Bản ghi gần nhất đã tải</div>
         </div>
 
         {/* Stat 2: Thành công */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "14px",
-            border: "1px solid #e2e8f0",
-            padding: "18px 20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-            display: "flex",
-            alignItems: "center",
-            gap: "14px",
-          }}
-        >
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "12px",
-              background: "#ecfdf5",
-              color: "#10b981",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <CheckCircle2 size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>Thành công</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#059669", lineHeight: 1.2, margin: "2px 0" }}>
-              {summary.successful_requests.toLocaleString()}
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-emerald-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Thành Công
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <CheckCircle2 size={16} />
             </div>
-            <div style={{ fontSize: "11px", color: "#94a3b8" }}>Theo kết quả hiện tại</div>
+          </div>
+          <div className="text-2xl font-black text-emerald-600">
+            {summary.successful_requests.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-emerald-700 font-semibold mt-1">
+            {Math.round((summary.successful_requests / Math.max(1, summary.total_requests)) * 100)}% tỷ lệ thành công
           </div>
         </div>
 
-        {/* Stat 3: Tổng token */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "14px",
-            border: "1px solid #e2e8f0",
-            padding: "18px 20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-            display: "flex",
-            alignItems: "center",
-            gap: "14px",
-          }}
-        >
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "12px",
-              background: "#fff7ed",
-              color: "#ea580c",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Coins size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>Tổng token</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#0f172a", lineHeight: 1.2, margin: "2px 0" }}>
-              {summary.total_tokens.toLocaleString()}
+        {/* Stat 3: Tổng Token */}
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-orange-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Tổng Token
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+              <Coins size={16} />
             </div>
-            <div style={{ fontSize: "11px", color: "#94a3b8" }}>Token vào và ra</div>
           </div>
+          <div className="text-2xl font-black text-slate-900">
+            {summary.total_tokens.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Token vào và ra</div>
         </div>
 
         {/* Stat 4: Lỗi */}
-        <div
-          style={{
-            background: "#ffffff",
-            borderRadius: "14px",
-            border: "1px solid #e2e8f0",
-            padding: "18px 20px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-            display: "flex",
-            alignItems: "center",
-            gap: "14px",
-          }}
-        >
-          <div
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "12px",
-              background: "#fee2e2",
-              color: "#ef4444",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <AlertTriangle size={22} />
-          </div>
-          <div>
-            <div style={{ fontSize: "12px", color: "#64748b", fontWeight: 600 }}>Lỗi</div>
-            <div style={{ fontSize: "1.65rem", fontWeight: 800, color: "#e11d48", lineHeight: 1.2, margin: "2px 0" }}>
-              {summary.failed_requests}
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:border-rose-300 transition-all duration-200">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Lỗi & Sự Cố
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+              <AlertTriangle size={16} />
             </div>
-            <div style={{ fontSize: "11px", color: "#94a3b8" }}>Cần kiểm tra</div>
           </div>
+          <div className={`text-2xl font-black ${summary.failed_requests > 0 ? "text-rose-600" : "text-slate-900"}`}>
+            {summary.failed_requests}{" "}
+            <span className="text-xs font-semibold text-slate-400">lỗi</span>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Cần kiểm tra sự cố</div>
         </div>
-
       </div>
 
-      {/* 3. Main Data Card: Hoạt động API gần đây */}
-      <div
-        style={{
-          background: "#ffffff",
-          borderRadius: "14px",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header with Search */}
-        <div
-          style={{
-            padding: "18px 24px",
-            borderBottom: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "1rem",
-          }}
-        >
+      {/* 3. Main Data Card: Single-Line Operations Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Table Top Header & Search */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a", margin: 0 }}>
-              Hoạt động API theo Thiết Bị & Key Máy Khách Hàng
+            <h2 className="text-sm font-black text-slate-900 m-0">
+              Hoạt Động API Theo Thiết Bị & Key Máy Khách Hàng
             </h2>
-            <p style={{ fontSize: "12.5px", color: "#64748b", margin: "3px 0 0" }}>
-              Báo cáo giám sát lượng request, token tiêu thụ và lợi nhuận tài chính tính theo Bản Quyền / Key Máy của từng khách hàng.
+            <p className="text-xs text-slate-500 m-0 mt-0.5">
+              Giám sát lượng request, token tiêu thụ và lợi nhuận tài chính tính theo Key Máy / License Client.
             </p>
           </div>
 
-          {/* Search Box on right */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%", maxWidth: "340px" }}>
-            <span style={{ fontSize: "10.5px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              TÌM THEO KEY MÁY / THIẾT BỊ
-            </span>
-            <div style={{ position: "relative" }}>
-              <input
-                type="text"
-                placeholder="Lọc Key Máy, HWID, Tên thiết bị, Khách hàng..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px 8px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "13px",
-                  outline: "none",
-                  boxSizing: "border-box",
-                  background: "#f8fafc",
-                }}
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+          <div className="relative min-w-[280px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Tìm Key Máy, HWID, Tên thiết bị, Khách hàng..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-800 bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Table of 10 Columns */}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", minWidth: "1720px", borderCollapse: "collapse", fontSize: "13px", textAlign: "left" }}>
+        {/* Table of 10 Columns - Single-Line Layout */}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1300px] border-collapse text-left text-xs">
             <thead>
-              <tr style={{ background: "#ffffff", borderBottom: "1px solid #f1f5f9", color: "#64748b", fontSize: "11px", fontWeight: 700, letterSpacing: "0.3px" }}>
-                <th style={{ padding: "14px 20px", minWidth: "270px", width: "280px" }}>THIẾT BỊ & WORKSPACE</th>
-                <th style={{ padding: "14px 18px", minWidth: "240px", width: "260px" }}>KHÁCH HÀNG SỞ HỮU</th>
-                <th style={{ padding: "14px 14px", minWidth: "230px", width: "240px" }}>KEY MÁY / LICENSE CLIENT</th>
-                <th style={{ padding: "14px 12px", textAlign: "center", minWidth: "90px", width: "90px" }}>REQUEST</th>
-                <th style={{ padding: "14px 12px", textAlign: "center", minWidth: "110px", width: "110px" }}>THÀNH CÔNG</th>
-                <th style={{ padding: "14px 12px", textAlign: "center", minWidth: "85px", width: "85px" }}>LỖI</th>
-                <th style={{ padding: "14px 16px", minWidth: "140px", width: "140px" }}>TOKENS TIÊU THỤ</th>
-                <th style={{ padding: "14px 16px", minWidth: "150px", width: "150px", color: "#d97706" }}>CREDITS TIÊU THỤ</th>
-                <th style={{ padding: "14px 16px", minWidth: "120px", width: "120px" }}>GẦN NHẤT</th>
-                <th style={{ padding: "14px 20px", textAlign: "right", minWidth: "270px", width: "280px" }}>THAO TÁC</th>
+              <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                <th className="py-3 px-4 w-[240px]">THIẾT BỊ & WORKSPACE</th>
+                <th className="py-3 px-3 w-[220px]">KHÁCH HÀNG SỞ HỮU</th>
+                <th className="py-3 px-3 w-[220px]">KEY MÁY / LICENSE CLIENT</th>
+                <th className="py-3 px-2 text-center w-[90px]">REQUEST</th>
+                <th className="py-3 px-2 text-center w-[100px]">THÀNH CÔNG</th>
+                <th className="py-3 px-2 text-center w-[80px]">LỖI</th>
+                <th className="py-3 px-3 text-right w-[120px]">TOKENS</th>
+                <th className="py-3 px-3 text-right w-[130px] text-amber-700">CREDITS TIÊU THỤ</th>
+                <th className="py-3 px-3 w-[120px]">HOẠT ĐỘNG</th>
+                <th className="py-3 px-4 text-right w-[240px]">THAO TÁC</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {paginatedAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={10} style={{ padding: "40px 20px", textAlign: "center", color: "#94a3b8" }}>
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     Không tìm thấy dữ liệu hoạt động nào phù hợp.
                   </td>
                 </tr>
@@ -503,303 +407,164 @@ export const ApiOperationsPage: React.FC<ApiOperationsPageProps> = ({
                 paginatedAccounts.map((item) => (
                   <tr
                     key={item.id}
-                    style={{
-                      borderBottom: "1px solid #f1f5f9",
-                      transition: "background 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#fafafa")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    className="hover:bg-slate-50/80 transition-colors duration-100 whitespace-nowrap"
                   >
-                    {/* 1. Account Name / Device + Workspace */}
-                    <td style={{ padding: "14px 20px", minWidth: "270px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                        <div style={{ fontWeight: 750, color: "#0f172a", fontSize: "13.5px", display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
-                          <Laptop size={15} color="#475569" style={{ flexShrink: 0 }} />
-                          <span style={{ color: "#0f172a" }}>{item.machine_name || item.account_name}</span>
-                        </div>
-                        <div style={{ fontSize: "12px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px", flexWrap: "nowrap" }}>
-                          <span style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "2px 7px", borderRadius: "4px", fontWeight: 650, color: "#334155", whiteSpace: "nowrap" }}>
-                            📁 {item.workspace_name}
-                          </span>
-                          {item.os_platform && (
-                            <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-                              • {item.os_platform}
-                            </span>
-                          )}
-                        </div>
+                    {/* 1. Account / Device + Workspace */}
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
+                        <Laptop size={14} className="text-slate-400 shrink-0" />
+                        <span className="truncate max-w-[180px]">{item.machine_name || item.account_name}</span>
                       </div>
-                    </td>
-
-                    {/* 2. Owner Avatar Initials + Name + Email */}
-                    <td style={{ padding: "14px 18px", minWidth: "240px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <div
-                          style={{
-                            width: "38px",
-                            height: "38px",
-                            borderRadius: "50%",
-                            background: "linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%)",
-                            color: "#ea580c",
-                            fontWeight: 800,
-                            fontSize: "13px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                            border: "1.5px solid #ffedd5",
-                          }}
-                        >
-                          {getInitials(item.owner_name)}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 750, color: "#0f172a", fontSize: "13.5px", whiteSpace: "nowrap" }}>
-                            {item.owner_name}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px", whiteSpace: "nowrap" }}>
-                            {item.owner_email || "Chưa có liên hệ"}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* 3. Machine Key / License Badge & HWID */}
-                    <td style={{ padding: "14px 14px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "nowrap" }}>
-                          <span
-                            onClick={() => handleCopy(item.machine_key || item.api_key_masked)}
-                            title={`Click để sao chép Key:\n${item.machine_key || item.api_key_masked}`}
-                            style={{
-                              fontFamily: "monospace",
-                              fontSize: "12px",
-                              fontWeight: 750,
-                              color: "#0369a1",
-                              background: "#f0f9ff",
-                              border: "1px solid #bae6fd",
-                              padding: "4px 9px",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            <span>🔑 {item.machine_key || item.api_key_masked}</span>
-                            {copiedKey === (item.machine_key || item.api_key_masked) ? (
-                              <Check size={12} color="#16a34a" style={{ flexShrink: 0 }} />
-                            ) : (
-                              <Copy size={12} color="#38bdf8" style={{ flexShrink: 0 }} />
-                            )}
+                      <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+                        <span className="bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-[10.5px] font-semibold text-slate-700">
+                          📁 {item.workspace_name}
+                        </span>
+                        {item.os_platform && (
+                          <span className="text-slate-400 text-[10.5px]">
+                            • {item.os_platform}
                           </span>
-                        </div>
-                        {item.machine_hwid && (
-                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                            <span
-                              onClick={() => handleCopy(item.machine_hwid || "")}
-                              title={`Click để sao chép HWID:\n${item.machine_hwid}`}
-                              style={{
-                                fontFamily: "monospace",
-                                fontSize: "11px",
-                                color: "#64748b",
-                                background: "#f8fafc",
-                                border: "1px solid #e2e8f0",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                maxWidth: "180px",
-                              }}
-                            >
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                HWID: {item.machine_hwid.slice(0, 16)}...
-                              </span>
-                              {copiedKey === item.machine_hwid ? (
-                                <Check size={10} color="#16a34a" />
-                              ) : (
-                                <Copy size={10} color="#94a3b8" />
-                              )}
-                            </span>
-                          </div>
                         )}
                       </div>
                     </td>
 
-                    {/* 4. Request Count */}
-                    <td style={{ padding: "14px 12px", textAlign: "center", fontWeight: 750, color: "#0f172a", fontSize: "13.5px" }}>
+                    {/* 2. Owner */}
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-amber-200 to-orange-200 text-amber-900 font-black text-[11px] flex items-center justify-center shrink-0 border border-amber-300">
+                          {getInitials(item.owner_name)}
+                        </div>
+                        <div className="truncate max-w-[170px]">
+                          <div className="font-bold text-slate-900 truncate">{item.owner_name}</div>
+                          <div className="text-[11px] text-slate-400 truncate">{item.owner_email || "Chưa có email"}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* 3. Key & HWID */}
+                    <td className="py-3 px-3">
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(item.machine_key || item.api_key_masked)}
+                          className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-sky-800 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded-md border border-sky-200 transition-colors"
+                          title="Click để copy key"
+                        >
+                          <span>🔑 {item.machine_key || item.api_key_masked}</span>
+                          {copiedKey === (item.machine_key || item.api_key_masked) ? (
+                            <Check size={11} className="text-emerald-600" />
+                          ) : (
+                            <Copy size={11} className="text-sky-400" />
+                          )}
+                        </button>
+                      </div>
+                      {item.machine_hwid && (
+                        <div className="mt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(item.machine_hwid || "")}
+                            className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-500 bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded border border-slate-200 transition-colors"
+                            title={item.machine_hwid}
+                          >
+                            <span>HWID: {item.machine_hwid.slice(0, 14)}...</span>
+                            {copiedKey === item.machine_hwid ? (
+                              <Check size={9} className="text-emerald-600" />
+                            ) : (
+                              <Copy size={9} className="text-slate-400" />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* 4. Requests */}
+                    <td className="py-3 px-2 text-center font-bold text-slate-900">
                       {item.total_requests.toLocaleString()}
                     </td>
 
-                    {/* 5. Success Count */}
-                    <td style={{ padding: "14px 12px", textAlign: "center" }}>
-                      <span
-                        style={{
-                          background: "#ecfdf5",
-                          color: "#059669",
-                          border: "1px solid #a7f3d0",
-                          padding: "3px 9px",
-                          borderRadius: "12px",
-                          fontSize: "11.5px",
-                          fontWeight: 750,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        <CheckCircle2 size={12} color="#059669" />
-                        {item.success_requests.toLocaleString()}
+                    {/* 5. Success */}
+                    <td className="py-3 px-2 text-center">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <CheckCircle2 size={11} />
+                        <span>{item.success_requests.toLocaleString()}</span>
                       </span>
                     </td>
 
-                    {/* 6. Error Count */}
-                    <td style={{ padding: "14px 12px", textAlign: "center" }}>
+                    {/* 6. Error */}
+                    <td className="py-3 px-2 text-center">
                       <span
-                        style={{
-                          background: item.error_requests > 0 ? "#fff1f2" : "#f8fafc",
-                          color: item.error_requests > 0 ? "#e11d48" : "#94a3b8",
-                          border: item.error_requests > 0 ? "1px solid #fecdd3" : "1px solid #e2e8f0",
-                          padding: "3px 9px",
-                          borderRadius: "12px",
-                          fontSize: "11.5px",
-                          fontWeight: 750,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          whiteSpace: "nowrap",
-                        }}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                          item.error_requests > 0
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            : "bg-slate-100 text-slate-500 border-slate-200"
+                        }`}
                       >
-                        {item.error_requests > 0 ? (
-                          <AlertTriangle size={12} color="#e11d48" />
-                        ) : (
-                          <span style={{ fontSize: "11px" }}>⊗</span>
-                        )}
-                        {item.error_requests}
+                        {item.error_requests > 0 && <AlertTriangle size={11} />}
+                        <span>{item.error_requests}</span>
                       </span>
                     </td>
 
                     {/* 7. Tokens */}
-                    <td style={{ padding: "14px 16px", fontWeight: 700, color: "#0f172a", fontSize: "13px" }}>
+                    <td className="py-3 px-3 text-right font-bold text-slate-700">
                       {item.tokens_used.toLocaleString()}
                     </td>
 
                     {/* 8. Credits */}
-                    <td style={{ padding: "14px 16px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                        <div
-                          style={{
-                            background: "rgba(245, 158, 11, 0.12)",
-                            color: "#d97706",
-                            border: "1px solid rgba(245, 158, 11, 0.3)",
-                            padding: "3px 8px",
-                            borderRadius: "5px",
-                            fontSize: "12px",
-                            fontWeight: 800,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            width: "fit-content",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <Coins size={11} />
-                          {item.financial_summary?.credit_used !== undefined ? Number(item.financial_summary.credit_used).toFixed(2) : (item.tokens_used / 1000).toFixed(2)} Cr
-                        </div>
-                        <div style={{ fontSize: "11px", color: "#64748b", whiteSpace: "nowrap" }}>
-                          còn {item.financial_summary?.remaining_credit !== undefined ? Number(item.financial_summary.remaining_credit).toFixed(2) : "0.00"} Cr
-                        </div>
+                    <td className="py-3 px-3 text-right">
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[11px]">
+                        <Coins size={11} />
+                        <span>
+                          {item.financial_summary?.credit_used !== undefined
+                            ? Number(item.financial_summary.credit_used).toFixed(2)
+                            : (item.tokens_used / 1000).toFixed(2)}{" "}
+                          Cr
+                        </span>
+                      </div>
+                      <div className="text-[10.5px] text-slate-400 mt-0.5">
+                        còn {item.financial_summary?.remaining_credit !== undefined ? Number(item.financial_summary.remaining_credit).toFixed(2) : "0.00"} Cr
                       </div>
                     </td>
 
                     {/* 9. Last Active */}
-                    <td style={{ padding: "14px 16px", color: "#64748b", fontSize: "12px", whiteSpace: "nowrap" }}>
+                    <td className="py-3 px-3 text-slate-500 text-[11.5px]">
                       {item.last_active}
                     </td>
 
-                    {/* 9. Three Action Buttons */}
-                    <td style={{ padding: "14px 20px", textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                        
-                        {/* Button 1: Xem lỗi */}
+                    {/* 10. Actions */}
+                    <td className="py-3 px-4 text-right">
+                      <div className="inline-flex items-center gap-1.5">
+                        {/* Xem lỗi */}
                         <button
                           type="button"
                           onClick={() => handleOpenErrorModal(item)}
-                          style={{
-                            background: "#ffffff",
-                            border: "1px solid #cbd5e1",
-                            borderRadius: "6px",
-                            padding: "5px 9px",
-                            fontSize: "11.5px",
-                            fontWeight: 650,
-                            color: item.error_requests > 0 ? "#e11d48" : "#475569",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            whiteSpace: "nowrap",
-                            transition: "all 0.15s ease",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold border transition-colors ${
+                            item.error_requests > 0
+                              ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
+                              : "bg-white hover:bg-slate-100 text-slate-600 border-slate-300"
+                          }`}
                         >
-                          <Eye size={12} />
-                          <span>Xem lỗi</span>
+                          <Eye size={11} />
+                          <span>Lỗi</span>
                         </button>
 
-                        {/* Button 2: Request */}
+                        {/* Request */}
                         <button
                           type="button"
                           onClick={() => handleOpenRequestModal(item)}
-                          style={{
-                            background: "#eff6ff",
-                            border: "1px solid #bfdbfe",
-                            borderRadius: "6px",
-                            padding: "5px 9px",
-                            fontSize: "11.5px",
-                            fontWeight: 650,
-                            color: "#2563eb",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            whiteSpace: "nowrap",
-                            transition: "all 0.15s ease",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#dbeafe")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "#eff6ff")}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-colors"
                         >
-                          <Zap size={12} />
+                          <Zap size={11} />
                           <span>Request</span>
                         </button>
 
-                        {/* Button 3: Tài chính */}
+                        {/* Tài chính */}
                         <button
                           type="button"
                           onClick={() => handleOpenFinanceModal(item)}
-                          style={{
-                            background: "#fff7ed",
-                            border: "1px solid #fed7aa",
-                            borderRadius: "6px",
-                            padding: "5px 9px",
-                            fontSize: "11.5px",
-                            fontWeight: 650,
-                            color: "#ea580c",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            whiteSpace: "nowrap",
-                            transition: "all 0.15s ease",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "#ffedd5")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "#fff7ed")}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-colors"
                         >
-                          <TrendingUp size={12} />
+                          <TrendingUp size={11} />
                           <span>Tài chính</span>
                         </button>
-
                       </div>
                     </td>
                   </tr>
@@ -810,82 +575,45 @@ export const ApiOperationsPage: React.FC<ApiOperationsPageProps> = ({
         </div>
 
         {/* Pagination Footer */}
-        <div
-          style={{
-            padding: "14px 24px",
-            borderTop: "1px solid #f1f5f9",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "1rem",
-          }}
-        >
-          <div style={{ fontSize: "12.5px", color: "#64748b" }}>
+        <div className="p-3.5 border-t border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-slate-600">
             Tổng <strong>{reportData?.total || filteredAccounts.length}</strong> bản ghi
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="flex items-center gap-2">
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              style={{
-                padding: "4px 8px",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e1",
-                fontSize: "12px",
-                background: "#ffffff",
-                color: "#334155",
-                outline: "none",
-                cursor: "pointer",
-              }}
+              className="py-1 px-2 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 bg-white"
             >
               <option value={5}>5 dòng</option>
               <option value={10}>10 dòng</option>
               <option value={20}>20 dòng</option>
             </select>
 
-            <span style={{ fontSize: "12px", color: "#64748b" }}>
+            <span className="text-xs font-bold text-slate-800 px-2">
               Trang {currentPage} / {totalPages}
             </span>
 
-            <div style={{ display: "inline-flex", gap: "4px" }}>
-              <button
-                type="button"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "5px",
-                  padding: "4px 8px",
-                  color: currentPage <= 1 ? "#cbd5e1" : "#475569",
-                  cursor: currentPage <= 1 ? "not-allowed" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-              >
-                <ChevronLeft size={14} />
-              </button>
+            <button
+              type="button"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft size={13} />
+              <span>Trước</span>
+            </button>
 
-              <button
-                type="button"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "5px",
-                  padding: "4px 8px",
-                  color: currentPage >= totalPages ? "#cbd5e1" : "#475569",
-                  cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                }}
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span>Sau</span>
+              <ChevronRight size={13} />
+            </button>
           </div>
         </div>
       </div>

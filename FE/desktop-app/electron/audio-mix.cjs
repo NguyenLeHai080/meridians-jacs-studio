@@ -26,7 +26,7 @@ function buildAudioFilter({
   const inputs = [];
   const srcAudio = String(audioInputLabel || "[0:a]").startsWith("[") ? String(audioInputLabel || "[0:a]") : `[${audioInputLabel}]`;
   const bgmFilter = (removeOriginalBgm || isolateVocals)
-    ? "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1,stereotools=mlev=2.0:slev=0.0:sbal=0:mpan=0,highpass=f=140:poles=2,lowpass=f=6000:poles=2,equalizer=f=200:t=q:w=1.5:g=-10,equalizer=f=1200:t=q:w=1.5:g=6,equalizer=f=2800:t=q:w=1.5:g=4,afftdn=nf=-32:om=o,dynaudnorm=f=150:g=15:p=0.95"
+    ? "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1,stereotools=mlev=1.8:slev=0.015625:sbal=0:mpan=0,highpass=f=130,lowpass=f=6500,equalizer=f=1200:t=q:w=1.5:g=4,equalizer=f=2500:t=q:w=1.5:g=3,afftdn=nf=-45:om=o,dynaudnorm=f=150:g=15:p=0.95"
     : "";
 
   if (keepOriginalAudio && hasOriginalAudio) {

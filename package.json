@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@9.15.0",
   "scripts": {
+    "dev": "./dev.sh",
     "dev:admin": "pnpm --dir FE/admin-portal dev",
     "build:admin": "pnpm --dir FE/admin-portal build",
     "dev:desktop": "pnpm --dir FE/desktop-app dev",
