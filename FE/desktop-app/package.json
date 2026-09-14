@@ -1,7 +1,7 @@
 {
   "name": "@jacs/desktop-app",
   "private": true,
-  "version": "0.8.74",
+  "version": "0.8.76",
   "description": "JACS Studio desktop video analysis and rendering tool",
   "author": "NexoraTech",
   "type": "module",
@@ -19,7 +19,7 @@
     "dist": "pnpm prepare:media && pnpm prepare:voice && pnpm build && electron-builder",
     "dist:mac": "pnpm prepare:media && pnpm prepare:voice && pnpm build && electron-builder --mac dmg zip",
     "dist:mac:universal": "pnpm prepare:media && pnpm prepare:voice && pnpm build && node scripts/build-mac-universal.cjs",
-    "dist:win": "pnpm prepare:media && pnpm prepare:voice && pnpm build && electron-builder --win nsis --x64"
+    "dist:win": "pnpm prepare:media && pnpm prepare:voice && pnpm build && electron-builder --win nsis zip --x64"
   },
   "dependencies": {
     "react": "^18.3.1",

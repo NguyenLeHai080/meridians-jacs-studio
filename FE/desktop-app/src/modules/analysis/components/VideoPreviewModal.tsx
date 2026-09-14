@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRepeat,
   ChatQuoteFill,
@@ -69,7 +70,7 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
   const assignedProvider =
     providers.find((p) => p.id === (activeJob.providerId || defaultProviderId)) || selectedProvider;
 
-  return (
+  const modalContent = (
     <div
       style={{
         position: "fixed",
@@ -981,4 +982,6 @@ export const VideoPreviewModal: React.FC<VideoPreviewModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 };

@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./core/i18n";
 import { getToken } from "./core/session";
@@ -9,6 +9,13 @@ import "./styles/main.scss";
 
 function App() {
   const [authenticated, setAuthenticated] = useState(Boolean(getToken()));
+
+  useEffect(() => {
+    const handleUnauthorized = () => setAuthenticated(false);
+    window.addEventListener("unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("unauthorized", handleUnauthorized);
+  }, []);
+
   return authenticated ? <Dashboard onLogout={() => setAuthenticated(false)} /> : <LoginPage onAuthenticated={() => setAuthenticated(true)} />;
 }
 

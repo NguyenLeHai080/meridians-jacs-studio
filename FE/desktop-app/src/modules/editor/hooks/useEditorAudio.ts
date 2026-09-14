@@ -1,40 +1,55 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Job } from "../../../core/types";
+import type { EditorScene } from "../editor.types";
 import { getRuntime } from "../../../core/runtime";
-import { playAudioStream, stopGlobalAudio } from "../../../core/audio-player";
+import { playAudioStream, stopGlobalAudio, getAudioStreamDuration } from "../../../core/audio-player";
 import { VOICE_PACKS } from "../../../core/voice-packs";
-import { stripSceneMetadata } from "../utils/editorTime";
+import { stripSceneMetadata, fileUrl } from "../utils/editorTime";
 
 export interface UseEditorAudioParams {
   sourceJob?: Job;
+  editorScenes?: EditorScene[];
   muted: boolean;
   trackMutes: Record<string, boolean>;
   originalAudioVolume: number;
   speedVal: number;
   playing: boolean;
+  playheadSeconds?: number;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   stemAudioRef: React.RefObject<HTMLAudioElement | null>;
+  bgmAudioRef?: React.RefObject<HTMLAudioElement | null>;
   defaultVoiceForLang: (lang?: string, gender?: string) => string;
 }
 
 export function useEditorAudio({
   sourceJob,
+  editorScenes,
   muted,
   trackMutes,
   originalAudioVolume,
   speedVal,
   playing,
+  playheadSeconds = 0,
   videoRef,
   stemAudioRef,
+  bgmAudioRef,
   defaultVoiceForLang,
 }: UseEditorAudioParams) {
   // Volume and voice configuration state
-  const [bgmVolume, setBgmVolume] = useState(50);
+  const [bgmVolume, setBgmVolume] = useState(40);
   const [voiceVolume, setVoiceVolume] = useState(100);
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
   const [selectedBgm, setSelectedBgm] = useState<string>("mus-1");
+  const [customBgmPath, setCustomBgmPath] = useState<string | null>(null);
+  const [customBgmTitle, setCustomBgmTitle] = useState<string | null>(null);
+  const [bgmAudioPath, setBgmAudioPath] = useState<string | null>(null);
+  const [bgmAudioDataUrl, setBgmAudioDataUrl] = useState<string | null>(null);
+  const [previewingSoundId, setPreviewingSoundId] = useState<string | null>(null);
+
   const [selectedVoice, setSelectedVoice] = useState<string>("vi-namminh");
   const [speakingSceneId, setSpeakingSceneId] = useState<string | null>(null);
+  const [sceneAudioDurations, setSceneAudioDurations] = useState<Record<string, number>>({});
+  const measuredDurationsRef = useRef<Record<string, number>>({});
 
   // Vocal / Stem Isolation states
   const [removeOriginalBgm, setRemoveOriginalBgm] = useState(false);
@@ -43,12 +58,24 @@ export function useEditorAudio({
   const [stemProgress, setStemProgress] = useState<number>(0);
   const [stemStage, setStemStage] = useState<string>("");
 
-  // Web Audio Context & Equalizer Nodes
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const hpFilterRef = useRef<BiquadFilterNode | null>(null);
-  const lpFilterRef = useRef<BiquadFilterNode | null>(null);
-  const peakFilterRef = useRef<BiquadFilterNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
+  // Stop all audio and elements on unmount
+  useEffect(() => {
+    return () => {
+      stopGlobalAudio();
+      if (bgmAudioRef?.current) {
+        try {
+          bgmAudioRef.current.pause();
+          bgmAudioRef.current.currentTime = 0;
+        } catch {}
+      }
+      if (stemAudioRef?.current) {
+        try {
+          stemAudioRef.current.pause();
+          stemAudioRef.current.currentTime = 0;
+        } catch {}
+      }
+    };
+  }, [bgmAudioRef, stemAudioRef]);
 
   // Listen to Electron stem isolation progress
   useEffect(() => {
@@ -73,92 +100,70 @@ export function useEditorAudio({
     }
   }, [(sourceJob as any)?.isolatedVocalsPath, sourceJob?.removeOriginalBgm, sourceJob?.isolateVocals]);
 
-  // Audio equalizer effect on video element
+  // Load preset or custom BGM path and dataUrl
+  useEffect(() => {
+    let cancelled = false;
+
+    if (selectedBgm === "custom") {
+      if (customBgmPath) {
+        setBgmAudioPath(customBgmPath);
+        void (async () => {
+          try {
+            const dataUrl = await getRuntime().readAudioFile?.(customBgmPath);
+            if (!cancelled && dataUrl) {
+              setBgmAudioDataUrl(dataUrl);
+            }
+          } catch {}
+        })();
+      }
+      return;
+    }
+
+    if (selectedBgm && selectedBgm !== "none") {
+      void (async () => {
+        try {
+          const res = await getRuntime().getPresetAudio?.("bgm", selectedBgm);
+          if (!cancelled && res) {
+            setBgmAudioPath(res.path);
+            if (res.dataUrl) {
+              setBgmAudioDataUrl(res.dataUrl);
+            }
+          }
+        } catch {}
+      })();
+    } else {
+      setBgmAudioPath(null);
+      setBgmAudioDataUrl(null);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBgm, customBgmPath]);
+
+  // Direct Hardware-Accelerated Video Audio & Stem Audio Control (No CORS Hijack)
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
-    try {
-      if (!audioCtxRef.current) {
-        const AudioContextClass =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (AudioContextClass) {
-          const ctx = new AudioContextClass();
-          const source = ctx.createMediaElementSource(video);
-          const hp = ctx.createBiquadFilter();
-          hp.type = "highpass";
-          hp.frequency.value = 20;
-
-          const lp = ctx.createBiquadFilter();
-          lp.type = "lowpass";
-          lp.frequency.value = 20000;
-
-          const peak = ctx.createBiquadFilter();
-          peak.type = "peaking";
-          peak.frequency.value = 1200;
-          peak.Q.value = 1.5;
-          peak.gain.value = 0;
-
-          const gain = ctx.createGain();
-          gain.gain.value = 1;
-
-          source.connect(hp);
-          hp.connect(lp);
-          lp.connect(peak);
-          peak.connect(gain);
-          gain.connect(ctx.destination);
-
-          audioCtxRef.current = ctx;
-          hpFilterRef.current = hp;
-          lpFilterRef.current = lp;
-          peakFilterRef.current = peak;
-          gainNodeRef.current = gain;
-        }
-      }
-    } catch {
-      // Element might already be connected or not supported
-    }
-
-    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
-      audioCtxRef.current.resume().catch(() => {});
-    }
 
     const isOrigMuted = muted || Boolean(trackMutes.originalAudio) || originalAudioVolume === 0;
     const vol = isOrigMuted ? 0 : Math.max(0, Math.min(1, originalAudioVolume / 100));
 
     if (removeOriginalBgm && isolatedStemPath) {
-      if (gainNodeRef.current) {
-        gainNodeRef.current.gain.value = 0;
-      }
+      // Mute original video element and let isolated stem audio play
       video.muted = true;
+      video.volume = 0;
       if (stemAudioRef.current) {
-        stemAudioRef.current.volume = isOrigMuted ? 0 : vol;
+        stemAudioRef.current.muted = isOrigMuted;
+        stemAudioRef.current.volume = vol;
       }
     } else {
-      if (gainNodeRef.current) {
-        gainNodeRef.current.gain.value = vol;
-      } else {
-        video.muted = isOrigMuted;
-        video.volume = vol;
-      }
+      // Standard video original audio playback directly via native HTML5
+      video.muted = isOrigMuted;
+      video.volume = vol;
       if (stemAudioRef.current) {
+        stemAudioRef.current.muted = true;
         stemAudioRef.current.volume = 0;
-      }
-    }
-
-    if (hpFilterRef.current && lpFilterRef.current && peakFilterRef.current) {
-      if (removeOriginalBgm) {
-        // Deep Vocal, Siren & SFX Isolation
-        hpFilterRef.current.frequency.value = 140;
-        lpFilterRef.current.frequency.value = 6000;
-        peakFilterRef.current.frequency.value = 1200;
-        peakFilterRef.current.gain.value = 6.0;
-      } else {
-        // Bypass to original flat sound
-        hpFilterRef.current.frequency.value = 20;
-        lpFilterRef.current.frequency.value = 20000;
-        peakFilterRef.current.gain.value = 0;
       }
     }
   }, [muted, trackMutes.originalAudio, originalAudioVolume, removeOriginalBgm, isolatedStemPath, videoRef, stemAudioRef]);
@@ -167,7 +172,7 @@ export function useEditorAudio({
   useEffect(() => {
     const stemAudio = stemAudioRef.current;
     if (!stemAudio || !removeOriginalBgm || !isolatedStemPath) {
-      if (stemAudio) {
+      if (stemAudio && !stemAudio.paused) {
         stemAudio.pause();
       }
       return;
@@ -185,12 +190,115 @@ export function useEditorAudio({
     }
   }, [playing, removeOriginalBgm, isolatedStemPath, speedVal, videoRef, stemAudioRef]);
 
+  // Synchronize BGM Audio element with Timeline
+  useEffect(() => {
+    const bgmAudio = bgmAudioRef?.current;
+    if (!bgmAudio) return;
+
+    if (!bgmAudioPath || selectedBgm === "none") {
+      if (!bgmAudio.paused) bgmAudio.pause();
+      return;
+    }
+
+    const targetUrl = bgmAudioDataUrl || fileUrl(bgmAudioPath);
+    if (targetUrl && bgmAudio.src !== targetUrl) {
+      bgmAudio.src = targetUrl;
+      bgmAudio.load();
+    }
+
+    const isBgmMuted = muted || Boolean(trackMutes.bgm) || bgmVolume === 0;
+    const bVol = isBgmMuted ? 0 : Math.max(0, Math.min(1, bgmVolume / 100));
+    bgmAudio.volume = bVol;
+    bgmAudio.muted = isBgmMuted;
+    bgmAudio.playbackRate = speedVal || 1.0;
+
+    if (playing) {
+      void bgmAudio.play().catch(() => {});
+    } else {
+      bgmAudio.pause();
+    }
+  }, [bgmAudioPath, bgmAudioDataUrl, selectedBgm, playing, muted, trackMutes.bgm, bgmVolume, speedVal, bgmAudioRef]);
+
+  // Seek BGM on manual scrub
+  useEffect(() => {
+    const bgmAudio = bgmAudioRef?.current;
+    if (!bgmAudio || !bgmAudio.duration || !playing) return;
+    const loopPos = playheadSeconds % bgmAudio.duration;
+    if (Math.abs(bgmAudio.currentTime - loopPos) > 0.5) {
+      bgmAudio.currentTime = loopPos;
+    }
+  }, [playheadSeconds, playing, bgmAudioRef]);
+
+  // Clear scene audio durations when voice or speed changes so they are recomputed
+  useEffect(() => {
+    measuredDurationsRef.current = {};
+    setSceneAudioDurations({});
+  }, [selectedVoice, voiceSpeed]);
+
+  // Pre-synthesize and measure duration for all scenes in background
+  useEffect(() => {
+    if (!editorScenes || editorScenes.length === 0) return;
+    let cancelled = false;
+
+    const prewarm = async () => {
+      for (const sc of editorScenes) {
+        if (cancelled) break;
+        if (!sc.id || measuredDurationsRef.current[sc.id]) continue;
+        const rawClean = stripSceneMetadata(sc.subtitle || sc.voiceover || sc.translation || "");
+        if (!rawClean) continue;
+
+        try {
+          const voiceToUse =
+            selectedVoice ||
+            sourceJob?.narratorVoice ||
+            defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender);
+          const voiceObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === voiceToUse.toLowerCase());
+          const langToUse = voiceObj?.language || sourceJob?.languages?.[0] || "vi";
+          const genderToUse = voiceObj?.gender || sourceJob?.narratorGender || "male";
+          const rateToUse = voiceSpeed || 1.0;
+
+          const speechUrl = await getRuntime().synthesizeSpeech?.(
+            rawClean,
+            langToUse,
+            genderToUse,
+            voiceToUse,
+            rateToUse
+          );
+
+          if (cancelled) break;
+          if (speechUrl) {
+            const dur = await getAudioStreamDuration(speechUrl);
+            if (!cancelled && dur && dur > 0.1) {
+              measuredDurationsRef.current[sc.id] = dur;
+              setSceneAudioDurations((prev) => ({ ...prev, [sc.id]: dur }));
+            }
+          }
+        } catch {}
+      }
+    };
+
+    const timer = setTimeout(() => {
+      void prewarm();
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [editorScenes, selectedVoice, voiceSpeed, sourceJob, defaultVoiceForLang]);
+
   // Play scene TTS audio
   const playSceneAudio = useCallback(
     async (text?: string, scId?: string, offsetSeconds: number = 0) => {
       const rawClean = stripSceneMetadata(text);
       if (!rawClean || typeof window === "undefined") return;
       stopSceneAudio();
+
+      const isVoiceMuted = muted || Boolean(trackMutes.voice) || Boolean(trackMutes.voice1) || voiceVolume === 0;
+      if (isVoiceMuted) {
+        return;
+      }
+
       if (scId) setSpeakingSceneId(scId);
 
       const voiceToUse =
@@ -201,6 +309,7 @@ export function useEditorAudio({
       const langToUse = voiceObj?.language || sourceJob?.languages?.[0] || "vi";
       const genderToUse = voiceObj?.gender || sourceJob?.narratorGender || "male";
       const rateToUse = voiceSpeed || 1.0;
+      const effectiveVol = Math.max(0, Math.min(200, voiceVolume));
 
       try {
         const speechUrl = await getRuntime().synthesizeSpeech?.(
@@ -216,8 +325,15 @@ export function useEditorAudio({
             speechUrl,
             () => setSpeakingSceneId(null),
             () => setSpeakingSceneId(null),
-            rateToUse,
-            offsetSeconds
+            1.0, // Speech rate is already baked into speechUrl by synthesizeSpeech
+            offsetSeconds,
+            (dur) => {
+              if (scId && dur > 0.1) {
+                measuredDurationsRef.current[scId] = dur;
+                setSceneAudioDurations((prev) => ({ ...prev, [scId]: dur }));
+              }
+            },
+            effectiveVol
           );
           return;
         }
@@ -231,6 +347,7 @@ export function useEditorAudio({
           const utterance = new SpeechSynthesisUtterance(rawClean);
           utterance.lang = langToUse === "vi" ? "vi-VN" : langToUse === "en" ? "en-US" : langToUse;
           utterance.rate = rateToUse;
+          utterance.volume = Math.max(0, Math.min(1.0, effectiveVol / 100));
           utterance.onend = () => setSpeakingSceneId(null);
           utterance.onerror = () => setSpeakingSceneId(null);
           window.speechSynthesis.speak(utterance);
@@ -240,7 +357,7 @@ export function useEditorAudio({
 
       setSpeakingSceneId(null);
     },
-    [selectedVoice, sourceJob, voiceSpeed, defaultVoiceForLang]
+    [selectedVoice, sourceJob, voiceSpeed, voiceVolume, muted, trackMutes, defaultVoiceForLang]
   );
 
   const stopSceneAudio = useCallback(() => {
@@ -253,6 +370,133 @@ export function useEditorAudio({
     setSpeakingSceneId(null);
   }, []);
 
+  // Trigger Stem / Vocal Isolation
+  const triggerIsolateVocals = useCallback(async () => {
+    const videoPath = sourceJob?.localPath;
+    if (!videoPath || isIsolatingStem) return;
+
+    setIsIsolatingStem(true);
+    setStemProgress(5);
+    setStemStage("Đang khởi tạo bóc tách sóng âm AI...");
+
+    try {
+      const res = await getRuntime().isolateVocals?.(videoPath);
+      if (res?.ok && res.path) {
+        setIsolatedStemPath(res.path);
+        setStemProgress(100);
+        setStemStage("✓ Đã bóc tách 100% sạch nhạc nền!");
+      } else {
+        setStemStage(res?.error || "Không thể bóc tách âm thanh.");
+      }
+    } catch {
+      setStemStage("Lỗi bóc tách sóng âm.");
+    } finally {
+      setIsIsolatingStem(false);
+    }
+  }, [sourceJob?.localPath, isIsolatingStem]);
+
+  // Pick Custom BGM File
+  const handlePickCustomBgm = useCallback(async () => {
+    try {
+      const picked = await getRuntime().pickAudio?.();
+      if (picked) {
+        const parts = picked.replace(/\\/g, "/").split("/");
+        const filename = parts[parts.length - 1] || "Nhạc nền tùy chọn";
+        setCustomBgmPath(picked);
+        setCustomBgmTitle(filename);
+        setSelectedBgm("custom");
+        setBgmAudioPath(picked);
+        try {
+          const dataUrl = await getRuntime().readAudioFile?.(picked);
+          if (dataUrl) {
+            setBgmAudioDataUrl(dataUrl);
+          }
+        } catch {}
+        return { path: picked, title: filename };
+      }
+    } catch (err) {
+      console.error("Pick custom BGM error:", err);
+    }
+    return null;
+  }, []);
+
+  // Play SFX / BGM Preview with Play/Stop toggle and zero-CORS dataUrl support
+  const playSfxPreview = useCallback(async (soundId: string) => {
+    try {
+      if (previewingSoundId === soundId) {
+        stopGlobalAudio();
+        setPreviewingSoundId(null);
+        return;
+      }
+
+      setPreviewingSoundId(soundId);
+
+      if (soundId === "custom") {
+        let dataUrl = bgmAudioDataUrl;
+        if (!dataUrl && customBgmPath) {
+          dataUrl = (await getRuntime().readAudioFile?.(customBgmPath)) ?? null;
+        }
+        if (dataUrl) {
+          await playAudioStream(
+            dataUrl,
+            () => setPreviewingSoundId(null),
+            () => setPreviewingSoundId(null),
+            1.0,
+            0,
+            undefined,
+            100
+          );
+        } else if (customBgmPath) {
+          const url = fileUrl(customBgmPath);
+          if (url) {
+            await playAudioStream(
+              url,
+              () => setPreviewingSoundId(null),
+              () => setPreviewingSoundId(null),
+              1.0,
+              0,
+              undefined,
+              100
+            );
+          }
+        }
+        return;
+      }
+
+      const type = soundId.startsWith("mus-") ? "bgm" : "sfx";
+      const res = await getRuntime().getPresetAudio?.(type, soundId);
+      if (res?.dataUrl) {
+        await playAudioStream(
+          res.dataUrl,
+          () => setPreviewingSoundId(null),
+          () => setPreviewingSoundId(null),
+          1.0,
+          0,
+          undefined,
+          100
+        );
+      } else if (res?.path) {
+        const url = fileUrl(res.path);
+        if (url) {
+          await playAudioStream(
+            url,
+            () => setPreviewingSoundId(null),
+            () => setPreviewingSoundId(null),
+            1.0,
+            0,
+            undefined,
+            100
+          );
+        }
+      } else {
+        setPreviewingSoundId(null);
+      }
+    } catch (err) {
+      console.warn("Play sound preview error:", err);
+      setPreviewingSoundId(null);
+    }
+  }, [previewingSoundId, bgmAudioDataUrl, customBgmPath]);
+
   return {
     bgmVolume,
     setBgmVolume,
@@ -262,10 +506,23 @@ export function useEditorAudio({
     setVoiceSpeed,
     selectedBgm,
     setSelectedBgm,
+    customBgmPath,
+    setCustomBgmPath,
+    customBgmTitle,
+    setCustomBgmTitle,
+    bgmAudioPath,
+    setBgmAudioPath,
+    bgmAudioDataUrl,
+    setBgmAudioDataUrl,
+    previewingSoundId,
+    setPreviewingSoundId,
+    handlePickCustomBgm,
     selectedVoice,
     setSelectedVoice,
     speakingSceneId,
     setSpeakingSceneId,
+    sceneAudioDurations,
+    setSceneAudioDurations,
     removeOriginalBgm,
     setRemoveOriginalBgm,
     isolatedStemPath,
@@ -274,7 +531,9 @@ export function useEditorAudio({
     setIsIsolatingStem,
     stemProgress,
     stemStage,
+    triggerIsolateVocals,
     playSceneAudio,
     stopSceneAudio,
+    playSfxPreview,
   };
 }

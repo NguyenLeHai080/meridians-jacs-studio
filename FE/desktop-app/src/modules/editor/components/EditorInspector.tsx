@@ -1,7 +1,7 @@
 import type { Job } from "../../../core/types";
 import type { EditorScene } from "../editor.types";
 import { FILTER_PRESETS, MASK_PRESETS } from "../constants/presets";
-import { formatSeconds, formatTimecodePrecise, toSeconds } from "../utils/editorTime";
+import { estimateSpokenDuration, formatSeconds, formatTimecodePrecise, toSeconds } from "../utils/editorTime";
 
 export interface EditorInspectorProps {
   activeScene: EditorScene;
@@ -434,9 +434,8 @@ export function EditorInspector({
               value={activeScene.subtitle || ""}
               onChange={(e) => {
                 const newText = e.target.value;
-                const wordCount = newText.split(/\s+/).filter(Boolean).length;
                 const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-                const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
+                const voiceEstSec = Math.max(2.5, Math.round(estimateSpokenDuration(newText, speed) * 10) / 10);
                 const nextScenes = editorScenes.map((s) => {
                   if (s.id !== activeSceneId) return s;
                   const vStart = toSeconds(s.voiceStart || s.start);
@@ -479,9 +478,8 @@ export function EditorInspector({
                 className="ts-refine-hook-btn"
                 onClick={() => {
                   const polished = `Khám phá ngay: ${activeScene.subtitle || "Điểm nhấn không thể bỏ qua!"}`;
-                  const wordCount = polished.split(/\s+/).filter(Boolean).length;
                   const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-                  const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
+                  const voiceEstSec = Math.max(2.5, Math.round(estimateSpokenDuration(polished, speed) * 10) / 10);
                   const updated = editorScenes.map((s) => {
                     if (s.id !== activeSceneId) return s;
                     const vStart = toSeconds(s.voiceStart || s.start);

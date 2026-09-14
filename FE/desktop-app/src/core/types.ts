@@ -25,6 +25,9 @@ export type Job = {
   childJobIds?: string[];
   qa?: { passed: boolean; checks: Array<{ id: string; passed: boolean; detail: string }> };
   timelineClips?: TimelineClip[];
+  timelineReady?: boolean;
+  scenes?: Array<{ id: string; title: string; start: string; end: string; subtitle?: string; audioPath?: string; voiceScript?: string }>;
+  audioLayers?: any;
   cutClips?: Array<{ sourceStart: number; sourceEnd: number; duration?: number; text?: string; title?: string }>;
   /** Automatic scene fan-out waits here until the contextual script is approved. */
   requiresScriptApproval?: boolean;
@@ -50,11 +53,13 @@ export type Job = {
   backgroundMusic?: boolean;
   backgroundMusicVolume?: number;
   backgroundMusicPath?: string;
+  speed?: number;
+  voiceSpeed?: number;
   subtitlesEnabled?: boolean;
   subtitleStyle?: "bottom" | "center" | "top" | "gold" | "white" | "neon" | "box";
   subtitleText?: string;
   narrationText?: string;
-  subtitleSegments?: Array<{ start: number; end: number; text: string }>;
+  subtitleSegments?: Array<{ start: number; end: number; text: string; voiceDuration?: number }>;
   logoPath?: string;
   logoPosition?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
   logoOpacity?: number;
@@ -169,7 +174,7 @@ export type TranscriptSegment = { start: number; end: number; text: string; spea
 export type StoryPlan = { hook: string; setup: string; buildUp: string; climax: string; cta: string; targetDurationSeconds?: number; status: "draft" | "approved"; approvedAt?: string; version?: number; approvedBy?: string };
 export type VoiceSegment = { id: string; sceneId: string; text: string; start: number; end: number; audioStart?: number; audioEnd?: number; audioPath?: string; words?: Array<{ start: number; end: number; text: string; confidence?: number }>; status: "draft" | "ready" | "failed" };
 export type SceneMatchClip = { sceneId: string; sourceStart: number; sourceEnd: number; score: number };
-export type TimelineClip = { sceneId: string; order: number; trimIn?: number; trimOut?: number; sourceSceneId?: string };
+export type TimelineClip = { sceneId: string; order: number; trimIn?: number; trimOut?: number; sourceSceneId?: string; id?: string; title?: string; sourceStart?: string; sourceEnd?: string; inPoint?: number; outPoint?: number; speed?: number; subtitleText?: string };
 export type SceneMatch = { voiceSegmentId: string; sceneId: string; sourceStart: number; sourceEnd: number; sourceClips?: SceneMatchClip[]; voiceStart: number; voiceEnd: number; matchScore: number; reason: string; fallbackReason?: string; needsReview: boolean };
 export type AnalysisScene = {
   id?: string;
@@ -258,6 +263,8 @@ export type DesktopRuntime = {
   pickVideos?: () => Promise<string[]>;
   pickOutputFolder?: () => Promise<string | null>;
   pickAudio?: () => Promise<string | null>;
+  getPresetAudio?: (type: "bgm" | "sfx", id: string) => Promise<{ path: string; dataUrl: string } | null>;
+  readAudioFile?: (path: string) => Promise<string | null>;
   pickImage?: () => Promise<string | null>;
   downloadVideo?: (url: string, operationId?: string) => Promise<string>;
   probeVideo?: (path: string) => Promise<VideoProbe>;
@@ -281,9 +288,7 @@ export const NAV_ITEMS: Array<{ key: NavKey; label: string; hint: string; icon: 
   { key: "analysis", label: "1. Phân tích AI", hint: "Bóc tách ngữ cảnh & phân cảnh đa luồng", icon: "scan" },
   { key: "story", label: "2. Kịch bản & Voice", hint: "Biên kịch Storyboard & Lồng tiếng", icon: "mic" },
   { key: "timeline", label: "3. Dựng & Timeline", hint: "Bàn dựng đa track chuyên nghiệp", icon: "timeline" },
-  { key: "brand", label: "4. Phụ đề & Brand", hint: "Phụ đề tự động & Watermark", icon: "captions" },
-  { key: "render", label: "5. Render xuất bản", hint: "Xuất file video chuẩn 4K/60fps", icon: "play" },
-  { key: "batch", label: "6. Xử lý hàng loạt", hint: "Batch render tự động Shorts/Reels", icon: "layers" },
+  { key: "batch", label: "4. Xử lý hàng loạt", hint: "Review timeline & Xuất video hàng loạt hoặc từng cái", icon: "layers" },
   { key: "usage", label: "Mức dùng & Credits AI", hint: "Thống kê Tokens & Credits Video", icon: "coins" },
   { key: "settings", label: "Cài đặt tool", hint: "Cấu hình AI Model BYOK & Engine", icon: "sliders" },
   { key: "activation", label: "License & Thiết bị", hint: "Bản quyền máy & HWID", icon: "key" },

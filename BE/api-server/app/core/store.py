@@ -254,7 +254,19 @@ class PostgresStore:
                 "ALTER TABLE jacs_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
             )
             conn.execute(
-                "ALTER TABLE jacs_records ALTER COLUMN id TYPE VARCHAR(64) USING id::text"
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'jacs_records' 
+                        AND column_name = 'id' 
+                        AND data_type != 'character varying'
+                    ) THEN
+                        ALTER TABLE jacs_records ALTER COLUMN id TYPE VARCHAR(64) USING id::text;
+                    END IF;
+                END $$;
+                """
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_jacs_records_collection ON jacs_records(collection, created_at DESC)"

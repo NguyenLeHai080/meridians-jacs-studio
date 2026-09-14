@@ -4,8 +4,17 @@ import type { Job } from "../../../core/types";
 export function useVideoFilters(jobs: Job[] = [], initialSource?: Job) {
   // 1. Video Sources Filter & Management
   const sourceCandidates = useMemo(() => {
-    const list = jobs.filter((j) => j.localPath || j.sourceType === "url" || j.analysis);
-    if (initialSource && !list.some((item) => item.id === initialSource.id)) {
+    const isRenderJob = (j: any) =>
+      Boolean(j.parentJobId) ||
+      (typeof j.id === "string" && (j.id.startsWith("render-") || j.id.startsWith("export-"))) ||
+      (typeof j.name === "string" && j.name.startsWith("[Xuất]")) ||
+      (j.mode === "local-gpu" && !j.sourceOnly);
+
+    const list = jobs.filter((j) => {
+      if (isRenderJob(j)) return false;
+      return j.localPath || j.sourceType === "url" || j.analysis;
+    });
+    if (initialSource && !isRenderJob(initialSource) && !list.some((item) => item.id === initialSource.id)) {
       return [initialSource, ...list];
     }
     return list;

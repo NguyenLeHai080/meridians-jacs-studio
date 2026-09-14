@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRepeat,
   ClockFill,
@@ -66,6 +67,8 @@ interface BatchConfigModalProps {
   updateEmphasizeHook: (val: boolean) => void;
   autoDucking: boolean;
   updateAutoDucking: (val: boolean) => void;
+  autoQueueRender?: boolean;
+  updateAutoQueueRender?: (val: boolean) => void;
   defaultLanguage: string;
   setDefaultLanguage: (lang: string) => void;
   onSubmitBatch: (pId: string, prompt: string, lang: string) => void;
@@ -122,6 +125,8 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
   updateEmphasizeHook,
   autoDucking,
   updateAutoDucking,
+  autoQueueRender = false,
+  updateAutoQueueRender,
   defaultLanguage,
   setDefaultLanguage,
   onSubmitBatch,
@@ -133,18 +138,23 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
     onSubmitBatch(defaultProviderId, defaultPrompt, defaultLanguage);
   };
 
-  return (
+  const modalContent = (
     <div
       style={{
         position: "fixed",
         inset: 0,
         background: "rgba(0,0,0,0.85)",
-        backdropFilter: "blur(10px)",
+        backdropFilter: "blur(12px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 99999,
+        zIndex: 9999999,
         padding: "20px",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
       }}
     >
       <div
@@ -154,12 +164,13 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
           borderRadius: "14px",
           width: "100%",
           maxWidth: "880px",
-          maxHeight: "92vh",
+          maxHeight: "88vh",
           display: "flex",
           flexDirection: "column",
           boxShadow: "0 25px 60px rgba(0,0,0,0.8)",
           overflow: "hidden",
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div
@@ -169,11 +180,12 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
             alignItems: "center",
             padding: "16px 24px",
             borderBottom: "1px solid rgba(255,255,255,0.08)",
-            background: "rgba(18, 22, 34, 0.85)",
+            background: "rgba(18, 22, 34, 0.95)",
             flexShrink: 0,
+            gap: "16px",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
             <div
               style={{
                 width: "36px",
@@ -185,17 +197,43 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
                 alignItems: "center",
                 justifyContent: "center",
                 border: "1px solid rgba(245, 158, 11, 0.3)",
+                flexShrink: 0,
               }}
             >
               <LightningChargeFill size={18} />
             </div>
-            <div>
-              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#f8fafc", margin: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h3
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 800,
+                  color: "#f8fafc",
+                  margin: 0,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                title={
+                  analysisTargetJob
+                    ? `Cấu Hình Phân Tích Video: ${analysisTargetJob.name}`
+                    : `Phân Tích AI Hàng Loạt (${selectedJobIds.size > 0 ? selectedJobIds.size : sourceCandidates.length} Video)`
+                }
+              >
                 {analysisTargetJob
                   ? `Cấu Hình Phân Tích Video: ${analysisTargetJob.name}`
                   : `Phân Tích AI Hàng Loạt (${selectedJobIds.size > 0 ? selectedJobIds.size : sourceCandidates.length} Video)`}
               </h3>
-              <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>
+              <span
+                style={{
+                  fontSize: "11.5px",
+                  color: "#94a3b8",
+                  display: "block",
+                  marginTop: "2px",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
                 Tự động bóc tách từng phân cảnh, nhận diện visual, mốc thời gian và biên kịch đồng bộ
               </span>
             </div>
@@ -203,19 +241,51 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
+            aria-label="Đóng"
+            style={{
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: "8px",
+              width: "32px",
+              height: "32px",
+              minWidth: "32px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#94a3b8",
+              cursor: "pointer",
+              flexShrink: 0,
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "#f8fafc";
+              e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "#94a3b8";
+              e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+            }}
           >
-            <XLg size={16} />
+            <XLg size={14} />
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
+        {/* Form Container */}
         <form
           onSubmit={handleSubmit}
-          style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", minHeight: 0 }}
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            overflow: "hidden",
+          }}
         >
+          {/* Scrollable Form Body */}
           <div
             style={{
+              flex: 1,
+              overflowY: "auto",
               padding: "20px 24px",
               display: "flex",
               flexDirection: "column",
@@ -966,24 +1036,97 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
             </div>
           </div>
 
-          {/* Modal Footer */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.08)", padding: "14px 24px", background: "rgba(18, 22, 34, 0.85)", flexShrink: 0 }}>
-            <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>
-              {useProviderPool ? `⚡ Tự động luân chuyển ${activeProviderPool.length} Model (${batchConcurrency} luồng song song)` : `⚡ Chạy theo Model đã chọn`}
-            </span>
+          {/* Sticky Modal Footer */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderTop: "1px solid rgba(255,255,255,0.12)",
+              padding: "14px 24px",
+              background: "rgba(14, 18, 28, 0.98)",
+              backdropFilter: "blur(12px)",
+              flexShrink: 0,
+              gap: "14px",
+              boxShadow: "0 -4px 16px rgba(0,0,0,0.3)",
+              zIndex: 10,
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <span
+                style={{
+                  fontSize: "11.5px",
+                  color: "#94a3b8",
+                  display: "block",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={
+                  useProviderPool
+                    ? `⚡ Tự động luân chuyển ${activeProviderPool.length} Model (${batchConcurrency} luồng song song)`
+                    : `⚡ Chạy theo Model đã chọn`
+                }
+              >
+                {useProviderPool
+                  ? `⚡ Tự động luân chuyển ${activeProviderPool.length} Model (${batchConcurrency} luồng song song)`
+                  : `⚡ Chạy theo Model đã chọn`}
+              </span>
+            </div>
             <div style={{ display: "flex", gap: "10px", flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={onClose}
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", padding: "8px 18px", borderRadius: "8px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  color: "#e2e8f0",
+                  padding: "9px 20px",
+                  borderRadius: "8px",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.12)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+                }}
               >
                 Hủy Bỏ
               </button>
               <button
                 type="submit"
-                style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", color: "#12151f", border: "none", padding: "8px 24px", borderRadius: "8px", fontSize: "12.5px", fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", boxShadow: "0 0 18px rgba(245, 158, 11, 0.45)" }}
+                style={{
+                  background: "linear-gradient(135deg, #d97706, #f59e0b)",
+                  color: "#12151f",
+                  border: "none",
+                  padding: "9px 24px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "7px",
+                  boxShadow: "0 0 20px rgba(245, 158, 11, 0.45)",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow = "0 0 26px rgba(245, 158, 11, 0.65)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "none";
+                  e.currentTarget.style.boxShadow = "0 0 20px rgba(245, 158, 11, 0.45)";
+                }}
               >
-                <LightningChargeFill size={13} /> {analysisTargetJob ? "Bắt Đầu Phân Tích Video Này" : `Bắt Đầu Phân Tích (${selectedJobIds.size > 0 ? selectedJobIds.size : sourceCandidates.length} Video)`}
+                <LightningChargeFill size={14} />{" "}
+                {analysisTargetJob
+                  ? "Bắt Đầu Phân Tích Video Này"
+                  : `Bắt Đầu Phân Tích (${selectedJobIds.size > 0 ? selectedJobIds.size : sourceCandidates.length} Video)`}
               </button>
             </div>
           </div>
@@ -991,4 +1134,6 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 };

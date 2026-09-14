@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { KeyFill, XLg } from "react-bootstrap-icons";
 import type { ProviderProfile } from "../../../core/types";
 
@@ -21,7 +22,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div
       style={{
         position: "fixed",
@@ -209,4 +210,6 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 };

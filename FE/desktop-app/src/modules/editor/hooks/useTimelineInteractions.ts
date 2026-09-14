@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { Job } from "../../../core/types";
 import type { EditorScene } from "../editor.types";
-import { formatSeconds, stripSceneMetadata, toSeconds } from "../utils/editorTime";
+import { estimateSpokenDuration, formatSeconds, stripSceneMetadata, toSeconds } from "../utils/editorTime";
 
 export interface UseTimelineInteractionsParams {
   editorScenes: EditorScene[];
@@ -16,6 +16,7 @@ export interface UseTimelineInteractionsParams {
   trackLocks: Record<string, boolean>;
   timelineViewportRef: React.RefObject<HTMLDivElement | null>;
   voiceSpeed: number;
+  sceneAudioDurations?: Record<string, number>;
   sourceJob?: Job;
   onUpdateJob?: (jobId: string, values: Partial<Job>) => void;
   setProjectMessage: (msg: string) => void;
@@ -34,6 +35,7 @@ export function useTimelineInteractions({
   trackLocks,
   timelineViewportRef,
   voiceSpeed,
+  sceneAudioDurations,
   sourceJob,
   onUpdateJob,
   setProjectMessage,
@@ -148,8 +150,10 @@ export function useTimelineInteractions({
     const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
     const nextScenes = editorScenes.map((s) => {
       const rawText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "");
-      const words = rawText.split(/\s+/).filter(Boolean).length;
-      const sceneDur = Math.max(3.0, Math.round((words / (3.65 * speed)) * 10) / 10);
+      const measured = s.id && sceneAudioDurations?.[s.id];
+      const estSec = estimateSpokenDuration(rawText, speed);
+      const realVoiceDur = measured && measured > 0.5 ? measured : estSec;
+      const sceneDur = Math.max(2.5, Math.round(realVoiceDur * 10) / 10);
       const startSec = cursor;
       const endSec = cursor + sceneDur;
       cursor = endSec;
@@ -196,7 +200,7 @@ export function useTimelineInteractions({
     }
     setProjectMessage(`🎯 Đã tự động căn khớp 100% thời lượng Voice, Hình ảnh và Phụ đề (${formatSeconds(cursor)})!`);
     setTimeout(() => setProjectMessage(""), 3500);
-  }, [editorScenes, voiceSpeed, setScenesWithHistory, onUpdateJob, sourceJob, setProjectMessage]);
+  }, [editorScenes, voiceSpeed, sceneAudioDurations, setScenesWithHistory, onUpdateJob, sourceJob, setProjectMessage]);
 
   // Trim start handler
   const handleTrimStart = useCallback(

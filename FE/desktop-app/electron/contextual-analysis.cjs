@@ -125,7 +125,7 @@ function buildSceneMatches(scenes = [], suppliedVoiceSegments = []) {
     const sceneId = String(scene.id || `scene-${index + 1}`);
     const text = String(scene.voiceover || scene.translation || scene.detail || scene.title || "").replace(/\s+/g, " ").trim();
     if (!text) return;
-    const duration = Math.max(0.25, text.split(/\s+/).length / 2.8);
+    const duration = Math.max(0.25, text.split(/\s+/).length / 4.15);
     const voiceStart = Number(voiceCursor.toFixed(3));
     const voiceEnd = Number((voiceCursor + duration).toFixed(3));
     voiceCursor = voiceEnd;

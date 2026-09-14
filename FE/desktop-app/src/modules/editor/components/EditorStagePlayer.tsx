@@ -124,18 +124,9 @@ export function EditorStagePlayer({
                   setMediaDuration(d);
                 }
               }}
-              onPlay={() => setPlaying(true)}
-              onPause={() => {
-                if (!isDraggingPlayhead.current) {
-                  setPlaying(false);
-                }
-              }}
               onEnded={() => {
                 if (isLooping) {
                   seekToTimeline(0);
-                  if (videoRef.current) {
-                    void videoRef.current.play().catch(() => undefined);
-                  }
                 } else {
                   setPlaying(false);
                 }
@@ -198,141 +189,76 @@ export function EditorStagePlayer({
         </div>
       </div>
 
-      {/* Under-Player Scrub Bar & Action Controls */}
+      {/* Hidden progress line ref to ensure external scrubProgressElRef & scrubThumbElRef don't throw */}
+      <div style={{ display: "none" }}>
+        <div ref={scrubProgressElRef} />
+        <div ref={scrubThumbElRef} />
+      </div>
+
+      {/* Streamlined Clean Player Controls Bar */}
       <div className="ts-player-controls-bar">
-        {/* Scrubber Bar */}
-        <div
-          className="ts-player-scrub-track"
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            const targetSec = pct * sequenceDuration;
-            seekToTimeline(targetSec);
-          }}
-        >
-          <div
-            ref={scrubProgressElRef}
-            className="ts-player-scrub-progress"
-            style={{ width: `${(playheadSeconds / (sequenceDuration || 1)) * 100}%` }}
-          />
-          <div
-            ref={scrubThumbElRef}
-            className="ts-player-scrub-thumb"
-            style={{ left: `${(playheadSeconds / (sequenceDuration || 1)) * 100}%` }}
-          />
+        {/* Left: Precise Timecode Pill */}
+        <span ref={timecodeElRef} className="ts-player-timecode" title="Vị trí hiện tại / Tổng thời lượng">
+          {formatTimecodePrecise(playheadSeconds)} / {formatTimecodePrecise(sequenceDuration)}
+        </span>
+
+        {/* Center: Core Transport Controls */}
+        <div className="ts-player-transport-actions">
+          <button
+            type="button"
+            className="ts-transport-btn"
+            title="Về đầu video (Home)"
+            onClick={() => seekToTimeline(0)}
+          >
+            <span style={{ fontSize: "11px", fontWeight: 800 }}>|◀</span>
+          </button>
+          <button
+            type="button"
+            className="ts-transport-play-btn"
+            title={playing ? "Tạm dừng (Space)" : "Phát (Space)"}
+            onClick={() => setPlaying((p) => !p)}
+          >
+            <Icon name={playing ? "pause" : "play"} size={14} />
+          </button>
+          <button
+            type="button"
+            className="ts-transport-btn"
+            title="Về cuối video (End)"
+            onClick={() => seekToTimeline(sequenceDuration)}
+          >
+            <span style={{ fontSize: "11px", fontWeight: 800 }}>▶|</span>
+          </button>
+          <button
+            type="button"
+            className={`ts-transport-btn ${isLooping ? "is-active" : ""}`}
+            title={isLooping ? "Đang bật phát lặp lại" : "Bật phát lặp lại (Loop)"}
+            onClick={() => setIsLooping((l) => !l)}
+          >
+            <Icon name="refresh" size={12} />
+          </button>
         </div>
 
-        {/* Bottom Row Buttons */}
-        <div className="ts-player-bottom-buttons">
-          <span ref={timecodeElRef} className="ts-player-timecode">
-            {formatTimecodePrecise(playheadSeconds)} / {formatTimecodePrecise(sequenceDuration)}
+        {/* Right: Mute, Ratio Badge, Fullscreen */}
+        <div className="ts-player-fit-actions">
+          <button
+            type="button"
+            className={`ts-transport-btn ${muted ? "is-active" : ""}`}
+            title={muted ? "Bật âm lượng" : "Tắt tiếng (Mute)"}
+            onClick={() => setMuted((m) => !m)}
+          >
+            <Icon name={muted ? "volume-mute" : "volume"} size={13} />
+          </button>
+          <span className="ts-ratio-pill" title="Tỷ lệ khung hình">
+            {aspectRatio}
           </span>
-
-          <div className="ts-player-transport-actions">
-            <button
-              type="button"
-              className="ts-transport-btn"
-              title="Về đầu (Home)"
-              onClick={() => seekToTimeline(0)}
-            >
-              <span style={{ fontSize: "11px", fontWeight: 800 }}>|◀</span>
-            </button>
-            <button
-              type="button"
-              className="ts-transport-btn"
-              title="Lùi 1s (Left Arrow)"
-              onClick={() => seekToTimeline(Math.max(0, playheadSeconds - 1))}
-            >
-              <Icon name="chevron-left" size={13} />
-            </button>
-            <button
-              type="button"
-              className="ts-transport-play-btn"
-              title="Phát / Dừng (Space)"
-              onClick={() => setPlaying((p) => !p)}
-            >
-              <Icon name={playing ? "pause" : "play"} size={15} />
-            </button>
-            <button
-              type="button"
-              className="ts-transport-btn"
-              title="Tiến 1s (Right Arrow)"
-              onClick={() => seekToTimeline(Math.min(sequenceDuration, playheadSeconds + 1))}
-            >
-              <Icon name="chevron-right" size={13} />
-            </button>
-            <button
-              type="button"
-              className="ts-transport-btn"
-              title="Về cuối (End)"
-              onClick={() => seekToTimeline(sequenceDuration)}
-            >
-              <span style={{ fontSize: "11px", fontWeight: 800 }}>▶|</span>
-            </button>
-            <button
-              type="button"
-              className={`ts-transport-btn ${isLooping ? "is-active" : ""}`}
-              title={isLooping ? "Đang bật lặp lại" : "Lặp lại (Loop)"}
-              onClick={() => setIsLooping((l) => !l)}
-            >
-              <Icon name="refresh" size={12} />
-            </button>
-            <button
-              type="button"
-              className={`ts-transport-btn ${muted ? "is-active" : ""}`}
-              title={muted ? "Bật tổng âm lượng" : "Tắt tổng âm lượng (Master Mute)"}
-              onClick={() => setMuted((m) => !m)}
-            >
-              <Icon name={muted ? "volume-mute" : "volume"} size={12} />
-            </button>
-            <button
-              type="button"
-              className={`ts-transport-btn ${trackMutes.originalAudio ? "is-active" : ""}`}
-              title={trackMutes.originalAudio ? "Âm thanh gốc: ĐANG TẮT (Nhấn để bật lại)" : "Âm thanh gốc: ĐANG BẬT (Nhấn để tắt tiếng gốc)"}
-              onClick={() => {
-                setTrackMutes((c) => {
-                  const next = !c.originalAudio;
-                  setProjectMessage(next ? "🔇 Đã tắt âm thanh gốc video" : "🔊 Đã bật âm thanh gốc video");
-                  setTimeout(() => setProjectMessage(""), 2000);
-                  return { ...c, originalAudio: next };
-                });
-              }}
-              style={{
-                color: trackMutes.originalAudio ? "#ef4444" : "#94a3b8",
-                display: "flex",
-                alignItems: "center",
-                gap: "2px",
-                padding: "2px 5px",
-                borderRadius: "4px",
-                background: trackMutes.originalAudio ? "rgba(239, 68, 68, 0.12)" : "transparent",
-                border: trackMutes.originalAudio ? "1px solid rgba(239, 68, 68, 0.35)" : "none",
-              }}
-            >
-              <Icon name={trackMutes.originalAudio ? "volume-mute" : "volume"} size={11} />
-              <span style={{ fontSize: "9.5px", fontWeight: 700 }}>Gốc</span>
-            </button>
-          </div>
-
-          <div className="ts-player-fit-actions">
-            <select
-              value={fitMode}
-              onChange={(e) => setFitMode(e.target.value as "fit" | "100" | "75" | "50")}
-              className="ts-fit-select"
-            >
-              <option value="fit">Fit ⌵</option>
-              <option value="100">100%</option>
-              <option value="75">75%</option>
-              <option value="50">50%</option>
-            </select>
-            <button
-              type="button"
-              className="ts-transport-btn"
-              title="Toàn màn hình"
-              onClick={toggleFullscreen}
-            >
-              <Icon name="maximize" size={12} />
-            </button>
-          </div>
+          <button
+            type="button"
+            className="ts-transport-btn"
+            title="Toàn màn hình"
+            onClick={toggleFullscreen}
+          >
+            <Icon name="maximize" size={12} />
+          </button>
         </div>
       </div>
     </main>

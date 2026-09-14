@@ -58,3 +58,46 @@ export function stripSceneMetadata(text?: string): string {
     .trim();
   return cleaned;
 }
+
+export function estimateSpokenDuration(text?: string, speedMultiplier: number = 1.0): number {
+  const clean = stripSceneMetadata(text);
+  if (!clean) return 0.5;
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 0.5;
+  const punctuationCount = (clean.match(/[,.?!:;]/g) || []).length;
+  const speed = speedMultiplier > 0 ? speedMultiplier : 1.0;
+  // Calibrated Vietnamese Neural TTS cadence: ~3.8 words/sec (~0.26s/word) + ~0.12s pause per punctuation
+  const estSec = (0.10 + words.length * 0.26 + punctuationCount * 0.12) / speed;
+  return Math.max(0.6, estSec);
+}
+
+export function computeActiveWordIndex(
+  words: string[],
+  currentOffset: number,
+  totalVoiceDur: number,
+  leadInSeconds: number = 0.28
+): number {
+  if (words.length === 0 || currentOffset < 0) return -1;
+  // Apply anticipation lead-in so word highlights right on syllable onset instead of 1 word late
+  const effectiveOffset = currentOffset + leadInSeconds;
+  if (effectiveOffset >= totalVoiceDur) return words.length;
+
+  const weights = words.map((w) => {
+    let weight = 10;
+    if (w.length > 3) weight += (w.length - 3) * 1.2;
+    if (/[,:;]/.test(w)) weight += 3;
+    if (/[.!?]/.test(w)) weight += 4;
+    return weight;
+  });
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+
+  let accumulated = 0;
+  for (let i = 0; i < words.length; i++) {
+    const wordDur = (weights[i] / totalWeight) * totalVoiceDur;
+    if (effectiveOffset < accumulated + wordDur) {
+      return i;
+    }
+    accumulated += wordDur;
+  }
+  return words.length - 1;
+}

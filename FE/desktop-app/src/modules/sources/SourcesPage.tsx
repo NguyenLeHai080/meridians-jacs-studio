@@ -4,6 +4,7 @@ import { getRuntime, isNativeRuntime } from "../../core/runtime";
 import { popup } from "../../shared/popup";
 import {
   Film,
+  ArrowRepeat,
   PlusLg,
   Upload,
   Link45deg,
@@ -700,8 +701,8 @@ export function SourcesPage({
                       </span>
                     </div>
                   ) : isRunning ? (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#38bdf8", padding: "2px 6px", borderRadius: "4px", fontSize: "10.5px", fontWeight: 700 }}>
-                      ⚡ Đang phân tích...
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#38bdf8", padding: "3px 8px", borderRadius: "4px", fontSize: "10.5px", fontWeight: 700 }}>
+                      <ArrowRepeat size={10} className="spin-fast" color="#38bdf8" /> ⚡ Đang phân tích...
                     </span>
                   ) : (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.35)", color: "#fbbf24", padding: "2px 6px", borderRadius: "4px", fontSize: "10.5px", fontWeight: 700 }}>

@@ -15,9 +15,10 @@ PASSWORD = "4fT0R%GUJgh@a9Vw"
 
 EXCLUDE_DIRS = {
     '.git', 'node_modules', '.pnpm-store', '.pytest_cache',
-    '.ruff_cache', '__pycache__', '.venv', 'dist_temp'
+    '.ruff_cache', '__pycache__', '.venv', 'dist_temp',
+    'release', 'bin', 'downloads', '.gemini'
 }
-EXCLUDE_EXTS = {'.tsbuildinfo', '.pyc'}
+EXCLUDE_EXTS = {'.tsbuildinfo', '.pyc', '.dmg', '.zip', '.exe'}
 
 def make_tarball(source_dir, output_file):
     def filter_func(tarinfo):

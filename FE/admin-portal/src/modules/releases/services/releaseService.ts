@@ -6,13 +6,17 @@ export interface Release {
   version: string;
   platform: string;
   channel: string;
-  is_mandatory: boolean;
+  is_mandatory?: boolean;
   min_supported_version?: string;
   download_url: string;
-  sha256: string;
-  file_size_bytes: number;
+  sha256?: string;
+  sha512?: string;
+  file_size_bytes?: number;
+  file_size?: number;
   release_notes?: string;
-  published_at: string;
+  published_at?: string;
+  created_at?: string;
+  status?: string;
 }
 
 export interface PublishReleasePayload {

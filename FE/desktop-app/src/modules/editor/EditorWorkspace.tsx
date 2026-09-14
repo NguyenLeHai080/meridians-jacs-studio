@@ -3,7 +3,15 @@ import type { Job, NavKey } from "../../core/types";
 import { getRuntime } from "../../core/runtime";
 import type { EditorScene } from "./editor.types";
 import { FILTER_PRESETS, MASK_PRESETS } from "./constants/presets";
-import { fileUrl, formatSeconds, formatTimecodePrecise, stripSceneMetadata, toSeconds } from "./utils/editorTime";
+import {
+  computeActiveWordIndex,
+  estimateSpokenDuration,
+  fileUrl,
+  formatSeconds,
+  formatTimecodePrecise,
+  stripSceneMetadata,
+  toSeconds,
+} from "./utils/editorTime";
 import { EditorHeader } from "./components/EditorHeader";
 import { EditorLeftDock } from "./components/EditorLeftDock";
 import { EditorStagePlayer } from "./components/EditorStagePlayer";
@@ -14,6 +22,7 @@ import { EditorConfigModal } from "./components/EditorConfigModal";
 import { useEditorExport } from "./hooks/useEditorExport";
 import { useEditorAudio } from "./hooks/useEditorAudio";
 import { useTimelineInteractions } from "./hooks/useTimelineInteractions";
+import { stopGlobalAudio } from "../../core/audio-player";
 
 type Props = {
   jobs: Job[];
@@ -47,7 +56,7 @@ export function EditorWorkspace({
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "1:1" | "16:9" | "4:5">("9:16");
   const [fitMode, setFitMode] = useState<"fit" | "100" | "75" | "50">("fit");
   const [trackMutes, setTrackMutes] = useState<Record<string, boolean>>({
-    originalAudio: true, // Default: mute original audio to keep only voice narration
+    originalAudio: false,
   });
   const [trackLocks, setTrackLocks] = useState<Record<string, boolean>>({});
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -56,7 +65,7 @@ export function EditorWorkspace({
   const [projectMessage, setProjectMessage] = useState("");
 
   // Timeline Studio Left Dock / Drawer Navigation
-  const [dockTab, setDockTab] = useState<"media" | "captions" | "smart" | "audio" | "effects" | "stickers">("media");
+  const [dockTab, setDockTab] = useState<"captions" | "smart" | "audio" | "effects" | "stickers">("captions");
   const [librarySubTab, setLibrarySubTab] = useState<"upload" | "library" | "assets">("library");
   const [assetFilter, setAssetFilter] = useState<"all" | "images" | "videos" | "music" | "sfx">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,11 +100,12 @@ export function EditorWorkspace({
   const [scenesHistory, setScenesHistory] = useState<EditorScene[][]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [mediaDuration, setMediaDuration] = useState<number>(0);
-  const [originalAudioVolume, setOriginalAudioVolume] = useState(0);
+  const [originalAudioVolume, setOriginalAudioVolume] = useState(100);
 
   const timelineViewportRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const stemAudioRef = useRef<HTMLAudioElement>(null);
+  const bgmAudioRef = useRef<HTMLAudioElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingPlayhead = useRef(false);
 
@@ -107,15 +117,35 @@ export function EditorWorkspace({
   const lastUiUpdateRef = useRef(0);
   const lastSceneIdRef = useRef<string | null>(null);
   const lastSpokenSceneRef = useRef<string | null>(null);
+  const loadedJobIdRef = useRef<string>("");
 
   const sourceCandidates = useMemo(
-    () => jobs.filter((job) => job.localPath || job.sourceType === "url" || job.analysis || job.source),
+    () =>
+      jobs.filter(
+        (job) =>
+          !job.id.startsWith("render-") &&
+          !job.id.startsWith("export-") &&
+          !job.name?.startsWith("[Xuất]") &&
+          !Boolean(job.parentJobId) &&
+          Boolean(job.analysis) &&
+          (
+            job.timelineReady === true ||
+            (Array.isArray(job.timelineClips) && job.timelineClips.length > 0) ||
+            (job.analysis?.storyPlan?.status === "approved") ||
+            (job.requiresScriptApproval === false && Array.isArray(job.scenes) && job.scenes.length > 0) ||
+            (Array.isArray(job.scenes) && job.scenes.length > 0) ||
+            (Array.isArray(job.analysis?.scenes) && job.analysis.scenes.length > 0)
+          )
+      ),
     [jobs]
   );
 
   const sourceJob = useMemo(
-    () => sourceCandidates.find((job) => job.id === selectedSourceJobId) || sourceCandidates[0],
-    [sourceCandidates, selectedSourceJobId]
+    () =>
+      (selectedSourceJobId ? jobs.find((j) => j.id === selectedSourceJobId) : undefined) ||
+      sourceCandidates.find((job) => job.id === selectedSourceJobId) ||
+      sourceCandidates[0],
+    [jobs, sourceCandidates, selectedSourceJobId]
   );
 
   const defaultVoiceForLang = useCallback((lang?: string, gender?: string) => {
@@ -144,26 +174,39 @@ export function EditorWorkspace({
     setVoiceSpeed,
     selectedBgm,
     setSelectedBgm,
+    customBgmPath,
+    setCustomBgmPath,
+    customBgmTitle,
+    setCustomBgmTitle,
+    bgmAudioPath,
+    previewingSoundId,
+    handlePickCustomBgm,
     selectedVoice,
     setSelectedVoice,
     speakingSceneId,
+    sceneAudioDurations,
     removeOriginalBgm,
     setRemoveOriginalBgm,
     isolatedStemPath,
     isIsolatingStem,
     stemProgress,
     stemStage,
+    triggerIsolateVocals,
     playSceneAudio,
     stopSceneAudio,
+    playSfxPreview,
   } = useEditorAudio({
     sourceJob,
+    editorScenes,
     muted,
     trackMutes,
     originalAudioVolume,
     speedVal,
     playing,
+    playheadSeconds,
     videoRef,
     stemAudioRef,
+    bgmAudioRef,
     defaultVoiceForLang,
   });
 
@@ -225,34 +268,27 @@ export function EditorWorkspace({
     }
   };
 
-  // Populate scenes from sourceJob analysis
+  // Populate scenes from sourceJob analysis or existing timeline scenes
   useEffect(() => {
     if (!sourceJob) {
+      loadedJobIdRef.current = "";
       setEditorScenes([]);
       setScenesHistory([[]]);
       setHistoryIdx(0);
       return;
     }
 
-    if (!sourceJob.analysis?.scenes?.length) {
-      if (sourceJob.localPath || sourceJob.durationSeconds) {
-        const totalDur = sourceJob.durationSeconds && sourceJob.durationSeconds > 1 ? sourceJob.durationSeconds : 60;
-        const singleScene: EditorScene = {
-          id: "scene-1",
-          start: "00:00",
-          end: formatSeconds(totalDur),
-          sourceStart: "00:00",
-          sourceEnd: formatSeconds(totalDur),
-          title: sourceJob.name || "Video Gốc",
-          detail: "Toàn bộ video nguồn (Chưa phân tích kịch bản)",
-          subtitle: "",
-          accent: "cyan",
-        };
-        setEditorScenes([singleScene]);
-        setScenesHistory([[singleScene]]);
-        setHistoryIdx(0);
-        return;
-      }
+    // If we already loaded this job and have scenes in memory, don't clobber active edits
+    if (loadedJobIdRef.current === sourceJob.id && editorScenes.length > 0) {
+      return;
+    }
+    loadedJobIdRef.current = sourceJob.id;
+
+    const rawScenes = (Array.isArray(sourceJob.scenes) && sourceJob.scenes.length > 0)
+      ? sourceJob.scenes
+      : (sourceJob.analysis?.scenes || []);
+
+    if (!rawScenes.length) {
       setEditorScenes([]);
       setScenesHistory([[]]);
       setHistoryIdx(0);
@@ -261,8 +297,9 @@ export function EditorWorkspace({
 
     const isNarratorOff = sourceJob.narratorEnabled === false;
     let cursorTime = 0;
-    const initial: EditorScene[] = sourceJob.analysis.scenes.map((s, idx) => {
+    const initial: EditorScene[] = rawScenes.map((s: any, idx: number) => {
       const sub =
+        s.subtitle ||
         s.voiceover ||
         ((s as unknown as Record<string, string>).narration) ||
         s.translation ||
@@ -275,7 +312,12 @@ export function EditorWorkspace({
       }
 
       let sceneDur = 5.0;
-      if (isNarratorOff) {
+      if (s.duration && typeof s.duration === "number" && s.duration > 0) {
+        sceneDur = s.duration;
+      } else if (s.end && s.start) {
+        const diff = toSeconds(s.end) - toSeconds(s.start);
+        if (diff > 0.5) sceneDur = diff;
+      } else if (isNarratorOff) {
         const rawSrcEnd = s.sourceTimeEnd ?? toSeconds(s.sourceEnd || s.end);
         if (Number.isFinite(rawSrcEnd) && rawSrcEnd > srcStartSec) {
           sceneDur = Math.max(1.0, Math.round((rawSrcEnd - srcStartSec) * 10) / 10);
@@ -283,29 +325,27 @@ export function EditorWorkspace({
           sceneDur = 5.0;
         }
       } else {
-        const wordCount = String(sub).split(/\s+/).filter(Boolean).length;
-        const speed = voiceSpeed > 0 ? voiceSpeed : 1.0;
-        const voiceEstSec = Math.max(3.0, Math.round((wordCount / (3.65 * speed)) * 10) / 10);
-        sceneDur = voiceEstSec;
+        const estSec = estimateSpokenDuration(sub, voiceSpeed);
+        sceneDur = Math.max(2.5, Math.round(estSec * 10) / 10);
       }
 
-      const srcEndSec = srcStartSec + sceneDur;
+      const srcEndSec = s.sourceTimeEnd ?? (srcStartSec + sceneDur);
       const tStart = cursorTime;
       const tEnd = cursorTime + sceneDur;
       cursorTime = tEnd;
 
       return {
         id: s.id || `scene-${idx + 1}`,
-        start: formatSeconds(tStart),
-        end: formatSeconds(tEnd),
-        sourceStart: formatSeconds(srcStartSec),
-        sourceEnd: formatSeconds(srcEndSec),
+        start: s.start || formatSeconds(tStart),
+        end: s.end || formatSeconds(tEnd),
+        sourceStart: s.sourceStart || formatSeconds(srcStartSec),
+        sourceEnd: s.sourceEnd || formatSeconds(srcEndSec),
         sourceTimeStart: srcStartSec,
         sourceTimeEnd: srcEndSec,
-        voiceStart: formatSeconds(tStart, true),
-        voiceEnd: formatSeconds(tEnd, true),
-        captionStart: formatSeconds(tStart, true),
-        captionEnd: formatSeconds(tEnd, true),
+        voiceStart: s.voiceStart || formatSeconds(tStart, true),
+        voiceEnd: s.voiceEnd || formatSeconds(tEnd, true),
+        captionStart: s.captionStart || formatSeconds(tStart, true),
+        captionEnd: s.captionEnd || formatSeconds(tEnd, true),
         action_visual: s.action_visual || s.detail,
         title: s.title || `Cảnh ${idx + 1}`,
         detail: s.detail || "",
@@ -317,7 +357,7 @@ export function EditorWorkspace({
     setEditorScenes(initial);
     setScenesHistory([initial]);
     setHistoryIdx(0);
-  }, [sourceJob?.id, sourceJob?.analysis?.scenes]);
+  }, [sourceJob?.id, sourceJob?.analysis?.scenes, sourceJob?.scenes]);
 
   const activeSceneId = editorScenes.some((s) => s.id === sceneId)
     ? sceneId
@@ -370,6 +410,7 @@ export function EditorWorkspace({
     trackLocks,
     timelineViewportRef,
     voiceSpeed,
+    sceneAudioDurations,
     sourceJob,
     onUpdateJob,
     setProjectMessage,
@@ -483,6 +524,29 @@ export function EditorWorkspace({
     [effectiveScenes, sequenceDuration]
   );
 
+  // Sync state into refs for high-precision timeline loop without tearing down effects
+  const effectiveScenesRef = useRef(effectiveScenes);
+  effectiveScenesRef.current = effectiveScenes;
+  const sequenceDurationRef = useRef(sequenceDuration);
+  sequenceDurationRef.current = sequenceDuration;
+  const speedValRef = useRef(speedVal);
+  speedValRef.current = speedVal;
+  const isLoopingRef = useRef(isLooping);
+  isLoopingRef.current = isLooping;
+  const trackMutesRef = useRef(trackMutes);
+  trackMutesRef.current = trackMutes;
+  const sceneAudioDurationsRef = useRef(sceneAudioDurations);
+  sceneAudioDurationsRef.current = sceneAudioDurations;
+  const voiceSpeedRef = useRef(voiceSpeed);
+  voiceSpeedRef.current = voiceSpeed;
+  const playSceneAudioRef = useRef(playSceneAudio);
+  playSceneAudioRef.current = playSceneAudio;
+  const stopSceneAudioRef = useRef(stopSceneAudio);
+  stopSceneAudioRef.current = stopSceneAudio;
+  const seekToTimelineRef = useRef(seekToTimeline);
+  seekToTimelineRef.current = seekToTimeline;
+  const lastPlayAttemptRef = useRef(0);
+
   // High-Precision 60FPS Virtual Timeline Playhead Engine
   useEffect(() => {
     let animId: number;
@@ -495,42 +559,46 @@ export function EditorWorkspace({
       const delta = (now - lastTime) / 1000;
       lastTime = now;
 
-      if (!isDraggingPlayhead.current) {
-        let currentPos = playheadSecondsRef.current + delta * (speedVal || 1.0);
+      const seqDur = sequenceDurationRef.current;
+      const speed = speedValRef.current || 1.0;
+      const scenes = effectiveScenesRef.current;
 
-        if (currentPos >= sequenceDuration) {
-          if (isLooping) {
-            seekToTimeline(0);
+      if (!isDraggingPlayhead.current) {
+        let currentPos = playheadSecondsRef.current + delta * speed;
+
+        if (currentPos >= seqDur) {
+          if (isLoopingRef.current) {
+            seekToTimelineRef.current(0);
             return;
           }
           setPlaying(false);
-          stopSceneAudio();
+          stopSceneAudioRef.current();
           if (videoRef.current && !videoRef.current.paused) {
             videoRef.current.pause();
           }
-          currentPos = sequenceDuration;
-          playheadSecondsRef.current = sequenceDuration;
-          setPlayheadSeconds(sequenceDuration);
+          currentPos = seqDur;
+          playheadSecondsRef.current = seqDur;
+          setPlayheadSeconds(seqDur);
           return;
         }
 
         playheadSecondsRef.current = currentPos;
 
-        const pct = sequenceDuration > 0 ? Math.min(100, Math.max(0, (currentPos / sequenceDuration) * 100)) : 0;
+        const pct = seqDur > 0 ? Math.min(100, Math.max(0, (currentPos / seqDur) * 100)) : 0;
         if (playheadLineElRef.current) playheadLineElRef.current.style.left = `${pct}%`;
         if (scrubProgressElRef.current) scrubProgressElRef.current.style.width = `${pct}%`;
         if (scrubThumbElRef.current) scrubThumbElRef.current.style.left = `${pct}%`;
         if (timecodeElRef.current)
-          timecodeElRef.current.textContent = `${formatTimecodePrecise(currentPos)} / ${formatTimecodePrecise(sequenceDuration)}`;
+          timecodeElRef.current.textContent = `${formatTimecodePrecise(currentPos)} / ${formatTimecodePrecise(seqDur)}`;
 
         let sceneChanged = false;
-        if (effectiveScenes.length > 0) {
+        if (scenes.length > 0) {
           const currentScene =
-            effectiveScenes.find((s) => {
+            scenes.find((s) => {
               const sStart = toSeconds(s.start);
               const sEnd = toSeconds(s.end);
               return currentPos >= sStart && currentPos < sEnd;
-            }) || effectiveScenes[effectiveScenes.length - 1];
+            }) || scenes[scenes.length - 1];
 
           if (currentScene && currentScene.id !== lastSceneIdRef.current) {
             lastSceneIdRef.current = currentScene.id;
@@ -542,24 +610,38 @@ export function EditorWorkspace({
             const targetVideoTime = srcStartSec + offset;
             if (videoRef.current) {
               videoRef.current.currentTime = targetVideoTime;
-              if (videoRef.current.paused) {
-                void videoRef.current.play().catch(() => undefined);
-              }
             }
 
-            const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
+            const mutes = trackMutesRef.current;
+            const isMutedLane = Boolean(mutes.voice) || Boolean(mutes.voice1);
             const sceneText = currentScene.subtitle || currentScene.voiceover || currentScene.translation || "";
             if (!isMutedLane && sceneText) {
-              lastSpokenSceneRef.current = currentScene.id;
-              const voiceOffset = Math.max(0, currentPos - toSeconds(currentScene.voiceStart || currentScene.start));
-              void playSceneAudio(sceneText, currentScene.id, voiceOffset);
+              const voiceStart = toSeconds(currentScene.voiceStart || currentScene.start);
+              const voiceOffset = Math.max(0, currentPos - voiceStart);
+              const measuredDur = sceneAudioDurationsRef.current[currentScene.id];
+              const estDur = estimateSpokenDuration(sceneText, voiceSpeedRef.current);
+              const voiceDur = measuredDur && measuredDur > 0.2 ? measuredDur : estDur;
+
+              if (voiceOffset < voiceDur) {
+                lastSpokenSceneRef.current = currentScene.id;
+                void playSceneAudioRef.current(sceneText, currentScene.id, voiceOffset);
+              }
             }
-          } else if (videoRef.current && videoRef.current.paused) {
-            void videoRef.current.play().catch(() => undefined);
+          } else if (currentScene && videoRef.current) {
+            // Keep video in sync without micro-stuttering if drift exceeds 0.35s
+            const srcStartSec = toSeconds(currentScene.sourceStart || currentScene.start);
+            const expectedVideoTime = srcStartSec + Math.max(0, currentPos - toSeconds(currentScene.start));
+            if (Math.abs(videoRef.current.currentTime - expectedVideoTime) > 0.35) {
+              videoRef.current.currentTime = expectedVideoTime;
+            }
+            if (videoRef.current.paused && now - lastPlayAttemptRef.current > 600) {
+              lastPlayAttemptRef.current = now;
+              void videoRef.current.play().catch(() => undefined);
+            }
           }
         }
 
-        if (sceneChanged || now - lastUiUpdateRef.current > 100) {
+        if (sceneChanged || now - lastUiUpdateRef.current > 40) {
           lastUiUpdateRef.current = now;
           setPlayheadSeconds(currentPos);
         }
@@ -572,14 +654,16 @@ export function EditorWorkspace({
       lastTime = performance.now();
       playheadSecondsRef.current = playheadSeconds;
       lastUiUpdateRef.current = performance.now();
+      lastPlayAttemptRef.current = performance.now();
 
-      if (effectiveScenes.length > 0) {
+      const scenes = effectiveScenesRef.current;
+      if (scenes.length > 0) {
         const currentScene =
-          effectiveScenes.find((s) => {
+          scenes.find((s) => {
             const sStart = toSeconds(s.start);
             const sEnd = toSeconds(s.end);
             return playheadSeconds >= sStart && playheadSeconds < sEnd;
-          }) || effectiveScenes[0];
+          }) || scenes[0];
 
         if (currentScene) {
           lastSceneIdRef.current = currentScene.id;
@@ -590,12 +674,20 @@ export function EditorWorkspace({
             videoRef.current.currentTime = targetVideoTime;
             void videoRef.current.play().catch(() => undefined);
           }
-          const isMutedLane = Boolean(trackMutes.voice) || Boolean(trackMutes.voice1);
+          const mutes = trackMutesRef.current;
+          const isMutedLane = Boolean(mutes.voice) || Boolean(mutes.voice1);
           const sceneText = currentScene.subtitle || currentScene.voiceover || currentScene.translation || "";
           if (!isMutedLane && sceneText) {
-            lastSpokenSceneRef.current = currentScene.id;
-            const voiceOffset = Math.max(0, playheadSeconds - toSeconds(currentScene.voiceStart || currentScene.start));
-            void playSceneAudio(sceneText, currentScene.id, voiceOffset);
+            const voiceStart = toSeconds(currentScene.voiceStart || currentScene.start);
+            const voiceOffset = Math.max(0, playheadSeconds - voiceStart);
+            const measuredDur = sceneAudioDurationsRef.current[currentScene.id];
+            const estDur = estimateSpokenDuration(sceneText, voiceSpeedRef.current);
+            const voiceDur = measuredDur && measuredDur > 0.2 ? measuredDur : estDur;
+
+            if (voiceOffset < voiceDur) {
+              lastSpokenSceneRef.current = currentScene.id;
+              void playSceneAudioRef.current(sceneText, currentScene.id, voiceOffset);
+            }
           }
         }
       } else if (videoRef.current) {
@@ -608,14 +700,14 @@ export function EditorWorkspace({
       if (videoRef.current && !videoRef.current.paused) {
         videoRef.current.pause();
       }
-      stopSceneAudio();
+      stopSceneAudioRef.current();
       lastSpokenSceneRef.current = null;
     }
 
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [playing, speedVal, sequenceDuration, isLooping, effectiveScenes, trackMutes, seekToTimeline, stopSceneAudio, playSceneAudio]);
+  }, [playing]);
 
   // Sync video playbackRate with speedVal
   useEffect(() => {
@@ -673,13 +765,108 @@ export function EditorWorkspace({
     subtitlesVisible,
     subtitleStyle,
     sequenceDuration,
+    selectedBgm,
+    bgmVolume,
+    bgmAudioPath: customBgmPath || bgmAudioPath,
     setIsExportDropdownOpen,
     setProjectMessage,
     onNavigate,
     onAddJob,
     onUpdateJob,
     defaultVoiceForLang,
+    sceneAudioDurations,
+    voiceSpeed,
   });
+
+  useEffect(() => {
+    return () => {
+      setPlaying(false);
+      stopGlobalAudio();
+    };
+  }, []);
+
+  const handleGoToBatch = () => {
+    setPlaying(false);
+    stopGlobalAudio();
+    if (sourceJob && onUpdateJob) {
+      let cursor = 0;
+      const fullNarrationText = editorScenes
+        .map((s) => stripSceneMetadata(s.subtitle || s.detail))
+        .filter(Boolean)
+        .join(" ");
+
+      const cuts = editorScenes.map((sc, idx) => {
+        const sceneDur = Math.max(0.5, toSeconds(sc.end) - toSeconds(sc.start));
+        const srcStart = sc.sourceTimeStart ?? toSeconds(sc.sourceStart || sc.start);
+        const srcEnd = srcStart + sceneDur;
+        const tStart = cursor;
+        const tEnd = cursor + sceneDur;
+        cursor += sceneDur;
+        const text = stripSceneMetadata(sc.subtitle || sc.detail || "").trim();
+        return {
+          sceneId: sc.id || `scene-${idx + 1}`,
+          sourceStart: srcStart,
+          sourceEnd: srcEnd,
+          sourceTimeStart: srcStart,
+          sourceTimeEnd: srcEnd,
+          duration: sceneDur,
+          start: tStart,
+          end: tEnd,
+          text,
+          title: sc.title || `Cảnh ${idx + 1}`,
+          subtitle: text,
+          subtitleText: text,
+        };
+      });
+
+      const subSegments = cuts.map((c) => ({
+        start: c.start,
+        end: c.end,
+        text: c.text,
+      })).filter((s) => s.text);
+
+      onUpdateJob(sourceJob.id, {
+        timelineReady: true,
+        timelineClips: cuts as any,
+        cutClips: cuts,
+        subtitleSegments: subSegments,
+        durationSeconds: cursor || sequenceDuration || sourceJob.durationSeconds,
+        narrationText: fullNarrationText,
+        subtitleText: fullNarrationText,
+        scenes: editorScenes.map((sc) => ({
+          id: sc.id,
+          title: sc.title,
+          start: sc.start,
+          end: sc.end,
+          subtitle: sc.subtitle,
+          voiceover: sc.subtitle,
+        })),
+        audioLayers: {
+          bgm: {
+            track: selectedBgm,
+            customPath: customBgmPath,
+            volume: bgmVolume,
+            enabled: !trackMutes.bgm,
+          },
+          voice: {
+            voiceId: selectedVoice,
+            volume: voiceVolume,
+            enabled: !trackMutes.voice,
+            speed: voiceSpeed,
+          },
+          original: {
+            volume: originalAudioVolume,
+            removeBgm: removeOriginalBgm,
+            isolatedStemPath,
+            enabled: !trackMutes.original,
+          },
+        },
+        aspectRatio: (aspectRatio === "4:5" ? "9:16" : aspectRatio) as Job["aspectRatio"],
+        subtitleStyle,
+      });
+    }
+    onNavigate("batch");
+  };
 
   // Fullscreen trigger on player container
   const toggleFullscreen = () => {
@@ -829,24 +1016,92 @@ export function EditorWorkspace({
   const subEndSec = toSeconds(
     activeDisplayScene?.captionEnd || activeDisplayScene?.voiceEnd || activeDisplayScene?.end
   );
-  const subDur = Math.max(0.3, subEndSec - subStartSec);
 
   let activeWordIdx = -1;
   if (subtitleWords.length > 0) {
-    if (playheadSeconds >= subStartSec && playheadSeconds <= subEndSec) {
-      const currentOffset = playheadSeconds - subStartSec;
-      const progressRatio = Math.max(0, Math.min(1.0, currentOffset / subDur));
-      activeWordIdx = Math.min(subtitleWords.length - 1, Math.floor(progressRatio * subtitleWords.length));
-    } else if (playheadSeconds > subEndSec) {
-      activeWordIdx = subtitleWords.length;
-    } else {
+    const measuredDur = activeDisplayScene?.id ? sceneAudioDurations[activeDisplayScene.id] : undefined;
+    const estDur = estimateSpokenDuration(currentCleanSub, voiceSpeed);
+    const maxSceneWindow = Math.max(0.3, subEndSec - subStartSec);
+    const actualVoiceDur = Math.min(maxSceneWindow, measuredDur && measuredDur > 0.2 ? measuredDur : estDur);
+
+    const currentOffset = playheadSeconds - subStartSec;
+    if (currentOffset < 0) {
       activeWordIdx = -1;
+    } else if (currentOffset <= actualVoiceDur) {
+      activeWordIdx = computeActiveWordIndex(subtitleWords, currentOffset, actualVoiceDur);
+    } else {
+      activeWordIdx = subtitleWords.length;
     }
   }
 
   const activeFilterObj = FILTER_PRESETS.find((f) => f.id === selectedFilter) || FILTER_PRESETS[0];
   const activeMaskObj = MASK_PRESETS.find((m) => m.id === selectedMask) || MASK_PRESETS[0];
   const mediaUrl = sourceJob?.localPath ? fileUrl(sourceJob.localPath) : undefined;
+
+  if (!sourceCandidates.length || !sourceJob) {
+    return (
+      <div className="timeline-studio-app page-enter" style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0a0d14" }}>
+        <div style={{ padding: "12px 20px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", background: "rgba(10, 14, 22, 0.8)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "14px", fontWeight: 800, color: "#f8fafc" }}>Bàn Dựng Timeline</span>
+            <span style={{ fontSize: "11.5px", color: "#64748b" }}>· 3. Dựng & Biên Tập</span>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => onNavigate("story")}
+            style={{ fontSize: "12px", padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
+          >
+            ➔ Sang 2. Kịch bản & Voice
+          </button>
+        </div>
+
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "40px 20px", textAlign: "center" }}>
+          <div style={{ width: "64px", height: "64px", borderRadius: "16px", background: "rgba(56, 189, 248, 0.1)", border: "1px solid rgba(56, 189, 248, 0.25)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px", color: "#38bdf8", fontSize: "28px" }}>
+            🎬
+          </div>
+          <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#f8fafc", marginBottom: "8px" }}>
+            Chưa có video nào hoàn thành bước Kịch bản
+          </h3>
+          <p style={{ fontSize: "13px", color: "#94a3b8", maxWidth: "500px", margin: "0 auto 22px", lineHeight: 1.6 }}>
+            Bàn dựng Timeline chỉ nhận các video đã được duyệt kịch bản ở bước 2 (Kịch bản & Voice).
+            Hệ thống không cho phép nạp trực tiếp video gốc thô chưa qua phân tích AI và duyệt kịch bản.
+          </p>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => onNavigate("story")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 18px",
+                borderRadius: "7px",
+                fontSize: "12.5px",
+                fontWeight: 800,
+                background: "linear-gradient(135deg, #0284c7, #38bdf8)",
+                border: "none",
+                color: "#ffffff",
+                cursor: "pointer",
+                boxShadow: "0 0 16px rgba(56, 189, 248, 0.4)",
+              }}
+            >
+              ➔ Duyệt Kịch Bản Ở Bước 2
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onNavigate("analysis")}
+              style={{ fontSize: "12.5px", padding: "8px 16px", cursor: "pointer" }}
+            >
+              Xem 1. Phân Tích AI
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="timeline-studio-app page-enter">
@@ -875,6 +1130,7 @@ export function EditorWorkspace({
         handleExportFull={handleExportFull}
         handleExportScenes={handleExportScenes}
         setIsConfigModalOpen={setIsConfigModalOpen}
+        onGoToBatch={handleGoToBatch}
       />
 
       {/* 2. MAIN 4-COLUMN RESIZABLE / RESPONSIVE WORKSPACE */}
@@ -930,6 +1186,11 @@ export function EditorWorkspace({
           setSelectedVoice={setSelectedVoice}
           selectedBgm={selectedBgm}
           setSelectedBgm={setSelectedBgm}
+          customBgmTitle={customBgmTitle}
+          handlePickCustomBgm={handlePickCustomBgm}
+          triggerIsolateVocals={triggerIsolateVocals}
+          playSfxPreview={playSfxPreview}
+          previewingSoundId={previewingSoundId}
           selectedFilter={selectedFilter}
           setSelectedFilter={setSelectedFilter}
           setActiveStickers={setActiveStickers}
@@ -1056,6 +1317,17 @@ export function EditorWorkspace({
         sourceJob={sourceJob}
         speakingSceneId={speakingSceneId}
         playSceneAudio={playSceneAudio}
+        selectedBgm={selectedBgm}
+        customBgmTitle={customBgmTitle}
+        bgmVolume={bgmVolume}
+      />
+
+      {/* Background Music Audio element */}
+      <audio
+        ref={bgmAudioRef}
+        loop
+        preload="auto"
+        style={{ display: "none" }}
       />
 
       {/* RIGHT-CLICK CONTEXT MENU (CAPCUT & TIMELINE STUDIO STYLE) VIA PORTAL */}

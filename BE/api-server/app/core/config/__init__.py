@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "JACS Studio API"
     environment: str = Field(default="development", validation_alias=AliasChoices("JACS_ENVIRONMENT", "JACS_ENV"))
-    cors_origins: str = "http://localhost:5173,http://localhost:4173"
+    cors_origins: str = "http://localhost:5173,http://localhost:4173,http://localhost,http://127.0.0.1:5173,http://jacs.local,https://jacs.local"
     admin_email: str = "admin@example.com"
     admin_password: str = "change-me"
     admin_password_hash: str | None = None

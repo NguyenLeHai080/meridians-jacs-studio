@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Check2, PencilSquare, VolumeUpFill, XLg } from "react-bootstrap-icons";
 import type { AnalysisScene } from "../../../core/types";
 
@@ -29,7 +30,7 @@ export const SceneEditorModal: React.FC<SceneEditorModalProps> = ({
 }) => {
   if (!editingSceneInfo) return null;
 
-  return (
+  const modalContent = (
     <div
       style={{
         position: "fixed",
@@ -315,4 +316,6 @@ export const SceneEditorModal: React.FC<SceneEditorModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 };

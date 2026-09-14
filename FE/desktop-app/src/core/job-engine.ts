@@ -11,10 +11,16 @@ export function subtitleSegmentsForClip(
 ) {
   const start = Number(clip.startSeconds || 0);
   const end = Number(clip.endSeconds || 0);
+  const scenes = analysis?.scenes || [];
+  const maxSceneEnd = scenes.reduce((max, s) => {
+    const sEnd = timestampSeconds(s.end, 0);
+    return sEnd > max ? sEnd : max;
+  }, 0);
   const total = Math.max(
     sourceDuration,
     Number(job.durationSeconds || 0),
     end,
+    maxSceneEnd,
     start + 1
   );
   const selectedText = String(job.subtitleText || "")
@@ -24,7 +30,6 @@ export function subtitleSegmentsForClip(
     return [{ start, end: end || total, text: selectedText }];
   }
 
-  const scenes = analysis?.scenes || [];
   const rawTranscriptSegments = [...(analysis?.transcriptSegments || [])]
     .map((item) => ({
       start: Math.max(0, Number(item.start) || 0),
