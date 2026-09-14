@@ -41,12 +41,13 @@ export const AnalysisSceneItem: React.FC<AnalysisSceneItemProps> = ({
       style={{
         display: "grid",
         gridTemplateColumns: "55px 120px 1fr 1.2fr 110px 120px",
-        background: "rgba(26, 30, 43, 0.6)",
-        border: "1px solid rgba(255, 255, 255, 0.06)",
-        borderRadius: "6px",
-        padding: "8px 12px",
+        background: "linear-gradient(135deg, rgba(24, 32, 50, 0.7) 0%, rgba(16, 22, 36, 0.85) 100%)",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        borderRadius: "8px",
+        padding: "10px 14px",
         alignItems: "center",
-        gap: "10px",
+        gap: "12px",
+        boxShadow: "0 3px 10px rgba(0, 0, 0, 0.25)",
         transition: "all 0.15s ease",
       }}
     >
@@ -54,13 +55,15 @@ export const AnalysisSceneItem: React.FC<AnalysisSceneItemProps> = ({
       <div>
         <span
           style={{
-            fontSize: "10.5px",
+            fontSize: "11px",
             fontWeight: 800,
             background: "rgba(245, 158, 11, 0.15)",
+            border: "1px solid rgba(245, 158, 11, 0.35)",
             color: "#fbbf24",
-            padding: "1px 5px",
-            borderRadius: "3px",
+            padding: "2px 7px",
+            borderRadius: "5px",
             display: "inline-block",
+            boxShadow: "0 0 8px rgba(245, 158, 11, 0.2)",
           }}
         >
           #{String(idx + 1).padStart(2, "0")}

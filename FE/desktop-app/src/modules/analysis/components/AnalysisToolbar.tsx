@@ -47,6 +47,8 @@ interface AnalysisToolbarProps {
   runningCount: number;
   onDeleteSelected: () => void;
   showToast: (msg: string) => void;
+  onBatchQueueToRender?: (jobIds?: string[]) => void;
+  onBatchExportToTimeline?: (jobIds?: string[]) => void;
 }
 
 export const AnalysisToolbar: React.FC<AnalysisToolbarProps> = ({
@@ -81,6 +83,8 @@ export const AnalysisToolbar: React.FC<AnalysisToolbarProps> = ({
   runningCount,
   onDeleteSelected,
   showToast,
+  onBatchQueueToRender,
+  onBatchExportToTimeline,
 }) => {
   return (
     <div
@@ -364,6 +368,32 @@ export const AnalysisToolbar: React.FC<AnalysisToolbarProps> = ({
             <LightningChargeFill size={12} /> Phân Tích Hàng Loạt (
             {selectedJobIds.size > 0 ? selectedJobIds.size : sourceCandidates.length})
           </button>
+
+          {completedCount > 0 && onBatchQueueToRender && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => onBatchQueueToRender()}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "linear-gradient(135deg, #059669, #10b981)",
+                border: "none",
+                color: "#ffffff",
+                padding: "5px 13px",
+                borderRadius: "6px",
+                fontSize: "11.5px",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 0 14px rgba(16, 185, 129, 0.35)",
+                transition: "all 0.15s ease",
+              }}
+              title="Đưa tất cả video đã phân tích vào Hàng Đợi Render ngay"
+            >
+              🚀 Render Hàng Loạt ({completedCount})
+            </button>
+          )}
         </div>
       </div>
 
@@ -564,6 +594,53 @@ export const AnalysisToolbar: React.FC<AnalysisToolbarProps> = ({
             >
               <LightningChargeFill size={11} /> Phân Tích AI ({selectedJobIds.size})
             </button>
+
+            {onBatchQueueToRender && (
+              <button
+                type="button"
+                onClick={() => onBatchQueueToRender(Array.from(selectedJobIds))}
+                style={{
+                  background: "linear-gradient(135deg, #059669, #10b981)",
+                  color: "#ffffff",
+                  border: "none",
+                  padding: "3px 10px",
+                  borderRadius: "5px",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  boxShadow: "0 0 10px rgba(16, 185, 129, 0.3)",
+                }}
+                title="Đưa các video đã chọn vào Hàng Đợi Render"
+              >
+                🚀 Đưa Vào Render ({selectedJobIds.size})
+              </button>
+            )}
+
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate("story")}
+                style={{
+                  background: "linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(217, 119, 6, 0.3))",
+                  border: "1px solid rgba(245, 158, 11, 0.5)",
+                  color: "#fbbf24",
+                  padding: "3px 10px",
+                  borderRadius: "5px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+                title="Chuyển sang Bước 2: Kịch bản & Voice"
+              >
+                📝 Sang Kịch Bản ({selectedJobIds.size}) ➔
+              </button>
+            )}
             <button
               type="button"
               onClick={onDeleteSelected}

@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { AnalysisResult, AnalysisScene, DurationMappingRule, Job, NavKey, ProviderPoolItem, TimelineClip } from "../../core/types";
 import { getRuntime } from "../../core/runtime";
 import { popup } from "../../shared/popup";
 import { Film, PlusLg } from "react-bootstrap-icons";
+import { toSeconds, stripSceneMetadata } from "../editor/utils/editorTime";
 
 // Subcomponents
 import { AnalysisToolbar } from "./components/AnalysisToolbar";
@@ -70,13 +71,18 @@ export function VideoAnalysisPage({
   // Running jobs & progress
   const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
   const [batchProgress, setBatchProgress] = useState<Record<string, { progress: number; stage: string }>>({});
+  const opToJobIdMap = useRef<Map<string, string>>(new Map());
 
   // Listen to live analysis progress events from backend/Electron
   useEffect(() => {
     const unsubscribe = getRuntime().onAnalysisProgress?.((value) => {
       if (!value.operationId) return;
-      const match = value.operationId.match(/^analysis-(job-[^-\s]+|\d+)/);
-      const targetId = match ? match[1] : value.operationId;
+      const mappedId = opToJobIdMap.current.get(value.operationId);
+      const strippedId = value.operationId.startsWith("analysis-")
+        ? value.operationId.replace(/^analysis-/, "").replace(/-\d+$/, "")
+        : value.operationId;
+      const targetId = mappedId || strippedId;
+
       setBatchProgress((prev) => ({
         ...prev,
         [targetId]: { progress: value.progress, stage: value.stage },
@@ -169,6 +175,7 @@ export function VideoAnalysisPage({
     }
 
     const opId = `analysis-${job.id}-${Date.now()}`;
+    opToJobIdMap.current.set(opId, job.id);
     const targetMins =
       state.targetDuration === "full"
         ? job.durationSeconds && job.durationSeconds > 10
@@ -218,6 +225,50 @@ export function VideoAnalysisPage({
       });
 
       const newName = (analysis as any).videoTitle || job.name;
+      const scenes = (analysis as any).scenes || [];
+
+      let cursor = 0;
+      const cuts = scenes.map((s: any, idx: number) => {
+        const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start || 0);
+        const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start) || (s.duration ? toSeconds(s.duration) : 5));
+        const srcEnd = s.sourceTimeEnd ?? (srcStart + sceneDur);
+        const tStart = cursor;
+        const tEnd = cursor + sceneDur;
+        cursor = tEnd;
+        const text = stripSceneMetadata(s.voiceover || s.translation || s.subtitle || s.detail || "").trim();
+        return {
+          sceneId: s.id || `scene-${idx + 1}`,
+          order: idx,
+          sourceSceneId: s.id || `scene-${idx + 1}`,
+          sourceStart: srcStart,
+          sourceEnd: srcEnd,
+          sourceTimeStart: srcStart,
+          sourceTimeEnd: srcEnd,
+          start: tStart,
+          end: tEnd,
+          duration: sceneDur,
+          text,
+          title: s.title || `Cảnh ${idx + 1}`,
+          subtitle: text,
+          subtitleText: text,
+        };
+      });
+
+      const subSegments = cuts.map((c: any) => ({
+        start: c.start,
+        end: c.end,
+        text: c.text,
+      })).filter((s: any) => s.text);
+
+      const fullNarrationText =
+        (analysis as any).voiceScript ||
+        scenes
+          .map((s: any) => s.voiceover || s.translation || s.subtitle || s.detail)
+          .filter(Boolean)
+          .join(" ");
+
+      const isAutoRender = Boolean(state.autoQueueRender);
+
       if (onUpdateJob) {
         onUpdateJob(job.id, {
           name: newName,
@@ -226,6 +277,12 @@ export function VideoAnalysisPage({
           status: "completed",
           stage: "completed",
           progress: 100,
+          sourceOnly: true,
+          requiresScriptApproval: false,
+          timelineClips: cuts as any,
+          cutClips: cuts,
+          subtitleSegments: subSegments,
+          durationSeconds: cursor || job.durationSeconds || 60,
           analysis,
           narratorEnabled: state.narratorEnabled,
           narratorVoice: voice,
@@ -238,10 +295,13 @@ export function VideoAnalysisPage({
           removeOriginalBgm: state.removeOriginalBgm,
           isolateVocals: state.removeOriginalBgm,
           customPrompt: prompt,
+          subtitleText: fullNarrationText,
+          narrationText: fullNarrationText,
         });
       }
+
       state.setExpandedJobIds((prev) => new Set(prev).add(job.id));
-      state.showToast(`🎉 Phân tích AI thành công: ${newName} (${analysis.scenes?.length || 0} phân cảnh)`);
+      state.showToast(`🎉 Phân tích AI thành công: ${newName} (${scenes.length} phân cảnh)`);
     } catch (err: any) {
       if (onUpdateJob) {
         onUpdateJob(job.id, {
@@ -370,6 +430,219 @@ export function VideoAnalysisPage({
       onNavigate("story");
     }
     state.showToast(`📝 Đã mở kịch bản thuyết minh của ${job.name}!`);
+  }
+
+  function handleQueueSingleToRender(job: Job) {
+    if (!job.analysis?.scenes?.length && !job.analysis?.voiceScript) {
+      state.showToast("⚠️ Video chưa được phân tích AI. Vui lòng phân tích trước khi render.");
+      return;
+    }
+    const scenes = job.analysis?.scenes || [];
+    let cursor = 0;
+    const cuts = (job as any).cutClips && (job as any).cutClips.length > 0
+      ? (job as any).cutClips
+      : scenes.map((s: any, idx: number) => {
+          const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start || 0);
+          const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start) || (s.duration ? toSeconds(s.duration) : 5));
+          const srcEnd = s.sourceTimeEnd ?? (srcStart + sceneDur);
+          const tStart = cursor;
+          const tEnd = cursor + sceneDur;
+          cursor = tEnd;
+          const text = stripSceneMetadata(s.voiceover || s.translation || s.subtitle || s.detail || "").trim();
+          return {
+            sceneId: s.id || `scene-${idx + 1}`,
+            order: idx,
+            sourceSceneId: s.id || `scene-${idx + 1}`,
+            sourceStart: srcStart,
+            sourceEnd: srcEnd,
+            sourceTimeStart: srcStart,
+            sourceTimeEnd: srcEnd,
+            start: tStart,
+            end: tEnd,
+            duration: sceneDur,
+            text,
+            title: s.title || `Cảnh ${idx + 1}`,
+            subtitle: text,
+            subtitleText: text,
+          };
+        });
+
+    const subSegments = cuts.map((c: any) => ({
+      start: c.start ?? 0,
+      end: c.end ?? (c.duration || 5),
+      text: c.text,
+    })).filter((s: any) => s.text);
+
+    const fullNarrationText =
+      job.analysis?.voiceScript ||
+      scenes
+        .map((s: any) => s.voiceover || s.translation || s.subtitle || s.detail)
+        .filter(Boolean)
+        .join(" ");
+
+    if (onUpdateJob) {
+      onUpdateJob(job.id, {
+        timelineClips: cuts as any,
+        cutClips: cuts,
+        subtitleSegments: subSegments,
+        durationSeconds: cursor || job.durationSeconds || 60,
+        narrationText: job.narrationText || fullNarrationText,
+        subtitleText: job.subtitleText || fullNarrationText,
+      });
+    }
+
+    if (onAddJob) {
+      const renderJobId = `render-${Date.now()}-${job.id}`;
+      onAddJob({
+        id: renderJobId,
+        parentJobId: job.id,
+        name: `[Xuất] ${job.videoTitle || job.name}`,
+        source: job.source,
+        sourceType: job.sourceType,
+        localPath: job.localPath,
+        sourceOnly: false,
+        mode: "local-gpu",
+        durationSeconds: cursor || job.durationSeconds || 60,
+        aspectRatio: job.aspectRatio || "9:16",
+        narratorEnabled: job.narratorEnabled ?? true,
+        narratorVoice: job.narratorVoice,
+        languages: job.languages || ["vi"],
+        cutClips: cuts,
+        timelineClips: cuts as any,
+        subtitleSegments: subSegments,
+        scenes: scenes as any,
+        analysis: job.analysis,
+        audioLayers: job.audioLayers,
+        subtitleStyle: job.subtitleStyle || "gold",
+        subtitleText: fullNarrationText,
+        narrationText: fullNarrationText,
+        status: "queued",
+        stage: "queued",
+        progress: 0,
+        createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+      });
+    }
+    state.showToast(`🚀 Đã đưa "${job.name}" vào Hàng Đợi Render!`);
+  }
+
+  function handleBatchQueueToRender(targetJobIds?: string[]) {
+    const ids = targetJobIds || (state.selectedJobIds.size > 0 ? Array.from(state.selectedJobIds) : state.sourceCandidates.map((j) => j.id));
+    const targetJobs = state.sourceCandidates.filter(
+      (j) => ids.includes(j.id) && (j.analysis?.scenes?.length || j.analysis?.voiceScript)
+    );
+
+    if (targetJobs.length === 0) {
+      state.showToast("⚠️ Chưa có video nào được phân tích AI hoàn tất để đưa vào Render.");
+      return;
+    }
+
+    targetJobs.forEach((j, idx) => {
+      const scenes = j.analysis?.scenes || [];
+      let cursor = 0;
+      const cuts = (j as any).cutClips && (j as any).cutClips.length > 0
+        ? (j as any).cutClips
+        : scenes.map((s: any, sIdx: number) => {
+            const srcStart = s.sourceTimeStart ?? toSeconds(s.sourceStart || s.start || 0);
+            const sceneDur = Math.max(0.5, toSeconds(s.end) - toSeconds(s.start) || (s.duration ? toSeconds(s.duration) : 5));
+            const srcEnd = s.sourceTimeEnd ?? (srcStart + sceneDur);
+            const tStart = cursor;
+            const tEnd = cursor + sceneDur;
+            cursor = tEnd;
+            const text = stripSceneMetadata(s.voiceover || s.translation || s.subtitle || s.detail || "").trim();
+            return {
+              sceneId: s.id || `scene-${sIdx + 1}`,
+              order: sIdx,
+              sourceSceneId: s.id || `scene-${sIdx + 1}`,
+              sourceStart: srcStart,
+              sourceEnd: srcEnd,
+              sourceTimeStart: srcStart,
+              sourceTimeEnd: srcEnd,
+              start: tStart,
+              end: tEnd,
+              duration: sceneDur,
+              text,
+              title: s.title || `Cảnh ${sIdx + 1}`,
+              subtitle: text,
+              subtitleText: text,
+            };
+          });
+
+      const subSegments = cuts.map((c: any) => ({
+        start: c.start ?? 0,
+        end: c.end ?? (c.duration || 5),
+        text: c.text,
+      })).filter((s: any) => s.text);
+
+      const fullNarrationText =
+        j.analysis?.voiceScript ||
+        scenes
+          .map((s: any) => s.voiceover || s.translation || s.subtitle || s.detail)
+          .filter(Boolean)
+          .join(" ");
+
+      if (onUpdateJob) {
+        onUpdateJob(j.id, {
+          timelineClips: cuts as any,
+          cutClips: cuts,
+          subtitleSegments: subSegments,
+          durationSeconds: cursor || j.durationSeconds || 60,
+          narrationText: j.narrationText || fullNarrationText,
+          subtitleText: j.subtitleText || fullNarrationText,
+        });
+      }
+
+      if (onAddJob) {
+        const renderJobId = `render-${Date.now()}-${idx}-${j.id}`;
+        onAddJob({
+          id: renderJobId,
+          parentJobId: j.id,
+          name: `[Xuất] ${j.videoTitle || j.name}`,
+          source: j.source,
+          sourceType: j.sourceType,
+          localPath: j.localPath,
+          sourceOnly: false,
+          mode: "local-gpu",
+          durationSeconds: cursor || j.durationSeconds || 60,
+          aspectRatio: j.aspectRatio || "9:16",
+          narratorEnabled: j.narratorEnabled ?? true,
+          narratorVoice: j.narratorVoice,
+          languages: j.languages || ["vi"],
+          cutClips: cuts,
+          timelineClips: cuts as any,
+          subtitleSegments: subSegments,
+          scenes: scenes as any,
+          analysis: j.analysis,
+          audioLayers: j.audioLayers,
+          subtitleStyle: j.subtitleStyle || "gold",
+          subtitleText: fullNarrationText,
+          narrationText: fullNarrationText,
+          status: "queued",
+          stage: "queued",
+          progress: 0,
+          createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        });
+      }
+    });
+
+    state.setSelectedJobIds(new Set());
+    state.showToast(`🚀 Đã đưa ${targetJobs.length} video vào Hàng Đợi Render! Đang chuyển trang...`);
+    if (onNavigate) {
+      onNavigate("render");
+    }
+  }
+
+  function handleBatchExportToTimeline(targetJobIds?: string[]) {
+    const ids = targetJobIds || (state.selectedJobIds.size > 0 ? Array.from(state.selectedJobIds) : []);
+    const targetJobs = state.sourceCandidates.filter(
+      (j) => ids.includes(j.id) && (j.analysis?.scenes?.length || j.analysis?.voiceScript)
+    );
+
+    if (targetJobs.length === 0) {
+      state.showToast("⚠️ Hãy chọn ít nhất 1 video đã phân tích để mở trên bàn dựng Timeline.");
+      return;
+    }
+
+    handleExportToTimeline(targetJobs[0]);
   }
 
   async function handlePickFiles() {
@@ -566,6 +839,8 @@ export function VideoAnalysisPage({
         runningCount={state.runningCount}
         onDeleteSelected={handleDeleteSelected}
         showToast={state.showToast}
+        onBatchQueueToRender={handleBatchQueueToRender}
+        onBatchExportToTimeline={handleBatchExportToTimeline}
       />
 
       {/* 2. Main Master-Detail Table */}
@@ -575,27 +850,29 @@ export function VideoAnalysisPage({
           display: "flex",
           flexDirection: "column",
           minHeight: 0,
-          background: "rgba(18, 21, 31, 0.75)",
+          background: "linear-gradient(180deg, rgba(18, 24, 38, 0.85) 0%, rgba(11, 15, 26, 0.95) 100%)",
           border: "1px solid rgba(255, 255, 255, 0.08)",
-          borderRadius: "10px",
+          borderRadius: "14px",
           overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+          boxShadow: "0 12px 36px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+          backdropFilter: "blur(20px)",
         }}
       >
         {/* Table Header */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "36px 36px minmax(240px, 1.8fr) 150px 140px 90px 220px",
-            padding: "10px 14px",
-            background: "rgba(26, 30, 43, 0.8)",
+            gridTemplateColumns: "40px 36px 1fr 160px 145px 105px 330px",
+            padding: "12px 16px",
+            background: "linear-gradient(90deg, rgba(28, 36, 56, 0.95) 0%, rgba(18, 24, 38, 0.95) 100%)",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             fontSize: "11px",
             fontWeight: 800,
             color: "#94a3b8",
             textTransform: "uppercase",
-            letterSpacing: "0.5px",
+            letterSpacing: "0.6px",
             alignItems: "center",
+            gap: "8px",
             flexShrink: 0,
           }}
         >
@@ -607,15 +884,28 @@ export function VideoAnalysisPage({
                 state.selectedJobIds.size === state.filteredVideos.length
               }
               onChange={state.handleSelectAll}
-              style={{ cursor: "pointer" }}
+              style={{
+                cursor: "pointer",
+                width: "15px",
+                height: "15px",
+                accentColor: "#f59e0b",
+              }}
             />
           </div>
           <div></div>
-          <div>VIDEO NGUỒN & THÔNG TIN</div>
-          <div>TRẠNG THÁI PHÂN TÍCH</div>
-          <div>TIÊU HAO TOKEN/CREDIT</div>
-          <div style={{ textAlign: "center" }}>ĐIỂM AI</div>
-          <div style={{ textAlign: "right" }}>THAO TÁC</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>📹</span> Video Nguồn & Thông Tin
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>📊</span> Trạng Thái AI
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span>⚡</span> Tiêu Hao Token
+          </div>
+          <div style={{ textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: "4px" }}>
+            <span>⭐</span> Điểm AI
+          </div>
+          <div style={{ textAlign: "right", paddingRight: "8px" }}>THAO TÁC</div>
         </div>
 
         {/* Table Body */}
@@ -704,9 +994,54 @@ export function VideoAnalysisPage({
                   onExportSingleSceneToTimeline={handleExportSingleSceneToTimeline}
                   onDeleteScene={handleDeleteScene}
                   showToast={state.showToast}
+                  onQueueToRender={handleQueueSingleToRender}
                 />
               );
             })
+          )}
+
+          {state.paginatedVideos.length > 0 && state.paginatedVideos.length < 3 && (
+            <div
+              onClick={() => setShowAddModal(true)}
+              style={{
+                margin: "12px 14px",
+                padding: "20px 24px",
+                border: "1px dashed rgba(245, 158, 11, 0.3)",
+                borderRadius: "12px",
+                background: "linear-gradient(135deg, rgba(245, 158, 11, 0.03) 0%, rgba(15, 23, 42, 0.4) 100%)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                color: "#94a3b8",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "50%",
+                    background: "rgba(245, 158, 11, 0.15)",
+                    color: "#fbbf24",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <PlusLg size={15} />
+                </div>
+                <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f8fafc" }}>
+                  Nạp thêm video nguồn vào thư viện
+                </span>
+              </div>
+              <span style={{ fontSize: "11px", color: "#64748b" }}>
+                Bấm vào đây để nạp thêm video từ máy tính hoặc dán link video để phân tích & kết xuất hàng loạt
+              </span>
+            </div>
           )}
         </div>
 
@@ -717,22 +1052,22 @@ export function VideoAnalysisPage({
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              padding: "8px 14px",
-              background: "rgba(26, 30, 43, 0.85)",
+              padding: "10px 18px",
+              background: "linear-gradient(90deg, rgba(22, 28, 44, 0.95) 0%, rgba(15, 20, 32, 0.95) 100%)",
               borderTop: "1px solid rgba(255, 255, 255, 0.08)",
               flexWrap: "wrap",
               gap: "10px",
               flexShrink: 0,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>
                 Hiển thị{" "}
-                <strong>
+                <strong style={{ color: "#f8fafc" }}>
                   {(state.parentPage - 1) * state.parentPageSize + 1} -{" "}
                   {Math.min(state.parentPage * state.parentPageSize, state.filteredVideos.length)}
                 </strong>{" "}
-                trên tổng số <strong>{state.filteredVideos.length}</strong> video
+                trên tổng số <strong style={{ color: "#fbbf24" }}>{state.filteredVideos.length}</strong> video
               </span>
               <select
                 value={state.parentPageSize}
@@ -741,18 +1076,21 @@ export function VideoAnalysisPage({
                   state.setParentPage(1);
                 }}
                 style={{
-                  background: "#10131c",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  borderRadius: "5px",
-                  padding: "3px 6px",
+                  background: "rgba(15, 23, 42, 0.8)",
+                  border: "1px solid rgba(255, 255, 255, 0.14)",
+                  borderRadius: "6px",
+                  padding: "4px 8px",
                   color: "#f8fafc",
                   fontSize: "11px",
+                  fontWeight: 600,
                   outline: "none",
+                  cursor: "pointer",
                 }}
               >
                 <option value={5}>5 video / trang</option>
                 <option value={10}>10 video / trang</option>
                 <option value={20}>20 video / trang</option>
+                <option value={50}>50 video / trang</option>
               </select>
             </div>
 
@@ -762,13 +1100,15 @@ export function VideoAnalysisPage({
                 onClick={() => state.setParentPage(1)}
                 disabled={state.parentPage <= 1}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage <= 1 ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage <= 1 ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage <= 1 ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 « Đầu
@@ -778,34 +1118,48 @@ export function VideoAnalysisPage({
                 onClick={() => state.setParentPage((p) => Math.max(1, p - 1))}
                 disabled={state.parentPage <= 1}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage <= 1 ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage <= 1 ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage <= 1 ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 ‹ Trước
               </button>
 
-              <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#fbbf24", padding: "0 4px" }}>
+              <div
+                style={{
+                  fontSize: "11.5px",
+                  fontWeight: 800,
+                  color: "#fbbf24",
+                  padding: "3px 10px",
+                  background: "rgba(245, 158, 11, 0.12)",
+                  border: "1px solid rgba(245, 158, 11, 0.25)",
+                  borderRadius: "6px",
+                }}
+              >
                 Trang {state.parentPage} / {state.totalParentPages}
-              </span>
+              </div>
 
               <button
                 type="button"
                 onClick={() => state.setParentPage((p) => Math.min(state.totalParentPages, p + 1))}
                 disabled={state.parentPage >= state.totalParentPages}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage >= state.totalParentPages ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage >= state.totalParentPages ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage >= state.totalParentPages ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 Sau ›
@@ -815,13 +1169,15 @@ export function VideoAnalysisPage({
                 onClick={() => state.setParentPage(state.totalParentPages)}
                 disabled={state.parentPage >= state.totalParentPages}
                 style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: state.parentPage >= state.totalParentPages ? "#64748b" : "#f8fafc",
-                  padding: "3px 8px",
-                  borderRadius: "4px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: state.parentPage >= state.totalParentPages ? "#475569" : "#cbd5e1",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
                   fontSize: "11px",
+                  fontWeight: 600,
                   cursor: state.parentPage >= state.totalParentPages ? "not-allowed" : "pointer",
+                  transition: "all 0.15s ease",
                 }}
               >
                 Cuối »
@@ -891,6 +1247,8 @@ export function VideoAnalysisPage({
         updateAutoDucking={state.updateAutoDucking}
         defaultLanguage={state.defaultLanguage}
         setDefaultLanguage={state.setDefaultLanguage}
+        autoQueueRender={state.autoQueueRender}
+        updateAutoQueueRender={state.updateAutoQueueRender}
         onSubmitBatch={(pId, prompt, lang) => {
           if (analysisTargetJob) {
             setShowBatchModal(false);

@@ -50,11 +50,14 @@ function readWindowsMachineGuid(execFileSync = childProcess.execFileSync) {
         windowsHide: true,
         timeout: 1200,
       });
-      boardSerial =
-        boardOutput
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter((l) => l && !/serialnumber/i.test(l))[0] || "";
+      const clean = normalizeIdentifier(boardOutput);
+      if (clean && !/MachineGuid|REG_/i.test(clean)) {
+        boardSerial =
+          clean
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter((l) => l && !/serialnumber/i.test(l))[0] || "";
+      }
     } catch {}
 
     let cpuId = "";
@@ -64,14 +67,18 @@ function readWindowsMachineGuid(execFileSync = childProcess.execFileSync) {
         windowsHide: true,
         timeout: 1200,
       });
-      cpuId =
-        cpuOutput
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter((l) => l && !/processorid/i.test(l))[0] || "";
+      const clean = normalizeIdentifier(cpuOutput);
+      if (clean && !/MachineGuid|REG_/i.test(clean)) {
+        cpuId =
+          clean
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter((l) => l && !/processorid/i.test(l))[0] || "";
+      }
     } catch {}
 
-    return normalizeIdentifier(`${guid}:${boardSerial}:${cpuId}`);
+    const parts = [guid, boardSerial, cpuId].filter(Boolean);
+    return normalizeIdentifier(parts.length > 0 ? parts.join(":") : guid);
   } catch {
     return "";
   }
