@@ -17,21 +17,31 @@ class ProviderType(StrEnum):
 
 class ProviderCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    code: str | None = Field(default=None, max_length=120)
     provider_type: ProviderType
     base_url: HttpUrl
     model: str = Field(min_length=1, max_length=160)
     tts_model: str | None = Field(default=None, max_length=160)
     api_key: str = Field(min_length=8, max_length=4096)
     capabilities: list[str] = Field(default_factory=list)
+    supported_models: list[str] = Field(default_factory=list)
+    cost_per_image: float = 75.0
+    is_primary: bool = False
     enabled: bool = True
 
 
 class ProviderUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    code: str | None = Field(default=None, max_length=120)
+    provider_type: ProviderType | None = None
     base_url: HttpUrl | None = None
     model: str | None = Field(default=None, min_length=1, max_length=160)
     tts_model: str | None = Field(default=None, max_length=160)
     capabilities: list[str] | None = None
+    supported_models: list[str] | None = None
+    cost_per_image: float | None = None
+    is_primary: bool | None = None
+    latency_ms: int | None = None
     enabled: bool | None = None
     api_key: str | None = Field(default=None, min_length=8, max_length=4096)
 
@@ -39,14 +49,24 @@ class ProviderUpdate(BaseModel):
 class ProviderResponse(BaseModel):
     id: UUID
     name: str
+    code: str | None = None
     provider_type: ProviderType
     base_url: HttpUrl
     model: str
     tts_model: str | None = None
-    capabilities: list[str]
+    capabilities: list[str] = Field(default_factory=list)
+    supported_models: list[str] = Field(default_factory=list)
+    cost_per_image: float = 75.0
+    is_primary: bool = False
+    latency_ms: int | None = None
     enabled: bool
     has_api_key: bool
     masked_key: str
+
+
+class FailoverConfig(BaseModel):
+    enabled: bool = True
+    timeout_seconds: int = 45
 
 
 class ModelPricingItem(BaseModel):

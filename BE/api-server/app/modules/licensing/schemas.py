@@ -116,11 +116,12 @@ class LicenseStatusUpdate(BaseModel):
 
 
 class LicenseRenewRequest(BaseModel):
-    expires_at: datetime
+    expires_at: datetime | None = None
     reason: str = Field(min_length=3, max_length=500)
     amount: float = Field(default=0.0, ge=0)
     plan_type: str | None = Field(default=None, max_length=64)
     payment_method: str | None = Field(default=None, max_length=64)
+
 
 
 class HwidResetRequest(BaseModel):

@@ -11,15 +11,12 @@ import { OverviewPage } from "../overview";
 import { ClientsPage } from "../clients";
 import { LicensesPage } from "../licenses";
 import { BillingPage, BankConfigPage } from "../billing";
-import { PlansPage } from "../plans";
 import { RenewalsPage } from "../renewals";
 import { SessionsPage } from "../sessions";
-import { ProvidersPage, ModelPricingPage, AiRequestLogsPage, AiKeyGrantsPage } from "../ai-providers";
+import { JobsPage } from "../jobs";
+import { AiRequestLogsPage, ProvidersPage, AiModelsPricingPage } from "../ai-providers";
 import { TelemetryPage, ApiOperationsPage } from "../telemetry";
-import { LogsPage } from "../logs";
 import { ReleasesPage } from "../releases";
-import { ToolConfigPage } from "../tool-config";
-import { TermsPage } from "../terms";
 import { SettingsPage, AccountSecurityModal } from "../settings";
 
 const VALID_MENUS: MenuKey[] = [
@@ -27,20 +24,16 @@ const VALID_MENUS: MenuKey[] = [
   "clients",
   "licenses",
   "sessions",
+  "jobs",
   "billing",
   "bank_config",
-  "plans",
   "renewals",
   "providers",
-  "model_pricing",
-  "ai_key_grants",
+  "ai_models_pricing",
   "ai_request_logs",
   "api_operations",
   "telemetry",
-  "logs",
   "releases",
-  "terms",
-  "tool_branding",
   "settings",
 ];
 
@@ -141,7 +134,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
           onRefresh={fetchGlobalStats}
           loading={loading}
           onOpenAccountModal={() => setShowAccountModal(true)}
-          onOpenTerms={() => setActiveMenu("terms")}
           onLogout={onLogout}
           activeLicensesCount={activeLicenseCount}
           onlineSessionsCount={onlineCount}
@@ -178,6 +170,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             />
           )}
 
+          {activeMenu === "jobs" && (
+            <JobsPage
+              searchTerm={searchTerm}
+              onNotify={showToast}
+            />
+          )}
+
           {activeMenu === "billing" && (
             <BillingPage
               searchTerm={searchTerm}
@@ -187,13 +186,6 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
           {activeMenu === "bank_config" && (
             <BankConfigPage
-              searchTerm={searchTerm}
-              onNotify={showToast}
-            />
-          )}
-
-          {activeMenu === "plans" && (
-            <PlansPage
               searchTerm={searchTerm}
               onNotify={showToast}
             />
@@ -213,15 +205,11 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             />
           )}
 
-          {activeMenu === "model_pricing" && (
-            <ModelPricingPage
+          {activeMenu === "ai_models_pricing" && (
+            <AiModelsPricingPage
               searchTerm={searchTerm}
               onNotify={showToast}
             />
-          )}
-
-          {activeMenu === "ai_key_grants" && (
-            <AiKeyGrantsPage />
           )}
 
           {activeMenu === "ai_request_logs" && (
@@ -245,26 +233,8 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
             />
           )}
 
-          {activeMenu === "logs" && (
-            <LogsPage
-              onNotify={showToast}
-            />
-          )}
-
           {activeMenu === "releases" && (
             <ReleasesPage
-              onNotify={showToast}
-            />
-          )}
-
-          {activeMenu === "tool_branding" && (
-            <ToolConfigPage
-              onNotify={showToast}
-            />
-          )}
-
-          {activeMenu === "terms" && (
-            <TermsPage
               onNotify={showToast}
             />
           )}

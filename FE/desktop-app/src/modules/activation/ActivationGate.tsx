@@ -4,7 +4,6 @@ import { getRuntime } from "../../core/runtime";
 import type { MachineInfo } from "../../core/types";
 import { Icon } from "../../shared/Icon";
 import { LicenseRenewalModal } from "../renewal/LicenseRenewalModal";
-import { LegalTermsModal } from "../legal/LegalTermsModal";
 
 type Props = {
   onActivated: (customLogo?: string, customerName?: string) => void;
@@ -19,15 +18,6 @@ export function ActivationGate({ onActivated }: Props) {
   const [copiedHwid, setCopiedHwid] = useState(false);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const [showRenewalModal, setShowRenewalModal] = useState(false);
-  
-  // Legal Terms Agreement Gate
-  const [showLegalGate, setShowLegalGate] = useState(false);
-  const [showLegalView, setShowLegalView] = useState(false);
-  const [pendingActivation, setPendingActivation] = useState<{
-    key: string;
-    customLogo?: string;
-    customerName?: string;
-  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -38,7 +28,7 @@ export function ActivationGate({ onActivated }: Props) {
       });
 
     // Check server connection status
-    fetch(`${getApiBaseUrl()}/api/v1/system/terms`)
+    fetch(`${getApiBaseUrl()}/health/live`)
       .then((res) => {
         if (mounted) setServerOnline(res.ok);
       })
@@ -84,13 +74,26 @@ export function ActivationGate({ onActivated }: Props) {
     try {
       const response = await validateLicense(cleanKey, machine.machineId);
       
-      // Store pending activation and open Legal Terms Agreement Modal
-      setPendingActivation({
-        key: cleanKey,
-        customLogo: response.logo_url || undefined,
-        customerName: response.customer_name || undefined,
-      });
-      setShowLegalGate(true);
+      await getRuntime().saveLicense(cleanKey);
+
+      if (response.logo_url || response.customer_name) {
+        try {
+          const prefs = await getRuntime().getPreferences();
+          await getRuntime().savePreferences({
+            ...prefs,
+            operatorName: response.customer_name || prefs.operatorName,
+            logoPath: response.logo_url || prefs.logoPath,
+            brandKitLogo: response.logo_url || prefs.brandKitLogo,
+          });
+        } catch {
+          // best effort
+        }
+      }
+
+      setMessage("Kích hoạt thành công! Đang mở khóa không gian làm việc...");
+      setTimeout(() => {
+        onActivated(response.logo_url || undefined, response.customer_name || undefined);
+      }, 400);
     } catch (err) {
       setIsError(true);
       if (err instanceof ApiRequestError) {
@@ -110,37 +113,6 @@ export function ActivationGate({ onActivated }: Props) {
       }
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleAgreeAndUnlock() {
-    if (!pendingActivation) return;
-    try {
-      await getRuntime().saveLicense(pendingActivation.key);
-
-      // Save custom logo and operator name if issued by Admin
-      if (pendingActivation.customLogo || pendingActivation.customerName) {
-        try {
-          const prefs = await getRuntime().getPreferences();
-          await getRuntime().savePreferences({
-            ...prefs,
-            operatorName: pendingActivation.customerName || prefs.operatorName,
-            logoPath: pendingActivation.customLogo || prefs.logoPath,
-            brandKitLogo: pendingActivation.customLogo || prefs.brandKitLogo,
-          });
-        } catch {
-          // best effort
-        }
-      }
-
-      setShowLegalGate(false);
-      setMessage("Kích hoạt thành công! Đang mở khóa không gian làm việc...");
-      setTimeout(() => {
-        onActivated(pendingActivation.customLogo, pendingActivation.customerName);
-      }, 400);
-    } catch {
-      setIsError(true);
-      setMessage("Lỗi khi lưu bản quyền vào hệ thống cục bộ.");
     }
   }
 
@@ -234,27 +206,6 @@ export function ActivationGate({ onActivated }: Props) {
               <Icon name="zap" size={15} />
               <span>Gia hạn bản quyền / Nâng cấp gói (Quét mã VietQR)</span>
             </button>
-
-            <button
-              type="button"
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#60a5fa",
-                fontSize: "12px",
-                cursor: "pointer",
-                padding: "4px 0",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "5px",
-                textDecoration: "underline",
-              }}
-              onClick={() => setShowLegalView(true)}
-            >
-              <Icon name="shield" size={13} />
-              <span>Xem Luật Miễn Trừ Trách Nhiệm & Điều Khoản Sử Dụng</span>
-            </button>
           </div>
         </form>
 
@@ -286,21 +237,6 @@ export function ActivationGate({ onActivated }: Props) {
             void handleActivate({ preventDefault: () => {} } as React.FormEvent);
           }
         }}
-      />
-
-      {/* Mandatory Agreement Gate upon entering Key */}
-      <LegalTermsModal
-        isOpen={showLegalGate}
-        onClose={() => setShowLegalGate(false)}
-        requireAgreement={true}
-        onAgreeAndProceed={handleAgreeAndUnlock}
-      />
-
-      {/* Standalone View Modal from Link */}
-      <LegalTermsModal
-        isOpen={showLegalView}
-        onClose={() => setShowLegalView(false)}
-        requireAgreement={false}
       />
     </div>
   );
