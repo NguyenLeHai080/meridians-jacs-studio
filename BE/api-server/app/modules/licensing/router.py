@@ -193,10 +193,11 @@ async def update_status(license_id: UUID, payload: LicenseStatusUpdate, user: di
 @router.post("/{license_id}/renew", response_model=LicenseResponse)
 async def renew_license(license_id: UUID, payload: LicenseRenewRequest, user: dict = Depends(require_auth)):
     expires_at = payload.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=UTC)
-    if expires_at <= datetime.now(UTC):
-        raise AppError("LICENSE_EXPIRY_INVALID", "Ngày hết hạn phải ở tương lai", 422)
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at <= datetime.now(UTC):
+            raise AppError("LICENSE_EXPIRY_INVALID", "Ngày hết hạn phải ở tương lai", 422)
     updated = store.update("licenses", UUID(str(license_id)), {"expires_at": expires_at, "status": LicenseStatus.active})
     if not updated:
         raise AppError("LICENSE_NOT_FOUND", "Không tìm thấy license", 404)
@@ -204,6 +205,7 @@ async def renew_license(license_id: UUID, payload: LicenseRenewRequest, user: di
     
     # Auto record billing transaction if amount > 0
     if payload.amount > 0:
+        exp_text = expires_at.strftime('%Y-%m-%d %H:%M') if expires_at else "Vĩnh viễn"
         store.create(
             "billing_transactions",
             {
@@ -214,11 +216,12 @@ async def renew_license(license_id: UUID, payload: LicenseRenewRequest, user: di
                 "payment_method": payload.payment_method or "bank_transfer",
                 "transaction_type": "renewal",
                 "actor": user["email"],
-                "notes": f"Gia hạn key {updated.get('key_hint')} đến {expires_at.strftime('%Y-%m-%d')}: {payload.reason}",
+                "notes": f"Gia hạn key {updated.get('key_hint')} đến {exp_text}: {payload.reason}",
                 "created_at": datetime.now(UTC),
             },
         )
     return updated
+
 
 
 @router.post("/{license_id}/reset-hwid", response_model=LicenseResponse)

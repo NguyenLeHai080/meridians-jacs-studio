@@ -150,6 +150,7 @@ export type ClientSession = {
 export type Provider = {
   id: string;
   name: string;
+  code?: string;
   provider_type: "openai" | "gemini" | "custom" | string;
   base_url: string;
   model: string;
@@ -159,8 +160,13 @@ export type Provider = {
   masked_key?: string;
   api_key?: string;
   capabilities: string[];
+  supported_models?: string[];
+  cost_per_image?: number;
+  is_primary?: boolean;
+  latency_ms?: number;
   is_enabled?: boolean;
   enabled?: boolean;
+  has_api_key?: boolean;
 };
 
 export type TelemetryLog = {
@@ -276,4 +282,7 @@ export type AdminMenuKey =
   | "terms"
   | "tool_branding"
   | "settings";
+
+
+
 

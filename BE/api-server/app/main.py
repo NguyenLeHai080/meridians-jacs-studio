@@ -22,6 +22,7 @@ from app.modules.sessions.router import router as sessions_router
 from app.modules.sessions.router import sessions_direct_router
 from app.modules.system.router import router as system_router
 from app.modules.telemetry.router import router as telemetry_router
+from app.modules.gateway.router import router as gateway_router
 
 settings = get_settings()
 settings.validate_runtime()
@@ -98,6 +99,7 @@ app.include_router(projects_router)
 app.include_router(ai_provider_router)
 app.include_router(jobs_router)
 app.include_router(telemetry_router)
+app.include_router(gateway_router)
 app.include_router(system_router)
 
 

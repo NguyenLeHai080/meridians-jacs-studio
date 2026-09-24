@@ -43,7 +43,6 @@ export function AdminLayout({
           onRefresh={onRefresh}
           loading={loading}
           onOpenAccountModal={() => onSelectMenu("settings")}
-          onOpenTerms={() => onSelectMenu("terms")}
           onLogout={onLogout}
           activeLicensesCount={activeLicenseCount}
           onlineSessionsCount={onlineCount}

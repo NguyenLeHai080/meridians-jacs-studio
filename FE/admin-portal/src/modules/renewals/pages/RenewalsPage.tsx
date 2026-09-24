@@ -27,7 +27,6 @@ import {
 import type { License, SepayTransaction, BankConfig, CreditConfig } from "../../../core/types";
 import { renewalService } from "../services/renewalService";
 import { licenseService } from "../../licenses/services/licenseService";
-import { planService } from "../../plans/services/planService";
 import { billingService } from "../../billing/services/billingService";
 import { formatCurrency } from "../../billing/utils/currencyHelper";
 import { showToast, confirmDialog } from "../../../core/swal";
@@ -109,7 +108,7 @@ export const RenewalsPage: React.FC<RenewalsPageProps> = ({
       const [txRes, licRes, cfgRes] = await Promise.allSettled([
         renewalService.getSepayTransactions(),
         licenseService.getLicenses(),
-        planService.getCreditConfig(),
+        billingService.getCreditConfig(),
       ]);
 
       if (txRes.status === "fulfilled" && Array.isArray(txRes.value)) {

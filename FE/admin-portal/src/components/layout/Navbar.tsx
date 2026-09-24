@@ -21,7 +21,6 @@ interface NavbarProps {
   onRefresh: () => void;
   loading: boolean;
   onOpenAccountModal: () => void;
-  onOpenTerms: () => void;
   onLogout: () => void;
   activeLicensesCount?: number;
   onlineSessionsCount?: number;
@@ -34,7 +33,6 @@ export function Navbar({
   onRefresh,
   loading,
   onOpenAccountModal,
-  onOpenTerms,
   onLogout,
   activeLicensesCount = 0,
   onlineSessionsCount = 0,
@@ -338,18 +336,6 @@ export function Navbar({
                 >
                   <ShieldCheck size={15} className="text-orange-600" />
                   <span>{t("accountSettings", "Tài khoản & Bảo mật")}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowUserPopover(false);
-                    onOpenTerms();
-                  }}
-                  className="w-full px-2.5 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-50 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
-                  <Scale size={15} className="text-slate-400" />
-                  <span>{t("menuTerms", "Điều khoản & Pháp lý")}</span>
                 </button>
 
                 <div className="my-1 border-t border-slate-100" />

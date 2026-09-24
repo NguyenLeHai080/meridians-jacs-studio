@@ -1,6 +1,6 @@
 import { apiRequest } from "../../../core/api";
 import { getToken } from "../../../core/session";
-import type { BillingTransaction, BillingSummary, BankConfig, BankAccount } from "../../../core/types";
+import type { BillingTransaction, BillingSummary, BankConfig, BankAccount, CreditConfig } from "../../../core/types";
 
 export interface CreateTransactionPayload {
   customer_name: string;
@@ -61,6 +61,11 @@ export const billingService = {
       method: "PUT",
       body: JSON.stringify(config),
     }, getToken() || undefined);
+  },
+
+  // --- Credit Config ---
+  async getCreditConfig(): Promise<CreditConfig> {
+    return apiRequest<CreditConfig>("/api/v1/billing/credit-config", {}, getToken() || undefined);
   },
 
   // --- Transactions & Summary ---
