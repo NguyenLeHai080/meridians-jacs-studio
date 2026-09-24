@@ -33,7 +33,11 @@ def _url(base_url: str, suffix: str) -> str:
 
 
 def _request(provider_type: str, base_url: str, model: str, api_key: str, timeout: float) -> Request:
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
     ptype = provider_type.lower().strip()
     
     if ptype in {"openai", "openai-compatible", "custom"}:
@@ -78,6 +82,36 @@ def _request(provider_type: str, base_url: str, model: str, api_key: str, timeou
 def test_connection(provider_type: str, base_url: str, model: str, api_key: str, timeout: float) -> ConnectionResult:
     """Run a bounded vendor request and normalize common failure classes."""
     started = time.perf_counter()
+    ptype = provider_type.lower().strip()
+    
+    # For OpenAI-compatible gateways, pinging /models is fast, safe, and works for image/vision models
+    if ptype in {"openai", "openai-compatible", "custom"}:
+        try:
+            target_base = base_url.rstrip("/")
+            if not target_base.endswith("/v1") and ("xompet" in target_base or "openai" in target_base):
+                target_base = f"{target_base}/v1"
+            models_url = _url(target_base, "models")
+            req = Request(
+                models_url,
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                },
+                method="GET"
+            )
+            with urlopen(req, timeout=min(timeout, 8.0)) as response:
+                response.read(4096)
+                status_code = response.status
+            if 200 <= status_code < 300:
+                return ConnectionResult("reachable", status_code, _latency(started), f"Kết nối provider thành công ({status_code} OK)")
+        except HTTPError as exc:
+            if exc.code in {401, 403}:
+                return ConnectionResult("invalid_credentials", exc.code, _latency(started), "API Key không hợp lệ hoặc bị từ chối truy cập (HTTP 401/403)")
+            # If 404/405, fall through to chat completions check below
+        except (TimeoutError, URLError):
+            pass
+
     try:
         request = _request(provider_type, base_url, model, api_key, timeout)
         with urlopen(request, timeout=timeout) as response:

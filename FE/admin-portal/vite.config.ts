@@ -5,7 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
-    port: 5173,
-    proxy: { "/api": "http://localhost:8000", "/health": "http://localhost:8000" },
+    port: Number(process.env.PORT) || 5175,
+    proxy: {
+      "/api": process.env.VITE_API_URL || "http://localhost:8001",
+      "/health": process.env.VITE_API_URL || "http://localhost:8001",
+    },
   },
 });

@@ -479,11 +479,11 @@ class BillingService:
             token = credit_match.group(1).upper()
             matching_lic = next(
                 (
-                    l
-                    for l in licenses
-                    if token in str(l.get("key", "")).upper()
-                    or token in str(l.get("key_hint", "")).upper()
-                    or str(l.get("id", "")).replace("-", "").upper().startswith(token)
+                    lic
+                    for lic in licenses
+                    if token in str(lic.get("key", "")).upper()
+                    or token in str(lic.get("key_hint", "")).upper()
+                    or str(lic.get("id", "")).replace("-", "").upper().startswith(token)
                 ),
                 None,
             )
@@ -494,20 +494,20 @@ class BillingService:
                 token = match.group(1).upper()
                 matching_lic = next(
                     (
-                        l
-                        for l in licenses
-                        if token in str(l.get("key", "")).upper()
-                        or token in str(l.get("key_hint", "")).upper()
-                        or str(l.get("id", "")).replace("-", "").upper().startswith(token)
+                        lic
+                        for lic in licenses
+                        if token in str(lic.get("key", "")).upper()
+                        or token in str(lic.get("key_hint", "")).upper()
+                        or str(lic.get("id", "")).replace("-", "").upper().startswith(token)
                     ),
                     None,
                 )
 
         if not matching_lic:
-            for l in licenses:
-                hint = str(l.get("key_hint") or "").replace("*", "").strip().upper()
+            for lic in licenses:
+                hint = str(lic.get("key_hint") or "").replace("*", "").strip().upper()
                 if hint and len(hint) >= 4 and hint in content.upper():
-                    matching_lic = l
+                    matching_lic = lic
                     break
 
         now = datetime.now(UTC)

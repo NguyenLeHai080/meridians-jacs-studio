@@ -16,6 +16,7 @@ import {
   BarChart3,
   Layers,
   KeyRound,
+  Sparkles,
 } from "lucide-react";
 import { useI18n } from "../../core/i18n";
 
@@ -24,20 +25,16 @@ export type MenuKey =
   | "clients"
   | "licenses"
   | "sessions"
+  | "jobs"
   | "billing"
   | "bank_config"
-  | "plans"
   | "renewals"
   | "providers"
-  | "model_pricing"
-  | "ai_key_grants"
+  | "ai_models_pricing"
   | "ai_request_logs"
   | "api_operations"
   | "telemetry"
-  | "logs"
   | "releases"
-  | "terms"
-  | "tool_branding"
   | "settings";
 
 interface SidebarProps {
@@ -115,28 +112,39 @@ export function Sidebar({
             <span className="menu-label">{t("menuOverview", "Tổng quan hệ thống")}</span>
           </button>
 
-          <div className="menu-heading">{t("headingClientsLegal", "KHÁCH HÀNG & BẢN QUYỀN")}</div>
+          <div className="menu-heading">{t("headingTasksClients", "TÁC VỤ & KHÁCH HÀNG")}</div>
           <button
             type="button"
-            className={`menu-item ${activeMenu === "sessions" ? "active" : ""}`}
-            onClick={() => handleNav("sessions")}
+            className={`menu-item ${activeMenu === "licenses" ? "active" : ""}`}
+            onClick={() => handleNav("licenses")}
+          >
+            <span className="menu-icon">
+              <KeyRound size={17} />
+            </span>
+            <span className="menu-label">{t("menuLicenses", "Quản lý API Key")}</span>
+          </button>
+
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "clients" || activeMenu === "sessions" ? "active" : ""}`}
+            onClick={() => handleNav("clients")}
           >
             <span className="menu-icon">
               <Users size={17} />
             </span>
-            <span className="menu-label">{t("menuSessions", "Quản lý máy người dùng")}</span>
+            <span className="menu-label">{t("menuClients", "Quản lý khách hàng")}</span>
             <span className="menu-badge badge-primary">{onlineCount}</span>
           </button>
 
           <button
             type="button"
-            className={`menu-item ${activeMenu === "terms" ? "active" : ""}`}
-            onClick={() => handleNav("terms")}
+            className={`menu-item ${activeMenu === "jobs" ? "active" : ""}`}
+            onClick={() => handleNav("jobs")}
           >
             <span className="menu-icon">
-              <ShieldCheck size={17} />
+              <Layers size={17} />
             </span>
-            <span className="menu-label">{t("menuTerms", "Phân quyền & Pháp lý")}</span>
+            <span className="menu-label">{t("menuJobs", "Quản lý Jobs & Tác vụ")}</span>
           </button>
 
           <div className="menu-heading">{t("headingAiServices", "DỊCH VỤ & MÔ HÌNH AI")}</div>
@@ -148,40 +156,18 @@ export function Sidebar({
             <span className="menu-icon">
               <Cpu size={17} />
             </span>
-            <span className="menu-label">{t("menuProviders", "Cấu hình AI Providers")}</span>
+            <span className="menu-label">{t("menuProviders", "Quản lý nhà cung cấp")}</span>
           </button>
 
           <button
             type="button"
-            className={`menu-item ${activeMenu === "plans" || (activeMenu as any) === "credit_packages" ? "active" : ""}`}
-            onClick={() => handleNav("plans")}
+            className={`menu-item ${activeMenu === "ai_models_pricing" ? "active" : ""}`}
+            onClick={() => handleNav("ai_models_pricing")}
           >
             <span className="menu-icon">
-              <Coins size={17} />
+              <Sparkles size={17} />
             </span>
-            <span className="menu-label">{t("menuPlans", "Cấu hình gói credit")}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "model_pricing" ? "active" : ""}`}
-            onClick={() => handleNav("model_pricing")}
-          >
-            <span className="menu-icon">
-              <Layers size={17} />
-            </span>
-            <span className="menu-label">{t("menuModelPricing", "Cấu hình gói model")}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "ai_key_grants" ? "active" : ""}`}
-            onClick={() => handleNav("ai_key_grants")}
-          >
-            <span className="menu-icon">
-              <KeyRound size={17} />
-            </span>
-            <span className="menu-label">{t("menuAiKeyGrants", "Cấp Quyền & Credit Key Tool")}</span>
+            <span className="menu-label">{t("menuAiModelsPricing", "Bảng giá & Models AI")}</span>
           </button>
 
           <button
@@ -243,17 +229,6 @@ export function Sidebar({
           <div className="menu-heading">{t("headingConfigSystem", "CẤU HÌNH & HỆ THỐNG")}</div>
           <button
             type="button"
-            className={`menu-item ${activeMenu === "tool_branding" ? "active" : ""}`}
-            onClick={() => handleNav("tool_branding")}
-          >
-            <span className="menu-icon">
-              <Settings size={17} />
-            </span>
-            <span className="menu-label">{t("menuToolConfig", "Cài đặt công cụ")}</span>
-          </button>
-
-          <button
-            type="button"
             className={`menu-item ${activeMenu === "releases" ? "active" : ""}`}
             onClick={() => handleNav("releases")}
           >
@@ -272,17 +247,6 @@ export function Sidebar({
               <FileText size={17} />
             </span>
             <span className="menu-label">{t("menuTelemetry", "Nhật ký cảnh báo")}</span>
-          </button>
-
-          <button
-            type="button"
-            className={`menu-item ${activeMenu === "logs" ? "active" : ""}`}
-            onClick={() => handleNav("logs")}
-          >
-            <span className="menu-icon">
-              <ScrollText size={17} />
-            </span>
-            <span className="menu-label">{t("menuLogs", "Vết thao tác quản trị")}</span>
           </button>
 
           <button

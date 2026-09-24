@@ -6,7 +6,8 @@ export interface CreateLicensePayload {
   customer_name: string;
   customer_contact: string;
   hwid: string;
-  days_valid: number;
+  days_valid?: number;
+  expires_at?: string | null;
   max_jobs_per_day: number;
   premium_ai: boolean;
   notes?: string | null;
@@ -24,7 +25,7 @@ export interface UpdateLicensePayload {
 }
 
 export interface RenewLicensePayload {
-  expires_at: string;
+  expires_at: string | null;
   amount: number;
   plan_type: string;
   reason: string;

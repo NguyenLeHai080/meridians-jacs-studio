@@ -14,6 +14,7 @@ from fastapi.security import APIKeyHeader
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.security.anti_tamper import AntiTamperGuard, require_anti_tamper_signature
 
 authorization_scheme = APIKeyHeader(name="Authorization", auto_error=False)
 
@@ -128,8 +129,6 @@ def revoke_token(authorization: str | None) -> None:
         except (BinasciiError, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError):
             return
 
-
-from app.core.security.anti_tamper import AntiTamperGuard, require_anti_tamper_signature
 
 __all__ = [
     "AntiTamperGuard",

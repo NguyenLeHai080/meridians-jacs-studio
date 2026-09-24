@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import type { License } from "../../../core/types";
-import { useLicenses } from "../hooks/useLicenses";
 import { LicenseKpiCards } from "../components/LicenseKpiCards";
 import { LicenseTable } from "../components/LicenseTable";
 import { CreateLicenseModal } from "./modal/CreateLicenseModal";
@@ -9,8 +8,7 @@ import { ResetHwidModal } from "./modal/ResetHwidModal";
 import { RenewLicenseModal } from "./modal/RenewLicenseModal";
 import { licenseService } from "../services/licenseService";
 import { confirmDialog, showToast } from "../../../core/swal";
-import "../lang"; // Auto-registers licenses translation
-
+import "../lang";
 
 interface LicensesPageProps {
   licenses?: License[];
@@ -34,14 +32,26 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
   onNotify,
 }) => {
   const [localLicenses, setLocalLicenses] = useState<License[]>(propLicenses || []);
-  const activeLicenses = propLicenses || localLicenses;
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(propSearchTerm);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const [internalCreateModal, setInternalCreateModal] = useState(false);
+  const [editingLicense, setEditingLicense] = useState<License | null>(null);
+  const [resettingHwidLicense, setResettingHwidLicense] = useState<License | null>(null);
+  const [renewingLicense, setRenewingLicense] = useState<License | null>(null);
 
   const fetchLicensesData = useCallback(async () => {
     try {
+      setLoading(true);
       const data = await licenseService.getLicenses();
       setLocalLicenses(data);
     } catch {
       // Handled
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -51,37 +61,28 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
     }
   }, [propLicenses, fetchLicensesData]);
 
-  const notify = (msg: string, type: "success" | "error" = "success") => {
-    if (onNotify) onNotify(msg, type);
-    else if (type === "error" && propSetError) propSetError(msg);
-    else if (propSetMessage) propSetMessage(msg);
-  };
-
-  const {
-    searchTerm,
-    setSearchTerm,
-    currentPage,
-    setCurrentPage,
-    pageSize,
-    setPageSize,
-    totalPages,
-    paginatedLicenses,
-    totalCount,
-    activeCount,
-    blockedCount,
-    rolesCount,
-  } = useLicenses(activeLicenses);
-
   useEffect(() => {
     if (propSearchTerm) {
       setSearchTerm(propSearchTerm);
     }
-  }, [propSearchTerm, setSearchTerm]);
+  }, [propSearchTerm]);
 
-  const [internalCreateModal, setInternalCreateModal] = useState(false);
-  const [editingLicense, setEditingLicense] = useState<License | null>(null);
-  const [resettingHwidLicense, setResettingHwidLicense] = useState<License | null>(null);
-  const [renewingLicense, setRenewingLicense] = useState<License | null>(null);
+  const notify = useCallback(
+    (msg: string, type: "success" | "error" = "success") => {
+      showToast(msg, type);
+      if (onNotify) onNotify(msg, type);
+      else if (type === "error" && propSetError) propSetError(msg);
+      else if (propSetMessage) propSetMessage(msg);
+    },
+    [onNotify, propSetError, propSetMessage]
+  );
+
+  const activeLicenses = propLicenses || localLicenses;
+
+  const handleRefresh = async () => {
+    if (propOnRefresh) await propOnRefresh();
+    else await fetchLicensesData();
+  };
 
   const showCreate = isCreateModalOpen || internalCreateModal;
   const closeCreate = () => {
@@ -89,31 +90,53 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
     if (setIsCreateModalOpen) setIsCreateModalOpen(false);
   };
 
-  const handleRefresh = async () => {
-    if (propOnRefresh) await propOnRefresh();
-    else await fetchLicensesData();
-  };
-
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
-    notify(`✓ Đã copy API key cho license ${id.slice(0, 8)}...`, "success");
+    notify(`✓ Đã sao chép API Key ${text || id.slice(0, 8)}`, "success");
   };
 
+  // Toggle active / blocked status
+  const handleToggleStatus = async (lic: License) => {
+    const nextStatus = lic.status === "active" ? "blocked" : "active";
+    try {
+      await licenseService.toggleStatus(lic.id, nextStatus);
+      notify(
+        nextStatus === "active"
+          ? `Đã kích hoạt lại key của ${lic.customer_name}`
+          : `Đã tạm khóa key của ${lic.customer_name}`,
+        "success"
+      );
+      await handleRefresh();
+    } catch (err: any) {
+      notify(err?.message || "Không thể cập nhật trạng thái", "error");
+    }
+  };
+
+  // Regenerate new key
+  const handleRegenerateKey = async (lic: License) => {
+    const confirmed = await confirmDialog({
+      title: "Cấp lại chuỗi Key mới?",
+      text: `Key cũ của "${lic.customer_name}" sẽ bị vô hiệu hóa ngay lập tức và cấp một mã key ngẫu nhiên mới!`,
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await licenseService.regenerateKey(lic.id);
+      if ((res as any).key) {
+        navigator.clipboard.writeText((res as any).key).catch(() => {});
+      }
+      notify(`Đã cấp lại Key mới thành công! Mã: ${(res as any).key || res.key_hint}`, "success");
+      await handleRefresh();
+    } catch (err: any) {
+      notify(err?.message || "Lỗi cấp lại key", "error");
+    }
+  };
+
+  // Delete key
   const handleDelete = async (lic: License) => {
     const confirmed = await confirmDialog({
-      title: "Xác nhận xóa License?",
-      html: `<div style="text-align: left; font-size: 13.5px; color: #475569; line-height: 1.6;">
-        <p>Bạn có chắc chắn muốn xóa license của <b>${lic.customer_name}</b>?</p>
-        <p style="margin: 6px 0 10px; font-size: 12.5px; color: #64748b;">
-          License Key: <code style="color: #e11d48; font-weight: 700;">${lic.key_hint}</code>
-        </p>
-        <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #9f1239;">
-          ⚠️ Hành động này không thể hoàn tác!
-        </div>
-      </div>`,
-      icon: "warning",
-      confirmButtonText: "Xóa vĩnh viễn",
-      cancelButtonText: "Hủy bỏ",
+      title: "Xác nhận xóa API Key?",
+      text: `Bạn có chắc chắn muốn xóa vĩnh viễn Key của "${lic.customer_name}" (${lic.key_hint})? Hành động này không thể hoàn tác!`,
       isDestructive: true,
     });
     if (!confirmed) return;
@@ -127,28 +150,92 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
     }
   };
 
+  // Filter licenses
+  const filteredLicenses = useMemo(() => {
+    return activeLicenses.filter((lic) => {
+      const diff = lic.expires_at ? new Date(lic.expires_at).getTime() - Date.now() : null;
+      const isExpired = diff !== null && diff <= 0;
+      const isExpiringSoon = diff !== null && diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+      const isLifetime = !lic.expires_at;
+
+      if (statusFilter === "active" && (lic.status !== "active" || isExpired)) return false;
+      if (statusFilter === "blocked" && lic.status !== "blocked") return false;
+      if (statusFilter === "expired" && !isExpired) return false;
+      if (statusFilter === "expiring_soon" && !isExpiringSoon) return false;
+      if (statusFilter === "lifetime" && !isLifetime) return false;
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        const matchName = lic.customer_name?.toLowerCase().includes(q);
+        const matchContact = lic.customer_contact?.toLowerCase().includes(q);
+        const matchKey = lic.key_hint?.toLowerCase().includes(q);
+        const matchHwid = lic.hwid?.toLowerCase().includes(q);
+        if (!matchName && !matchContact && !matchKey && !matchHwid) return false;
+      }
+      return true;
+    });
+  }, [activeLicenses, statusFilter, searchTerm]);
+
+  // Pagination
+  const totalCount = filteredLicenses.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const paginatedLicenses = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredLicenses.slice(start, start + pageSize);
+  }, [filteredLicenses, currentPage, pageSize]);
+
+  // KPI counts
+  const activeCount = activeLicenses.filter((l) => {
+    const diff = l.expires_at ? new Date(l.expires_at).getTime() - Date.now() : null;
+    return l.status === "active" && (diff === null || diff > 0);
+  }).length;
+  const blockedCount = activeLicenses.filter((l) => l.status === "blocked").length;
+  const rolesCount = activeLicenses.length > 0 ? 3 : 1; // Standard, Pro, Enterprise
 
   return (
-    <>
+    <div className="space-y-4">
+      {/* Header section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-1">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <span>🔑 Quản Lý Bản Quyền & API Key</span>
+          </h2>
+          <p className="text-xs text-slate-500">
+            Cấp phát, gia hạn, thiết lập hạn mức render và quản lý khóa máy HWID cho người dùng
+          </p>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
       <LicenseKpiCards
-        totalCount={totalCount}
+        totalCount={activeLicenses.length}
         activeCount={activeCount}
         blockedCount={blockedCount}
         rolesCount={rolesCount}
       />
 
+      {/* High-density Table with Toolbar & Full CRUD */}
       <LicenseTable
         licenses={paginatedLicenses}
         totalCount={totalCount}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
         currentPage={currentPage}
         totalPages={totalPages}
         pageSize={pageSize}
         onPageChange={setCurrentPage}
         onPageSizeChange={setPageSize}
+        onOpenCreate={() => setInternalCreateModal(true)}
+        onRefresh={handleRefresh}
+        loading={loading}
         onEdit={(lic) => setEditingLicense(lic)}
         onDelete={handleDelete}
+        onRenew={(lic) => setRenewingLicense(lic)}
+        onResetHwid={(lic) => setResettingHwidLicense(lic)}
+        onRegenerateKey={handleRegenerateKey}
+        onToggleStatus={handleToggleStatus}
         onCopyHint={handleCopy}
       />
 
@@ -191,6 +278,6 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
           void handleRefresh();
         }}
       />
-    </>
+    </div>
   );
 };
