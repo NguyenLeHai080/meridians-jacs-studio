@@ -20,7 +20,7 @@ export interface EditorContextMenuProps {
   setSceneId: (id: string) => void;
   splitActiveScene: () => void;
   deleteActiveScene: () => void;
-  playSceneAudio: (text?: string, scId?: string, offsetSeconds?: number) => void;
+  playSceneAudio: (text?: string, scId?: string, offsetSeconds?: number, isExplicitPreview?: boolean) => void;
   trackMutes: Record<string, boolean>;
   setTrackMutes: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   copiedScene: EditorScene | null;
@@ -83,7 +83,7 @@ export function EditorContextMenu({
           className="capcut-context-item"
           onClick={() => {
             setContextMenu(null);
-            playSceneAudio(activeScene.subtitle, activeScene.id);
+            playSceneAudio(activeScene.subtitle, activeScene.id, 0, true);
           }}
         >
           <span>🎙️ Nghe thử giọng đọc AI (TTS)</span>

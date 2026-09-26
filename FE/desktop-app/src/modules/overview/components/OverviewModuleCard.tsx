@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { LightningChargeFill, CollectionPlayFill, MicFill, Film, ArrowRight } from "react-bootstrap-icons";
+import { ArrowRight, CheckCircleFill } from "react-bootstrap-icons";
 import type { Job } from "../../../core/types";
 
 interface OverviewModuleCardProps {
@@ -8,42 +8,89 @@ interface OverviewModuleCardProps {
 }
 
 export function OverviewModuleCard({ jobs, onNavigate }: OverviewModuleCardProps) {
+  const totalJobs = jobs.length;
+
+  const analyzedCount = useMemo(() => {
+    return jobs.filter((j) => Boolean(j.analysis?.scenes?.length || j.scenes?.length)).length;
+  }, [jobs]);
+
+  const totalScenes = useMemo(() => {
+    return jobs.reduce((acc, j) => acc + (j.analysis?.scenes?.length || j.scenes?.length || 0), 0);
+  }, [jobs]);
+
+  const voiceCount = useMemo(() => {
+    return jobs.filter((j) => Boolean(j.narrationText || j.narrationGenerated || j.narratorVoice)).length;
+  }, [jobs]);
+
+  const timelineCount = useMemo(() => {
+    return jobs.filter((j) => Boolean(j.timelineClips?.length || j.timelineReady || j.cutClips?.length)).length;
+  }, [jobs]);
+
+  const renderedCount = useMemo(() => {
+    return jobs.filter((j) => j.status === "completed" || Boolean(j.outputPath)).length;
+  }, [jobs]);
+
+  const runningCount = useMemo(() => {
+    return jobs.filter((j) => j.status === "running").length;
+  }, [jobs]);
+
   const moduleWorkload = useMemo(() => {
     return [
       {
         id: "analysis",
         title: "1. Bóc Tách & Phân Tích Video AI",
-        desc: "Bóc tách 3 hồi, trích xuất âm thanh, bóc transcript đa ngôn ngữ",
+        desc:
+          analyzedCount > 0
+            ? `Đã bóc tách thành công ${totalScenes} phân cảnh từ ${analyzedCount}/${totalJobs} video`
+            : "Bóc tách 3 hồi, trích xuất âm thanh, bóc transcript đa ngôn ngữ",
         stageKey: "analysis",
         color: "#fbbf24",
-        badge: "Khuyên dùng",
+        badge: analyzedCount > 0 ? `${analyzedCount} video đã phân tích` : "Sẵn sàng",
+        hasData: analyzedCount > 0,
       },
       {
         id: "story",
         title: "2. Biên Tập Kịch Bản & Voice Studio",
-        desc: "Phòng thu giọng đọc AI ElevenLabs, Vbee đa vùng miền, chỉnh tốc độ",
+        desc:
+          voiceCount > 0
+            ? `${voiceCount} kịch bản đã tạo thoại & cấu hình lồng tiếng AI đa vùng miền`
+            : "Phòng thu giọng đọc AI ElevenLabs, Vbee đa vùng miền, chỉnh tốc độ",
         stageKey: "story",
         color: "#34d399",
-        badge: "Đa vùng miền",
+        badge: voiceCount > 0 ? `${voiceCount} video có kịch bản` : "Chờ kịch bản",
+        hasData: voiceCount > 0,
       },
       {
         id: "timeline",
         title: "3. Bàn Dựng Timeline Đa Tầng",
-        desc: "Ghép clip, đồng bộ âm nhạc, phụ đề tự động & hiệu ứng chuyển cảnh",
+        desc:
+          timelineCount > 0
+            ? `${timelineCount} dự án đang được dựng đa tầng, ghép nhạc & phụ đề`
+            : "Ghép clip, đồng bộ âm nhạc, phụ đề tự động & hiệu ứng chuyển cảnh",
         stageKey: "timeline",
         color: "#38bdf8",
-        badge: "Trực quan",
+        badge: timelineCount > 0 ? `${timelineCount} video trên timeline` : "Bàn dựng trống",
+        hasData: timelineCount > 0,
       },
       {
         id: "render",
         title: "4. Xuất Bản & Render Hàng Loạt",
-        desc: "Tăng tốc phần cứng GPU NVIDIA / Apple Metal 1080p/4K 60fps",
+        desc:
+          renderedCount > 0
+            ? `Đã xuất bản thành công ${renderedCount} video thành phẩm chất lượng cao`
+            : "Tăng tốc phần cứng GPU NVIDIA / Apple Metal 1080p/4K 60fps",
         stageKey: "render",
         color: "#c084fc",
-        badge: "Hardware NVENC",
+        badge:
+          runningCount > 0
+            ? `${runningCount} đang render`
+            : renderedCount > 0
+            ? `${renderedCount} video hoàn tất`
+            : "Chờ lệnh xuất",
+        hasData: renderedCount > 0 || runningCount > 0,
       },
     ];
-  }, []);
+  }, [analyzedCount, voiceCount, timelineCount, renderedCount, runningCount, totalJobs, totalScenes]);
 
   return (
     <div
@@ -69,7 +116,7 @@ export function OverviewModuleCard({ jobs, onNavigate }: OverviewModuleCardProps
           QUY TRÌNH SẢN XUẤT 4 BƯỚC KHÉP KÍN
         </span>
         <span style={{ fontSize: "10.5px", color: "#fbbf24", fontWeight: 700 }}>
-          Full Studio Suite
+          {totalJobs > 0 ? `${totalJobs} Video Trong Pipeline` : "Live Studio Suite"}
         </span>
       </div>
 
@@ -104,7 +151,22 @@ export function OverviewModuleCard({ jobs, onNavigate }: OverviewModuleCardProps
                 <strong style={{ fontSize: "11.5px", color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {m.title}
                 </strong>
-                <span style={{ fontSize: "9px", background: "rgba(255, 255, 255, 0.08)", color: m.color, padding: "1px 5px", borderRadius: "3px", fontWeight: 700, flexShrink: 0 }}>
+                <span
+                  style={{
+                    fontSize: "9px",
+                    background: m.hasData ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.08)",
+                    color: m.hasData ? "#34d399" : m.color,
+                    border: m.hasData ? "1px solid rgba(16, 185, 129, 0.3)" : "none",
+                    padding: "1px 5px",
+                    borderRadius: "3px",
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
+                >
+                  {m.hasData && <CheckCircleFill size={7} />}
                   {m.badge}
                 </span>
               </div>

@@ -41,7 +41,7 @@ export function OverviewPage({ jobs, onNavigate, navigate, preferences }: Overvi
       }}
     >
       {/* 1. FLAGSHIP TOP HERO: LIVE ATMOSPHERIC WEATHER & STUDIO DIGITAL AMBIENT CARD */}
-      <OverviewHero onNavigate={handleNav} />
+      <OverviewHero jobs={jobs} onNavigate={handleNav} />
 
       {/* 2. MAIN 4-CARD LOCAL STUDIO DASHBOARD GRID */}
       <div

@@ -152,8 +152,8 @@ export function useTimelineInteractions({
       const rawText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || s.detail || "");
       const measured = s.id && sceneAudioDurations?.[s.id];
       const estSec = estimateSpokenDuration(rawText, speed);
-      const realVoiceDur = measured && measured > 0.5 ? measured : estSec;
-      const sceneDur = Math.max(2.5, Math.round(realVoiceDur * 10) / 10);
+      const realVoiceDur = measured && measured > 0.2 ? measured : estSec;
+      const sceneDur = Math.max(1.0, Math.round((realVoiceDur + 0.12) * 100) / 100);
       const startSec = cursor;
       const endSec = cursor + sceneDur;
       cursor = endSec;

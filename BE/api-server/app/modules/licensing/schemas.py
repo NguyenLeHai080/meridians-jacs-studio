@@ -86,6 +86,7 @@ class LicenseApiConfigRequest(BaseModel):
 class LicenseResponse(LicenseBase):
     id: UUID
     key_hint: str
+    raw_key: str | None = None
     status: LicenseStatus
     created_at: datetime
     last_seen_at: datetime | None = None
@@ -96,6 +97,7 @@ class LicenseResponse(LicenseBase):
 
 class LicenseCreatedResponse(LicenseResponse):
     key: str
+    raw_key: str | None = None
 
 
 

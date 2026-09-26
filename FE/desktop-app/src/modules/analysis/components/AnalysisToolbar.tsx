@@ -10,10 +10,12 @@ import {
   Search,
   Stars,
   Trash3Fill,
+  VolumeUpFill,
   XLg,
 } from "react-bootstrap-icons";
 import type { Job, NavKey, ProviderProfile } from "../../../core/types";
 import { PRESET_PROMPTS, SCENE_CATEGORIES, type PresetPrompt } from "../constants/prompts";
+import { VOICE_PACKS } from "../../../core/voice-packs";
 
 interface AnalysisToolbarProps {
   defaultProviderId: string;
@@ -49,6 +51,8 @@ interface AnalysisToolbarProps {
   showToast: (msg: string) => void;
   onBatchQueueToRender?: (jobIds?: string[]) => void;
   onBatchExportToTimeline?: (jobIds?: string[]) => void;
+  defaultVoiceId?: string;
+  setDefaultVoiceId?: (voice: string) => void;
 }
 
 export const AnalysisToolbar: React.FC<AnalysisToolbarProps> = ({
@@ -85,6 +89,8 @@ export const AnalysisToolbar: React.FC<AnalysisToolbarProps> = ({
   showToast,
   onBatchQueueToRender,
   onBatchExportToTimeline,
+  defaultVoiceId,
+  setDefaultVoiceId,
 }) => {
   return (
     <div
@@ -251,6 +257,80 @@ export const AnalysisToolbar: React.FC<AnalysisToolbarProps> = ({
             <GearFill size={11} />
           </button>
         </div>
+
+        {/* Quick Voice AI Selector */}
+        {defaultVoiceId !== undefined && (
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, flexWrap: "wrap" }}>
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 800,
+                color: "#cbd5e1",
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                textTransform: "uppercase",
+                letterSpacing: "0.4px",
+              }}
+            >
+              <VolumeUpFill size={12} color="#fbbf24" /> VOICE AI:
+            </span>
+            <select
+              value={defaultVoiceId}
+              onChange={(e) => setDefaultVoiceId?.(e.target.value)}
+              style={{
+                background: "#10131c",
+                border: "1px solid rgba(245, 158, 11, 0.25)",
+                borderRadius: "5px",
+                padding: "4px 8px",
+                color: "#f8fafc",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                outline: "none",
+                cursor: "pointer",
+                maxWidth: "240px",
+              }}
+              title="Chọn Giọng Đọc Voice AI từ API (ElevenLabs / Vbee / OpenAI / Neural)"
+            >
+              <optgroup label="👑 ELEVENLABS AI">
+                {VOICE_PACKS.filter((v) => v.id.startsWith("eleven-")).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="🔥 VBEE AIVOICE">
+                {VOICE_PACKS.filter((v) => v.id.startsWith("vbee-")).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="🤖 OPENAI TTS API">
+                <option value="openai-onyx">🎙️ Onyx (OpenAI · Trầm ấm)</option>
+                <option value="openai-echo">🎙️ Echo (OpenAI · Dõng dạc)</option>
+                <option value="openai-fable">🎙️ Fable (OpenAI · Kể chuyện)</option>
+                <option value="openai-alloy">🎙️ Alloy (OpenAI · Tự nhiên)</option>
+                <option value="openai-nova">✨ Nova (OpenAI · Nữ sống động)</option>
+                <option value="openai-shimmer">✨ Shimmer (OpenAI · Nữ êm dịu)</option>
+              </optgroup>
+              <optgroup label="⚡ MICROSOFT NEURAL">
+                {VOICE_PACKS.filter((v) => v.id.startsWith("vi-")).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="🎬 QUỐC TẾ (ENGLISH)">
+                {VOICE_PACKS.filter((v) => v.language === "en").map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+        )}
 
         {/* Clean Script Style Dropdown */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0, flexWrap: "wrap" }}>

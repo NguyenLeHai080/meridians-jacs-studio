@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Job } from "../../../core/types";
 import type { EditorScene } from "../editor.types";
 import { getRuntime } from "../../../core/runtime";
-import { playAudioStream, stopGlobalAudio, getAudioStreamDuration } from "../../../core/audio-player";
+import { playAudioStream, stopGlobalAudio, getAudioStreamDuration, preloadAudioBuffer } from "../../../core/audio-player";
 import { VOICE_PACKS } from "../../../core/voice-packs";
 import { stripSceneMetadata, fileUrl } from "../utils/editorTime";
 
@@ -48,8 +48,11 @@ export function useEditorAudio({
 
   const [selectedVoice, setSelectedVoice] = useState<string>("vi-namminh");
   const [speakingSceneId, setSpeakingSceneId] = useState<string | null>(null);
+  const [isAudioSynthesizing, setIsAudioSynthesizing] = useState(false);
+  const isAudioSynthesizingRef = useRef(false);
   const [sceneAudioDurations, setSceneAudioDurations] = useState<Record<string, number>>({});
   const measuredDurationsRef = useRef<Record<string, number>>({});
+  const sceneAudioUrlMap = useRef<Map<string, string>>(new Map());
 
   // Vocal / Stem Isolation states
   const [removeOriginalBgm, setRemoveOriginalBgm] = useState(false);
@@ -229,73 +232,119 @@ export function useEditorAudio({
     }
   }, [playheadSeconds, playing, bgmAudioRef]);
 
-  // Clear scene audio durations when voice or speed changes so they are recomputed
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
+  const playbackSessionIdRef = useRef<number>(0);
+
+  // Clear scene audio durations and url cache when voice or speed or job changes
   useEffect(() => {
     measuredDurationsRef.current = {};
+    sceneAudioUrlMap.current.clear();
     setSceneAudioDurations({});
-  }, [selectedVoice, voiceSpeed]);
+  }, [sourceJob?.id, selectedVoice, voiceSpeed]);
 
-  // Pre-synthesize and measure duration for all scenes in background
+  // Content signature so timestamp adjustments don't restart TTS prewarming
+  const scenesTextSignature = (editorScenes || [])
+    .map((s) => `${s.id}:${s.subtitle || s.voiceover || s.translation || ""}`)
+    .join(";;;");
+
+  // Pre-synthesize, decode, and cache audio + measure duration for all scenes in parallel background batches
   useEffect(() => {
     if (!editorScenes || editorScenes.length === 0) return;
     let cancelled = false;
 
     const prewarm = async () => {
-      for (const sc of editorScenes) {
-        if (cancelled) break;
-        if (!sc.id || measuredDurationsRef.current[sc.id]) continue;
+      const voiceToUse =
+        selectedVoice ||
+        sourceJob?.narratorVoice ||
+        defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender);
+      const voiceObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === voiceToUse.toLowerCase());
+      const langToUse = voiceObj?.language || sourceJob?.languages?.[0] || "vi";
+      const genderToUse = voiceObj?.gender || sourceJob?.narratorGender || "male";
+      const rateToUse = voiceSpeed || 1.0;
+
+      const unmeasured = editorScenes.filter((sc) => {
         const rawClean = stripSceneMetadata(sc.subtitle || sc.voiceover || sc.translation || "");
-        if (!rawClean) continue;
+        if (!rawClean) return false;
+        const cacheKey = `${voiceToUse}_${rateToUse}_${rawClean}`;
+        return !(sceneAudioUrlMap.current.has(cacheKey) && sc.id && measuredDurationsRef.current[sc.id]);
+      });
 
-        try {
-          const voiceToUse =
-            selectedVoice ||
-            sourceJob?.narratorVoice ||
-            defaultVoiceForLang(sourceJob?.languages?.[0], sourceJob?.narratorGender);
-          const voiceObj = VOICE_PACKS.find((v) => v.id.toLowerCase() === voiceToUse.toLowerCase());
-          const langToUse = voiceObj?.language || sourceJob?.languages?.[0] || "vi";
-          const genderToUse = voiceObj?.gender || sourceJob?.narratorGender || "male";
-          const rateToUse = voiceSpeed || 1.0;
+      if (!unmeasured.length) return;
 
-          const speechUrl = await getRuntime().synthesizeSpeech?.(
-            rawClean,
-            langToUse,
-            genderToUse,
-            voiceToUse,
-            rateToUse
-          );
+      const batchDurations: Record<string, number> = {};
+      const chunkSize = 3;
 
-          if (cancelled) break;
-          if (speechUrl) {
-            const dur = await getAudioStreamDuration(speechUrl);
-            if (!cancelled && dur && dur > 0.1) {
-              measuredDurationsRef.current[sc.id] = dur;
-              setSceneAudioDurations((prev) => ({ ...prev, [sc.id]: dur }));
-            }
-          }
-        } catch {}
+      for (let i = 0; i < unmeasured.length; i += chunkSize) {
+        if (cancelled) break;
+        const chunk = unmeasured.slice(i, i + chunkSize);
+
+        await Promise.all(
+          chunk.map(async (sc) => {
+            if (cancelled) return;
+            const rawClean = stripSceneMetadata(sc.subtitle || sc.voiceover || sc.translation || "");
+            const cacheKey = `${voiceToUse}_${rateToUse}_${rawClean}`;
+
+            try {
+              const speechUrl = await getRuntime().synthesizeSpeech?.(
+                rawClean,
+                langToUse,
+                genderToUse,
+                voiceToUse,
+                rateToUse
+              );
+
+              if (cancelled || !speechUrl) return;
+              sceneAudioUrlMap.current.set(cacheKey, speechUrl);
+              void preloadAudioBuffer(speechUrl);
+
+              const dur = await getAudioStreamDuration(speechUrl);
+              if (!cancelled && dur && dur > 0.1 && sc.id) {
+                measuredDurationsRef.current[sc.id] = dur;
+                batchDurations[sc.id] = dur;
+              }
+            } catch {}
+          })
+        );
+
+        if (!cancelled && Object.keys(batchDurations).length > 0) {
+          setSceneAudioDurations((prev) => ({ ...prev, ...batchDurations }));
+        }
       }
     };
 
     const timer = setTimeout(() => {
       void prewarm();
-    }, 200);
+    }, 80);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [editorScenes, selectedVoice, voiceSpeed, sourceJob, defaultVoiceForLang]);
+  }, [scenesTextSignature, selectedVoice, voiceSpeed, sourceJob?.id, defaultVoiceForLang]);
 
-  // Play scene TTS audio
+  // Play scene TTS audio with cancellation token & strict text cache
   const playSceneAudio = useCallback(
-    async (text?: string, scId?: string, offsetSeconds: number = 0) => {
+    async (text?: string, scId?: string, offsetSeconds: number = 0, isExplicitPreview: boolean = false) => {
       const rawClean = stripSceneMetadata(text);
       if (!rawClean || typeof window === "undefined") return;
-      stopSceneAudio();
+
+      // Invalidate any previous or in-flight speech playback
+      const playToken = ++playbackSessionIdRef.current;
+      stopGlobalAudio();
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        try { window.speechSynthesis.cancel(); } catch {}
+      }
+
+      // If this is an automated playback tick and the video is paused, abort
+      if (!isExplicitPreview && !playingRef.current) {
+        setSpeakingSceneId(null);
+        return;
+      }
 
       const isVoiceMuted = muted || Boolean(trackMutes.voice) || Boolean(trackMutes.voice1) || voiceVolume === 0;
       if (isVoiceMuted) {
+        setSpeakingSceneId(null);
         return;
       }
 
@@ -310,21 +359,57 @@ export function useEditorAudio({
       const genderToUse = voiceObj?.gender || sourceJob?.narratorGender || "male";
       const rateToUse = voiceSpeed || 1.0;
       const effectiveVol = Math.max(0, Math.min(200, voiceVolume));
+      // Strict content-dependent cache key: never key solely by sceneId
+      const cacheKey = `${voiceToUse}_${rateToUse}_${rawClean}`;
+
+      const cachedUrl = sceneAudioUrlMap.current.get(cacheKey) || null;
 
       try {
-        const speechUrl = await getRuntime().synthesizeSpeech?.(
-          rawClean,
-          langToUse,
-          genderToUse,
-          voiceToUse,
-          rateToUse
-        );
+        if (!cachedUrl) {
+          setIsAudioSynthesizing(true);
+          isAudioSynthesizingRef.current = true;
+        }
+
+        const speechUrl =
+          cachedUrl ||
+          (await getRuntime().synthesizeSpeech?.(
+            rawClean,
+            langToUse,
+            genderToUse,
+            voiceToUse,
+            rateToUse
+          ));
+
+        setIsAudioSynthesizing(false);
+        isAudioSynthesizingRef.current = false;
+
+        // Abortion check: If paused or playToken changed while synthesizing, discard audio
+        if (playToken !== playbackSessionIdRef.current) {
+          return;
+        }
+        if (!isExplicitPreview && !playingRef.current) {
+          setSpeakingSceneId(null);
+          return;
+        }
 
         if (speechUrl) {
+          if (!cachedUrl) {
+            sceneAudioUrlMap.current.set(cacheKey, speechUrl);
+            void preloadAudioBuffer(speechUrl);
+          }
+
           await playAudioStream(
             speechUrl,
-            () => setSpeakingSceneId(null),
-            () => setSpeakingSceneId(null),
+            () => {
+              if (playToken === playbackSessionIdRef.current) {
+                setSpeakingSceneId(null);
+              }
+            },
+            () => {
+              if (playToken === playbackSessionIdRef.current) {
+                setSpeakingSceneId(null);
+              }
+            },
             1.0, // Speech rate is already baked into speechUrl by synthesizeSpeech
             offsetSeconds,
             (dur) => {
@@ -338,29 +423,21 @@ export function useEditorAudio({
           return;
         }
       } catch {
-        // fallback to Web Speech API
+        setIsAudioSynthesizing(false);
+        isAudioSynthesizingRef.current = false;
       }
 
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        try {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(rawClean);
-          utterance.lang = langToUse === "vi" ? "vi-VN" : langToUse === "en" ? "en-US" : langToUse;
-          utterance.rate = rateToUse;
-          utterance.volume = Math.max(0, Math.min(1.0, effectiveVol / 100));
-          utterance.onend = () => setSpeakingSceneId(null);
-          utterance.onerror = () => setSpeakingSceneId(null);
-          window.speechSynthesis.speak(utterance);
-          return;
-        } catch {}
+      if (playToken === playbackSessionIdRef.current) {
+        setSpeakingSceneId(null);
       }
-
-      setSpeakingSceneId(null);
     },
     [selectedVoice, sourceJob, voiceSpeed, voiceVolume, muted, trackMutes, defaultVoiceForLang]
   );
 
   const stopSceneAudio = useCallback(() => {
+    playbackSessionIdRef.current++;
+    setIsAudioSynthesizing(false);
+    isAudioSynthesizingRef.current = false;
     stopGlobalAudio();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       try {
@@ -521,6 +598,7 @@ export function useEditorAudio({
     setSelectedVoice,
     speakingSceneId,
     setSpeakingSceneId,
+    isAudioSynthesizing,
     sceneAudioDurations,
     setSceneAudioDurations,
     removeOriginalBgm,

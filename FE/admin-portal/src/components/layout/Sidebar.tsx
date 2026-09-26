@@ -17,6 +17,7 @@ import {
   Layers,
   KeyRound,
   Sparkles,
+  LayoutGrid,
 } from "lucide-react";
 import { useI18n } from "../../core/i18n";
 
@@ -29,6 +30,7 @@ export type MenuKey =
   | "billing"
   | "bank_config"
   | "renewals"
+  | "model_square"
   | "providers"
   | "ai_models_pricing"
   | "ai_request_logs"
@@ -148,6 +150,17 @@ export function Sidebar({
           </button>
 
           <div className="menu-heading">{t("headingAiServices", "DỊCH VỤ & MÔ HÌNH AI")}</div>
+          <button
+            type="button"
+            className={`menu-item ${activeMenu === "model_square" ? "active" : ""}`}
+            onClick={() => handleNav("model_square")}
+          >
+            <span className="menu-icon">
+              <LayoutGrid size={17} />
+            </span>
+            <span className="menu-label">{t("menuModelSquare", "Quảng trường mô hình")}</span>
+          </button>
+
           <button
             type="button"
             className={`menu-item ${activeMenu === "providers" ? "active" : ""}`}

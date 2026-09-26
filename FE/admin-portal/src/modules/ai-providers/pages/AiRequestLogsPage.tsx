@@ -144,7 +144,6 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
   }, [logs, statusFilter, selectedKey, query]);
 
   const defaultSummary: SummaryData = useMemo(() => {
-    if (summary) return summary;
     const total = logs.length;
     const successful = logs.filter((l) => l.status === "Oke").length;
     const failed = logs.filter((l) => l.status === "Fail").length;
@@ -152,13 +151,13 @@ export const AiRequestLogsPage: React.FC<AiRequestLogsPageProps> = ({
     const totalCost = logs.reduce((acc, l) => acc + (l.cost_vnd || 0), 0);
     const totalLat = logs.reduce((acc, l) => acc + (l.latency_ms || 0), 0);
     return {
-      total_requests: total,
-      successful_requests: successful,
-      failed_requests: failed,
-      success_rate_pct: total > 0 ? (successful / total) * 100 : 100,
-      avg_latency_ms: total > 0 ? Math.round(totalLat / total) : 0,
-      total_cost_vnd: totalCost,
-      total_tokens: totalTokens,
+      total_requests: summary?.total_requests ?? total,
+      successful_requests: summary?.successful_requests ?? successful,
+      failed_requests: summary?.failed_requests ?? failed,
+      success_rate_pct: summary?.success_rate_pct ?? (total > 0 ? (successful / total) * 100 : 100),
+      avg_latency_ms: summary?.avg_latency_ms ?? (total > 0 ? Math.round(totalLat / total) : 0),
+      total_cost_vnd: summary?.total_cost_vnd ?? totalCost,
+      total_tokens: summary?.total_tokens ?? totalTokens,
     };
   }, [summary, logs]);
 

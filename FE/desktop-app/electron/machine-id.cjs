@@ -121,12 +121,24 @@ function readOrCreateInstallationId(userDataPath, fsImpl = fs, randomUUID = cryp
   return generated;
 }
 
+let cachedStaticHardware = null;
+
 function collectClientHardwareInfo() {
+  const freeMemoryGb = Number((os.freemem() / (1024 * 1024 * 1024)).toFixed(1));
+
+  // If static hardware specs have been detected once, return cached values immediately
+  // with current free memory, without invoking any blocking subprocess or GPU driver calls.
+  if (cachedStaticHardware) {
+    return {
+      ...cachedStaticHardware,
+      freeMemoryGb,
+    };
+  }
+
   const cpus = os.cpus() || [];
   const cpuModel = cpus[0]?.model ? cpus[0].model.trim() : "Multi-Core CPU";
   const cpuCores = cpus.length || 4;
   const totalMemoryGb = Number((os.totalmem() / (1024 * 1024 * 1024)).toFixed(1));
-  const freeMemoryGb = Number((os.freemem() / (1024 * 1024 * 1024)).toFixed(1));
 
   let gpuName = "Standard GPU Acceleration";
   let gpuVramGb = 4.0;
@@ -139,7 +151,7 @@ function collectClientHardwareInfo() {
   let hasAmd = false;
   let hasApple = process.platform === "darwin";
 
-  // 1. Try nvidia-smi for dedicated NVIDIA cards
+  // 1. Try nvidia-smi for dedicated NVIDIA cards (Run only ONCE at startup)
   try {
     const nvsmi = childProcess.execSync(
       "nvidia-smi --query-gpu=name,memory.total,memory.used,temperature.gpu,utilization.gpu --format=csv,noheader,nounits",
@@ -159,7 +171,7 @@ function collectClientHardwareInfo() {
     }
   } catch {}
 
-  // 2. Windows WMIC / VideoController detection for Intel / AMD / NVIDIA
+  // 2. Windows WMIC / VideoController detection for Intel / AMD / NVIDIA (Run only ONCE at startup)
   if (!hasNvidia && process.platform === "win32") {
     try {
       const output = childProcess.execSync("wmic path win32_VideoController get Name,AdapterRAM", {
@@ -211,11 +223,10 @@ function collectClientHardwareInfo() {
     }
   }
 
-  return {
+  cachedStaticHardware = {
     cpuModel,
     cpuCores,
     totalMemoryGb,
-    freeMemoryGb,
     gpuName,
     gpuVramGb,
     gpuUsedVramGb,
@@ -226,6 +237,11 @@ function collectClientHardwareInfo() {
     hasIntel,
     hasAmd,
     hasApple,
+  };
+
+  return {
+    ...cachedStaticHardware,
+    freeMemoryGb,
   };
 }
 

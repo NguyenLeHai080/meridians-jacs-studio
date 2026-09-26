@@ -6,7 +6,7 @@ import { useDurationRules } from "./useDurationRules";
 import { usePromptPresets } from "./usePromptPresets";
 import { useAudioOptions } from "./useAudioOptions";
 
-export function useAnalysisState(jobs: Job[] = [], initialSource?: Job) {
+export function useAnalysisState(jobs: Job[] = [], initialSource?: Job, allowedModels?: string[] | null) {
   const showToast = (msg: string) => {
     if (msg.startsWith("✓") || msg.startsWith("🎉")) {
       popup.success(msg);
@@ -20,7 +20,7 @@ export function useAnalysisState(jobs: Job[] = [], initialSource?: Job) {
   };
 
   const filters = useVideoFilters(jobs, initialSource);
-  const providers = useProviderConfig(showToast);
+  const providers = useProviderConfig(showToast, allowedModels);
   const duration = useDurationRules(showToast);
   const prompts = usePromptPresets(showToast);
   const audio = useAudioOptions();

@@ -64,8 +64,7 @@ export const ProviderTable: React.FC<ProviderTableProps> = ({
                 <th className="py-2.5 px-3.5 whitespace-nowrap">NHÀ CUNG CẤP</th>
                 <th className="py-2.5 px-3.5 whitespace-nowrap">CỔNG BASE URL</th>
                 <th className="py-2.5 px-3.5 whitespace-nowrap">API KEY (BEARER)</th>
-                <th className="py-2.5 px-3.5 whitespace-nowrap">MODEL MẶC ĐỊNH & HỖ TRỢ</th>
-                <th className="py-2.5 px-3.5 text-center whitespace-nowrap">GIÁ VỐN / ẢNH</th>
+                <th className="py-2.5 px-3.5 whitespace-nowrap">DANH SÁCH MODELS HỖ TRỢ</th>
                 <th className="py-2.5 px-3.5 text-center whitespace-nowrap">ĐỘ TRỄ (PING)</th>
                 <th className="py-2.5 px-3.5 text-center whitespace-nowrap">TRẠNG THÁI</th>
                 <th className="py-2.5 px-3.5 text-right whitespace-nowrap">THAO TÁC</th>
@@ -74,7 +73,7 @@ export const ProviderTable: React.FC<ProviderTableProps> = ({
             <tbody className="divide-y divide-slate-100 font-medium">
               {paginatedProviders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-slate-400 text-xs whitespace-nowrap">
+                  <td colSpan={7} className="py-10 text-center text-slate-400 text-xs whitespace-nowrap">
                     {loading ? "Đang tải danh sách nhà cung cấp..." : "Không tìm thấy nhà cung cấp nào"}
                   </td>
                 </tr>
@@ -153,34 +152,26 @@ export const ProviderTable: React.FC<ProviderTableProps> = ({
                         </div>
                       </td>
 
-                      {/* 4. Model mặc định & hỗ trợ */}
+                      {/* 4. Danh sách models hỗ trợ */}
                       <td className="py-2.5 px-3.5 whitespace-nowrap">
                         <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 shrink-0">
-                            ⚡ {prov.model}
-                          </span>
-                          {supModels
-                            .filter((m: string) => m !== prov.model)
-                            .slice(0, 3)
-                            .map((m: string, idx: number) => (
-                              <span
-                                key={idx}
-                                className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200 shrink-0"
-                              >
-                                {m}
-                              </span>
-                            ))}
-                          {extraModelsCount > 3 && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
-                              +{extraModelsCount - 3}
+                          {supModels.slice(0, 4).map((m: string, idx: number) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 shrink-0 font-mono"
+                            >
+                              {m}
+                            </span>
+                          ))}
+                          {supModels.length > 4 && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-50 text-orange-600 border border-orange-200 shrink-0">
+                              +{supModels.length - 4} models
                             </span>
                           )}
+                          {supModels.length === 0 && (
+                            <span className="text-slate-400 italic text-[10px]">Chưa cấu hình models</span>
+                          )}
                         </div>
-                      </td>
-
-                      {/* 5. Giá vốn / ảnh */}
-                      <td className="py-2.5 px-3.5 text-center font-bold text-slate-800 whitespace-nowrap text-[11px]">
-                        {prov.cost_per_image || 75} đ
                       </td>
 
                       {/* 6. Độ trễ (Ping) */}
@@ -306,12 +297,10 @@ export const ProviderTable: React.FC<ProviderTableProps> = ({
                     <span className="font-mono">{prov.base_url}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400">Model: </span>
-                    <span className="font-bold text-amber-700">{prov.model}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">Giá vốn: </span>
-                    <span className="font-bold">{prov.cost_per_image || 75} đ/ảnh</span>
+                    <span className="text-slate-400">Models: </span>
+                    <span className="font-bold text-slate-800">
+                      {(prov.supported_models || (prov.model ? [prov.model] : [])).length} models hỗ trợ
+                    </span>
                   </div>
                   <div>
                     <span className="text-slate-400">Ping: </span>

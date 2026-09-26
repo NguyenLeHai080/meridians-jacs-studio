@@ -27,7 +27,6 @@ export const BottomDock: React.FC<BottomDockProps> = ({
     { key: "story", shortLabel: "2. Kịch bản", fullLabel: "2. Kịch bản Storyboard & Voice", icon: "mic", isWorkflow: true },
     { key: "timeline", shortLabel: "3. Timeline", fullLabel: "3. Dựng & Timeline đa track", icon: "timeline", isWorkflow: true },
     { key: "batch", shortLabel: "4. Hàng loạt", fullLabel: "4. Xử lý hàng loạt Shorts/Reels", icon: "layers", isWorkflow: true },
-    { key: "usage", shortLabel: "Credits", fullLabel: "Mức dùng & Credits AI", icon: "coins" },
     { key: "settings", shortLabel: "Cài đặt", fullLabel: "Cài đặt Model AI & Engine", icon: "sliders" },
     { key: "logs", shortLabel: "Nhật ký", fullLabel: "Nhật ký hệ thống & AI Logs", icon: "file-text" },
   ];

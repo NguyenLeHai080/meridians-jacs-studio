@@ -1,6 +1,7 @@
 export * from "./pages/LicensesPage";
 export * from "./pages/modal/CreateLicenseModal";
 export * from "./pages/modal/EditLicenseModal";
+export * from "./pages/modal/PermissionLicenseModal";
 export * from "./pages/modal/ResetHwidModal";
 export * from "./pages/modal/RenewLicenseModal";
 export * from "./components/LicenseTable";

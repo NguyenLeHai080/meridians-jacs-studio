@@ -18,12 +18,11 @@ export const PROVIDER_MODEL_PRESETS: Record<string, { label: string; tag: string
     { label: "gpt-4-turbo", tag: "📜 Ngữ cảnh lớn 128k tokens" },
   ],
   anthropic: [
+    { label: "claude-opus-4.8", tag: "👑 [Khuyên Dùng NCC] Review Phim & Kịch Bản Điện Ảnh Triệu View" },
+    { label: "claude-opus-5", tag: "🎬 [Thế Hệ Mới] Biên kịch điện ảnh cao cấp & Plot twist" },
     { label: "claude-3-7-sonnet", tag: "✍️ [Đỉnh Cao Kịch Bản] Tư duy lai & Viết văn siêu mượt" },
     { label: "claude-3-5-sonnet-20241022", tag: "🎬 [Biên Kịch Điện Ảnh] Kịch bản sâu sắc & Giàu cảm xúc" },
     { label: "claude-3-5-sonnet-latest", tag: "🎬 [Bản Mới Nhất] Tối ưu kịch bản viral triệu view" },
-    { label: "claude-opus-5", tag: "👑 [Thế Hệ Mới] Biên kịch điện ảnh cao cấp & Plot twist" },
-    { label: "claude-opus-4.8", tag: "👑 [Review Phim Triệu View] Xây dựng cao trào nghẹt thở" },
-    { label: "claude-opus-4.8-thinking", tag: "🧠 [Thinking Mode] Phát hiện lỗ hổng cốt truyện" },
     { label: "claude-3-5-haiku", tag: "⚡ [Siêu Tốc Độ] Phản hồi tức thì" },
   ],
   deepseek: [

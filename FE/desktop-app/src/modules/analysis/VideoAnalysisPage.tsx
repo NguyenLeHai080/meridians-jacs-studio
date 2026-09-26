@@ -4,6 +4,7 @@ import { getRuntime } from "../../core/runtime";
 import { popup } from "../../shared/popup";
 import { Film, PlusLg } from "react-bootstrap-icons";
 import { toSeconds, stripSceneMetadata } from "../editor/utils/editorTime";
+import { logAiUsage } from "../../core/api";
 
 // Subcomponents
 import { AnalysisToolbar } from "./components/AnalysisToolbar";
@@ -34,6 +35,8 @@ export type AnalysisPageProps = {
   onOpenTimeline?: (jobId?: string) => void;
   initialSource?: Job;
   onNavigate?: (key: NavKey) => void;
+  allowedModels?: string[] | null;
+  onSyncAdminGrant?: () => void;
 };
 
 export function VideoAnalysisPage({
@@ -45,8 +48,10 @@ export function VideoAnalysisPage({
   onOpenTimeline,
   initialSource,
   onNavigate,
+  allowedModels = null,
+  onSyncAdminGrant,
 }: AnalysisPageProps) {
-  const state = useAnalysisState(jobs, initialSource);
+  const state = useAnalysisState(jobs, initialSource, allowedModels);
   const audio = useAnalysisAudio(state.defaultLanguage, state.defaultVoiceId, state.showToast);
 
   // Local UI modals state
@@ -111,7 +116,8 @@ export function VideoAnalysisPage({
     overrideVoice?: string,
     overrideLang?: string,
     overrideDurationRules?: DurationMappingRule[],
-    overrideProviderPool?: ProviderPoolItem[]
+    overrideProviderPool?: ProviderPoolItem[],
+    overrideModel?: string
   ) {
     const analyzeVideo = getRuntime().analyzeVideo;
     if (!analyzeVideo) {
@@ -179,7 +185,7 @@ export function VideoAnalysisPage({
     const targetMins =
       state.targetDuration === "full"
         ? job.durationSeconds && job.durationSeconds > 10
-          ? Math.ceil(job.durationSeconds / 60)
+          ? (state.narratorEnabled ? Math.min(15, Math.ceil(job.durationSeconds / 60)) : Math.ceil(job.durationSeconds / 60))
           : 10
         : state.targetDuration === "60s"
         ? 1
@@ -206,6 +212,7 @@ export function VideoAnalysisPage({
     try {
       const analysis = await analyzeVideo(targetFile, pId || "", opId, {
         languages: [lang],
+        model: overrideModel || state.selectedModel,
         narratorEnabled: state.narratorEnabled,
         narratorGender: "male",
         narratorVoice: voice,
@@ -222,6 +229,7 @@ export function VideoAnalysisPage({
         durationRules: rules,
         providerPool: pool,
         analysisMode: state.narratorEnabled ? "story_recap" : "highlight_clips",
+        scriptStylePreset: state.selectedPresetId,
       });
 
       const newName = (analysis as any).videoTitle || job.name;
@@ -302,6 +310,29 @@ export function VideoAnalysisPage({
 
       state.setExpandedJobIds((prev) => new Set(prev).add(job.id));
       state.showToast(`🎉 Phân tích AI thành công: ${newName} (${scenes.length} phân cảnh)`);
+
+      // Record audit log and deduct credits for this tool key
+      try {
+        const runtime = getRuntime();
+        const key = await runtime.readLicense();
+        const machine = await runtime.getMachineInfo();
+        if (key && machine?.machineId) {
+          const inTok = (analysis as any)?.inputTokens || Math.round((analysis.tokensUsed || 3500) * 0.7);
+          const outTok = (analysis as any)?.outputTokens || Math.round((analysis.tokensUsed || 3500) * 0.3);
+          const cacheTok = (analysis as any)?.cacheTokens || 0;
+          void logAiUsage({
+            task_type: "video_analysis",
+            task_title: `Phân tích video: ${newName || job.name}`,
+            model_used: pId || "gemini-2.0-flash",
+            input_tokens: inTok,
+            output_tokens: outTok,
+            cache_read_tokens: cacheTok,
+            job_id: job.id,
+          }, key, machine.machineId);
+        }
+      } catch {
+        // non-blocking
+      }
     } catch (err: any) {
       if (onUpdateJob) {
         onUpdateJob(job.id, {
@@ -320,8 +351,9 @@ export function VideoAnalysisPage({
     }
   }
 
-  async function handleStartBatchAnalysis(pId: string, prompt: string, lang: string) {
+  async function handleStartBatchAnalysis(pId: string, prompt: string, lang: string, voice?: string) {
     setShowBatchModal(false);
+    const targetVoice = voice || state.defaultVoiceId;
     const targetIds =
       state.selectedJobIds.size > 0 ? Array.from(state.selectedJobIds) : state.sourceCandidates.map((j) => j.id);
     const targetJobs = state.sourceCandidates.filter((j) => targetIds.includes(j.id));
@@ -348,10 +380,11 @@ export function VideoAnalysisPage({
       while (nextJobIndex < targetJobs.length) {
         const currentIdx = nextJobIndex++;
         const job = targetJobs[currentIdx];
-        const assignedProviderId =
-          pool && pool.length > 0 ? pool[currentIdx % pool.length].providerId : pId;
+        const poolItem = pool && pool.length > 0 ? pool[currentIdx % pool.length] : null;
+        const assignedProviderId = poolItem ? poolItem.providerId : pId;
+        const assignedModel = poolItem ? poolItem.model : state.selectedModel;
 
-        await runAnalysisForJob(job, assignedProviderId, prompt, undefined, lang, rules, pool);
+        await runAnalysisForJob(job, assignedProviderId, prompt, targetVoice, lang, rules, pool, assignedModel);
       }
     };
 
@@ -841,6 +874,8 @@ export function VideoAnalysisPage({
         showToast={state.showToast}
         onBatchQueueToRender={handleBatchQueueToRender}
         onBatchExportToTimeline={handleBatchExportToTimeline}
+        defaultVoiceId={state.defaultVoiceId}
+        setDefaultVoiceId={state.setDefaultVoiceId}
       />
 
       {/* 2. Main Master-Detail Table */}
@@ -1247,23 +1282,27 @@ export function VideoAnalysisPage({
         updateAutoDucking={state.updateAutoDucking}
         defaultLanguage={state.defaultLanguage}
         setDefaultLanguage={state.setDefaultLanguage}
+        defaultVoiceId={state.defaultVoiceId}
+        setDefaultVoiceId={state.setDefaultVoiceId}
+        onPlayPreviewVoice={audio.handlePlaySceneVoice}
         autoQueueRender={state.autoQueueRender}
         updateAutoQueueRender={state.updateAutoQueueRender}
-        onSubmitBatch={(pId, prompt, lang) => {
+        onSubmitBatch={(pId, prompt, lang, voice) => {
           if (analysisTargetJob) {
             setShowBatchModal(false);
             runAnalysisForJob(
               analysisTargetJob,
               pId,
               prompt,
-              undefined,
+              voice || state.defaultVoiceId,
               lang,
               state.durationMode === "rules" ? state.durationRules : undefined,
-              state.useProviderPool ? state.activeProviderPool : undefined
+              state.useProviderPool ? state.activeProviderPool : undefined,
+              state.selectedModel
             );
             setAnalysisTargetJob(null);
           } else {
-            handleStartBatchAnalysis(pId, prompt, lang);
+            handleStartBatchAnalysis(pId, prompt, lang, voice);
           }
         }}
       />

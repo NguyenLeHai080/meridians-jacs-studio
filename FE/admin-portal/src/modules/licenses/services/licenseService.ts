@@ -12,6 +12,8 @@ export interface CreateLicensePayload {
   premium_ai: boolean;
   notes?: string | null;
   logo_url?: string | null;
+  credit_balance?: number;
+  allowed_models?: string[];
 }
 
 export interface UpdateLicensePayload {
@@ -22,6 +24,8 @@ export interface UpdateLicensePayload {
   notes?: string | null;
   logo_url?: string | null;
   expires_at?: string | null;
+  credit_balance?: number;
+  allowed_models?: string[];
 }
 
 export interface RenewLicensePayload {

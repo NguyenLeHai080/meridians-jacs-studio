@@ -4,23 +4,48 @@
  * Supports dynamic playback rate (speed multiplier) without pitch distortion.
  */
 
-let activeAudioContext: AudioContext | null = null;
+let sharedAudioContext: AudioContext | null = null;
 let activeSourceNode: AudioBufferSourceNode | null = null;
 let activeHtmlAudio: HTMLAudioElement | null = null;
+const audioBufferCache = new Map<string, AudioBuffer>();
+
+function getOrCreateAudioContext(): AudioContext {
+  const AudioContextClass =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!sharedAudioContext || sharedAudioContext.state === "closed") {
+    sharedAudioContext = new AudioContextClass();
+  }
+  if (sharedAudioContext.state === "suspended") {
+    void sharedAudioContext.resume().catch(() => {});
+  }
+  return sharedAudioContext;
+}
+
+let activeAudioStartContextTime = 0;
+let activeAudioStartOffset = 0;
+let activeAudioRate = 1.0;
+let activeAudioDuration = 0;
+
+export function getActiveAudioElapsed(): number | null {
+  if (activeSourceNode && sharedAudioContext && sharedAudioContext.state === "running") {
+    const elapsed = (sharedAudioContext.currentTime - activeAudioStartContextTime) * activeAudioRate + activeAudioStartOffset;
+    return Math.min(activeAudioDuration, Math.max(0, elapsed));
+  }
+  if (activeHtmlAudio && !activeHtmlAudio.paused) {
+    return activeHtmlAudio.currentTime;
+  }
+  return null;
+}
 
 export function stopGlobalAudio(): void {
+  activeAudioDuration = 0;
   if (activeSourceNode) {
     try {
       activeSourceNode.stop();
       activeSourceNode.disconnect();
     } catch {}
     activeSourceNode = null;
-  }
-  if (activeAudioContext) {
-    try {
-      void activeAudioContext.close();
-    } catch {}
-    activeAudioContext = null;
   }
   if (activeHtmlAudio) {
     try {
@@ -34,17 +59,39 @@ export function stopGlobalAudio(): void {
       window.speechSynthesis.cancel();
     } catch {}
   }
-  if (typeof document !== "undefined") {
-    try {
-      const mediaEls = document.querySelectorAll<HTMLMediaElement>("video, audio");
-      mediaEls.forEach((el) => {
-        try {
-          if (!el.paused) {
-            el.pause();
-          }
-        } catch {}
-      });
-    } catch {}
+}
+
+export async function preloadAudioBuffer(audioDataOrUrl: string): Promise<AudioBuffer | null> {
+  if (!audioDataOrUrl || typeof audioDataOrUrl !== "string") return null;
+  if (audioBufferCache.has(audioDataOrUrl)) {
+    return audioBufferCache.get(audioDataOrUrl)!;
+  }
+  try {
+    let arrayBuffer: ArrayBuffer;
+    if (audioDataOrUrl.startsWith("data:")) {
+      const pureBase64 = audioDataOrUrl.split(",")[1];
+      const binaryString = window.atob(pureBase64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      arrayBuffer = bytes.buffer;
+    } else {
+      const response = await fetch(audioDataOrUrl);
+      if (!response.ok) return null;
+      arrayBuffer = await response.arrayBuffer();
+    }
+
+    const ctx = getOrCreateAudioContext();
+    const decoded = await ctx.decodeAudioData(arrayBuffer);
+    if (decoded) {
+      audioBufferCache.set(audioDataOrUrl, decoded);
+      return decoded;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -67,34 +114,34 @@ export async function playAudioStream(
   const safeRate = Math.max(0.5, Math.min(2.5, Number(playbackRate) || 1.0));
   const safeVolume = Math.max(0, Math.min(2.0, (Number(volume) || 100) / 100));
 
-  // Method 1: Web Audio API (AudioContext) with in-memory decoding
+  // Method 1: Web Audio API with memory cache
   try {
-    let arrayBuffer: ArrayBuffer;
+    const ctx = getOrCreateAudioContext();
+    let decodedBuffer: AudioBuffer;
 
-    if (audioDataOrUrl.startsWith("data:")) {
-      const pureBase64 = audioDataOrUrl.split(",")[1];
-      const binaryString = window.atob(pureBase64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      arrayBuffer = bytes.buffer;
+    if (audioBufferCache.has(audioDataOrUrl)) {
+      decodedBuffer = audioBufferCache.get(audioDataOrUrl)!;
     } else {
-      const response = await fetch(audioDataOrUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status} fetching audio`);
-      arrayBuffer = await response.arrayBuffer();
+      let arrayBuffer: ArrayBuffer;
+      if (audioDataOrUrl.startsWith("data:")) {
+        const pureBase64 = audioDataOrUrl.split(",")[1];
+        const binaryString = window.atob(pureBase64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        arrayBuffer = bytes.buffer;
+      } else {
+        const response = await fetch(audioDataOrUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status} fetching audio`);
+        arrayBuffer = await response.arrayBuffer();
+      }
+
+      decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+      audioBufferCache.set(audioDataOrUrl, decodedBuffer);
     }
 
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new AudioContextClass();
-    activeAudioContext = ctx;
-
-    if (ctx.state === "suspended") {
-      await ctx.resume();
-    }
-
-    const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
     if (decodedBuffer?.duration) {
       onDuration?.(decodedBuffer.duration / safeRate);
     }
@@ -102,18 +149,13 @@ export async function playAudioStream(
     // If offset is already past the end of the audio, do not play
     if (offsetSeconds >= (decodedBuffer.duration - 0.05)) {
       onEnded?.();
-      try { void ctx.close(); } catch {}
-      activeAudioContext = null;
       return () => {};
     }
 
     const source = ctx.createBufferSource();
     source.buffer = decodedBuffer;
-    
-    // Apply dynamic playback rate
     source.playbackRate.value = safeRate;
 
-    // Apply dynamic volume via GainNode
     const gainNode = ctx.createGain();
     gainNode.gain.value = safeVolume;
     source.connect(gainNode);
@@ -121,15 +163,17 @@ export async function playAudioStream(
     activeSourceNode = source;
 
     source.onended = () => {
-      activeSourceNode = null;
-      try {
-        void ctx.close();
-      } catch {}
-      activeAudioContext = null;
+      if (activeSourceNode === source) {
+        activeSourceNode = null;
+      }
       onEnded?.();
     };
 
     const safeOffset = Math.max(0, Math.min(Math.max(0, decodedBuffer.duration - 0.05), offsetSeconds));
+    activeAudioStartContextTime = ctx.currentTime;
+    activeAudioStartOffset = safeOffset;
+    activeAudioRate = safeRate;
+    activeAudioDuration = decodedBuffer.duration;
     source.start(0, safeOffset);
 
     return () => {

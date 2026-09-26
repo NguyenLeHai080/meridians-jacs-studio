@@ -20,14 +20,21 @@ class ProviderCreate(BaseModel):
     code: str | None = Field(default=None, max_length=120)
     provider_type: ProviderType
     base_url: HttpUrl
-    model: str = Field(min_length=1, max_length=160)
+    model: str = Field(default="", max_length=160)
     tts_model: str | None = Field(default=None, max_length=160)
-    api_key: str = Field(min_length=8, max_length=4096)
+    api_key: str = Field(min_length=1, max_length=4096)
     capabilities: list[str] = Field(default_factory=list)
     supported_models: list[str] = Field(default_factory=list)
     cost_per_image: float = 75.0
     is_primary: bool = False
     enabled: bool = True
+
+
+class FetchModelsRequest(BaseModel):
+    base_url: str
+    api_key: str | None = None
+    provider_id: str | None = None
+    provider_type: str | None = "openai"
 
 
 class ProviderUpdate(BaseModel):

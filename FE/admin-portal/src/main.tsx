@@ -1,4 +1,4 @@
-import { StrictMode, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nProvider } from "./core/i18n";
 import { getToken } from "./core/session";
@@ -19,10 +19,15 @@ function App() {
   return authenticated ? <Dashboard onLogout={() => setAuthenticated(false)} /> : <LoginPage onAuthenticated={() => setAuthenticated(true)} />;
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <I18nProvider>
-      <App />
-    </I18nProvider>
-  </StrictMode>
+const container = document.getElementById("root")!;
+let root = (container as any)._reactRoot;
+if (!root) {
+  root = createRoot(container);
+  (container as any)._reactRoot = root;
+}
+
+root.render(
+  <I18nProvider>
+    <App />
+  </I18nProvider>
 );
