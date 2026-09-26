@@ -5,7 +5,6 @@ import { useSettingsManagement } from "./hooks/useSettingsManagement";
 import { WorkspaceSettingsCard } from "./components/WorkspaceSettingsCard";
 import { MediaEngineCard } from "./components/MediaEngineCard";
 import { ByokProvidersSection } from "./components/ByokProvidersSection";
-import { CloudModelHub } from "./components/CloudModelHub";
 import { ProviderConfigModal } from "./components/ProviderConfigModal";
 import { ProviderTestResultModal } from "./components/ProviderTestResultModal";
 import {
@@ -20,9 +19,18 @@ export type { CloudModelItem };
 interface SettingsPageProps {
   preferences: ToolPreferences;
   onPreferencesChanged: (preferences: ToolPreferences) => void;
+  creditBalance?: number;
+  allowedModels?: string[] | null;
+  onSyncAdminGrant?: () => void;
 }
 
-export function SettingsPage({ preferences, onPreferencesChanged }: SettingsPageProps) {
+export function SettingsPage({
+  preferences,
+  onPreferencesChanged,
+  creditBalance = 0,
+  allowedModels = null,
+  onSyncAdminGrant,
+}: SettingsPageProps) {
   const {
     localPreferences,
     providers,
@@ -198,7 +206,7 @@ export function SettingsPage({ preferences, onPreferencesChanged }: SettingsPage
         />
       </div>
 
-      {/* 3. BYOK Section */}
+      {/* 3. Unified AI Providers & BYOK Section */}
       <ByokProvidersSection
         providers={providers}
         testingId={testingId}
@@ -206,19 +214,15 @@ export function SettingsPage({ preferences, onPreferencesChanged }: SettingsPage
         editProvider={editProvider}
         deleteProvider={deleteProvider}
         openAddProviderModal={openAddProviderModal}
-      />
-
-      {/* 4. Cloud Model Hub */}
-      <CloudModelHub
+        creditBalance={creditBalance}
+        allowedModels={allowedModels}
+        onSyncAdminGrant={onSyncAdminGrant}
         cloudModels={cloudModels}
-        lastSyncedTime={lastSyncedTime}
-        syncingCloud={syncingCloud}
-        syncWithCloudAdmin={syncWithCloudAdmin}
-        testingModelId={testingModelId}
-        cloudModelTestResults={cloudModelTestResults}
         testCloudModel={testCloudModel}
         selectCloudModelForAnalysis={selectCloudModelForAnalysis}
         configureBYOKForCloudModel={configureBYOKForCloudModel}
+        testingModelId={testingModelId}
+        cloudModelTestResults={cloudModelTestResults}
       />
 
       {/* Modals */}

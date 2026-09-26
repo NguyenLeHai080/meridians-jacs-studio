@@ -33,7 +33,17 @@ const sha512 = crypto.createHash("sha512").update(asarBuffer).digest("hex");
 console.log(`✅ app.asar generated successfully! Size: ${(asarBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 console.log(`🔑 SHA-512: ${sha512}`);
 
-// 5. Update local installed app if available
+// 5. Update local installed app and win-unpacked build if available
+const unpackedAsar = path.join(RELEASE_DIR, "win-unpacked", "resources", "app.asar");
+if (fs.existsSync(path.dirname(unpackedAsar))) {
+  try {
+    fs.copyFileSync(ASAR_OUTPUT, unpackedAsar);
+    console.log(`🚀 Updated unpacked build at: ${unpackedAsar}`);
+  } catch (err) {
+    console.warn(`⚠️ Could not overwrite unpacked app.asar: ${err.message}`);
+  }
+}
+
 const candidateFolders = ["JACS Studio", "jacs-studio", "@jacsdesktop-app"];
 for (const folder of candidateFolders) {
   const localAsar = path.join(process.env.LOCALAPPDATA || "", "Programs", folder, "resources", "app.asar");

@@ -41,6 +41,14 @@ if (process.platform === "darwin") {
   app.disableHardwareAcceleration();
 }
 
+// Windows GPU stability: Prevent GPU process crash loops and support safe mode fallback
+if (process.platform === "win32") {
+  app.commandLine.appendSwitch("disable-gpu-process-crash-limit");
+  if (process.env.JACS_DISABLE_GPU === "1") {
+    app.disableHardwareAcceleration();
+  }
+}
+
 let cachedMachineInfo;
 const activeOperations = new Map();
 
@@ -370,6 +378,7 @@ function cleanVideoTitle(raw) {
   let cleaned = String(raw)
     .replace(/\.[a-zA-Z0-9]{2,5}$/, "")
     .replace(/\b(?:savefrom|savedownloader|save|ytdownloader|ytdown|youtube|media|video|download|downloader|jacs|yt|new|official|hd|fullhd|1080p|720p|480p|4k|mp4|mkv|webm|avi|mov|tiktok|facebook|fb|shorts|reels)\b/gi, "")
+    .replace(/\b(?:hollywood|full\s*action|action|thriller|english\s*movie|free\s*movies?|full\s*movie|movies?|film|vietsub|thuyet\s*minh|long\s*tieng|tap\s*\d+|phim\s*hanh\s*dong|phim\s*chieu\s*rap)\b/gi, "")
     .replace(/[-_\[\(][a-zA-Z0-9_-]{8,15}[\]\)]?/g, "")
     .replace(/\b[a-zA-Z0-9_-]{10,15}\b/g, "")
     .replace(/[-_.]+/g, " ")
@@ -617,7 +626,7 @@ function registerMediaProtocol() {
 }
 function defaultPreferences() { return { workspaceName: "Workspace của tôi", operatorName: "Người dùng", workspacePath: path.join(app.getPath("documents"), "JACS Studio", "Projects"), cachePath: path.join(app.getPath("userData"), "cache"), outputPath: outputPath(), telemetryEnabled: true, autoUpdateEnabled: true, preferredEngine: "auto" }; }
 function providerStore() { return createProviderStore({ filePath: providersPath(), safeStorage }); }
-function apiBaseUrl() { return String(process.env.JACS_API_URL || "https://jacs-studio.nexoratech.com.vn").replace(/\/$/, ""); }
+function apiBaseUrl() { return String(process.env.JACS_API_URL || "http://127.0.0.1:8000").replace(/\/$/, ""); }
 
 function isTrustedReleaseUrl(value) {
   return isTrustedUpdateUrl(value);
@@ -1152,9 +1161,10 @@ async function downloadVideo(event, url, operationId) {
 function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", options = {}, transcript = "", transcriptSegments = []) {
   const duration = Math.max(30, Number(probe?.durationSeconds || 300));
   const targetDurMinutes = Number(options?.targetDurationMinutes) || (duration > 300 ? 5 : Math.max(1, Math.ceil(duration / 60)));
-  const targetDurSeconds = Math.round(targetDurMinutes * 60);
+  const safeDurMins = Math.min(15, Math.max(1, targetDurMinutes));
+  const targetDurSeconds = Math.round(safeDurMins * 60);
 
-  const targetCount = targetDurMinutes <= 1 ? 4 : targetDurMinutes <= 3 ? 8 : targetDurMinutes <= 5 ? 14 : targetDurMinutes <= 10 ? 24 : targetDurMinutes <= 15 ? 35 : Math.max(4, Math.round(targetDurMinutes * 2.4));
+  const targetCount = safeDurMins <= 1 ? 4 : safeDurMins <= 3 ? 8 : safeDurMins <= 5 ? 12 : safeDurMins <= 8 ? 16 : safeDurMins <= 12 ? 20 : 24;
   const targetClipDuration = Math.max(8, Math.round(targetDurSeconds / targetCount));
   const sourceStep = Math.max(4, (duration - targetClipDuration) / Math.max(1, targetCount - 1));
 
@@ -1165,6 +1175,22 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
   const cleanTitle = cleanVideoTitle(rawTitle);
 
   const safeSegments = Array.isArray(transcriptSegments) && transcriptSegments.length ? transcriptSegments : [];
+
+  const dynamicNarratives = [
+    `Phân cảnh mở màn nghẹt thở ngay lập tức cuốn người xem vào diễn biến gay cấn của ${cleanTitle}, khi nhân vật chính bất ngờ đối mặt với hiểm nguy cận kề.`,
+    `Bối cảnh ban đầu dần hé lộ không gian u tối cùng những toan tính ngầm, nơi các nhân vật chủ chốt bắt đầu xuất hiện.`,
+    `Những manh mối đầu tiên bắt đầu lộ diện, làm dấy lên những nghi vấn chưa có lời giải đáp và đẩy câu chuyện sang bước ngoặt mới.`,
+    `Tình thế chuyển biến rõ nét khi các bên bắt đầu hành động, những dấu hiệu bất thường xuất hiện ngày một dày đặc.`,
+    `Mạch phim chuyển biến dồn dập khi một phát hiện chấn động buộc nhân vật chính phải tức tốc hành động để bảo vệ mục tiêu.`,
+    `Sự xuất hiện của những nhân vật bí ẩn làm đảo lộn hoàn toàn tính toán ban đầu, mở ra những cuộc đối đầu ngầm nghẹt thở.`,
+    `Cuộc đối thoại căng thẳng phơi bày mâu thuẫn âm ỉ bấy lâu nay, ranh giới giữa đồng minh và kẻ thù dần bị xóa nhòa.`,
+    `Áp lực thời gian đè nặng lên từng nhân vật khi các bằng chứng xác thực bắt đầu phơi bày rõ ràng toàn bộ sự việc.`,
+    `Mâu thuẫn bùng nổ đỉnh điểm buộc nhân vật chính phải đưa ra quyết định liều lĩnh để tự cứu lấy bản thân và những người xung quanh.`,
+    `Màn rượt đuổi và đấu trí quyết liệt nổ ra với tốc độ chóng mặt, đẩy toàn bộ nhịp độ lên mức căng thẳng nhất.`,
+    `Những bí mật then chốt cuối cùng cũng được đưa ra ánh sáng sau chuỗi biến cố dồn dập không một giây ngơi nghỉ.`,
+    `Hiện trường được kiểm soát hoàn toàn, kẻ chủ mưu phải trả giá đắt và trật tự được tái lập trong sự ngỡ ngàng của mọi người.`,
+    `Mọi khúc mắc đã được giải quyết trọn vẹn, khép lại hành trình đầy kịch tính với thông điệp nhân văn đáng nhớ.`
+  ];
 
   for (let i = 0; i < targetCount; i++) {
     const srcStartSec = Math.min(duration - targetClipDuration, Math.max(0, Math.round(i * sourceStep)));
@@ -1182,36 +1208,24 @@ function generateLocalStoryAnalysis(probe, customPrompt, language = "vi", option
 
     if (i === 0) {
       stageTitle = `[00:00 - 00:10] Hook Mở Màn & Cú Hích Cao Trào`;
-      narrative = `Mở đầu video "${cleanTitle}", một tình huống bất ngờ và đầy kịch tính lập tức thu hút sự chú ý của người xem ngay từ những giây đầu tiên. Mọi diễn biến then chốt đặt nền móng cho câu chuyện bắt đầu lộ diện.`;
-      actionVisual = `Khoảnh khắc gay cấn và ấn tượng nhất mở đầu video "${cleanTitle}".`;
-    } else if (fraction <= 0.20) {
-      stageTitle = `[Hồi 1] Bối Cảnh & Khởi Nguồn Tình Huống (Phần ${i})`;
-      narrative = `Không gian ban đầu dần hé mở, giới thiệu các nhân vật chủ chốt và bối cảnh khởi nguồn sự việc trong "${cleanTitle}". Những chi tiết đầu tiên bắt đầu phát sinh, hé lộ động cơ cùng mối quan hệ ban đầu giữa các bên liên quan, tạo tiền đề cho những biến cố tiếp theo.`;
-      actionVisual = `Toàn cảnh không gian và chân dung các nhân vật xuất hiện ở giai đoạn đầu.`;
-    } else if (fraction <= 0.40) {
-      stageTitle = `[Hồi 1] Chuyển Biến Tình Thế & Manh Mối Ban Đầu (Phần ${i})`;
-      narrative = `Tình thế có sự chuyển biến rõ nét khi các nhân vật bắt đầu bước vào chuỗi sự việc trọng tâm. Những dấu hiệu bất thường bắt đầu xuất hiện ngày một dày đặc hơn, kéo theo những nghi vấn chưa có lời giải đáp và đẩy câu chuyện sang giai đoạn mới.`;
-      actionVisual = `Khung cảnh tương tác trực tiếp và sự xuất hiện của những manh mối đáng ngờ.`;
-    } else if (fraction <= 0.60) {
-      stageTitle = `[Hồi 2] Cuộc Đối Thoại Căng Thẳng & Nút Thắt Kịch Tính (Phần ${i})`;
-      narrative = `Mạch sự việc được đẩy lên cao trào khi sự thật dần hé lộ qua từng cuộc đối thoại căng thẳng và những toan tính ngầm. Các mâu thuẫn bắt đầu bùng nổ, buộc những người trong cuộc phải đối mặt trực diện với tình huống bất ngờ không lường trước.`;
-      actionVisual = `Cận cảnh cuộc đối thoại căng thẳng và phản ứng dồn dập của các nhân vật.`;
-    } else if (fraction <= 0.75) {
-      stageTitle = `[Hồi 2] Bước Ngoặt Bất Ngờ & Diễn Biến Dồn Dập (Phần ${i})`;
-      narrative = `Tình huống trở nên căng thẳng vượt bậc với những bước ngoặt và tình tiết vượt ngoài dự đoán của mọi người. Áp lực thời gian đè nặng lên từng nhân vật khi các bằng chứng xác thực và những lời nói mâu thuẫn bắt đầu phơi bày rõ ràng toàn bộ sự việc.`;
-      actionVisual = `Góc quay tập trung vào khoảnh khắc đối chất kịch tính và cảm xúc dâng trào.`;
-    } else if (fraction <= 0.88) {
-      stageTitle = `[Hồi 2 - Đỉnh Điểm] Đấu Trí Cao Độ & Quyết Định Then Chốt (Phần ${i})`;
-      narrative = `Cuộc giằng co bước vào giai đoạn quyết định nghẹt thở khi các bên không còn đường thoái lui. Mọi hành động diễn ra chớp nhoáng với tính chất quyết liệt, đưa toàn bộ xung đột lên đỉnh điểm cao trào nhất của câu chuyện.`;
-      actionVisual = `Cảnh quay đặc tả biểu cảm nghẹt thở và phản ứng quyết liệt của các nhân vật.`;
-    } else if (fraction < 1.0) {
-      stageTitle = `[Hồi 3] Khống Chế Tình Hình & Trật Tự Tái Lập (Phần ${i})`;
-      narrative = `Sự việc chuyển sang thế chủ động khi toàn bộ diễn biến được làm sáng tỏ và các biện pháp xử lý dứt khoát được thực thi. Hiện trường được kiểm soát hoàn toàn, trả lại trật tự vốn có trong sự chứng kiến của mọi người.`;
-      actionVisual = `Toàn cảnh hiện trường được kiểm soát và các bên tuân thủ quy trình xử lý.`;
-    } else {
+      narrative = dynamicNarratives[0];
+      actionVisual = `Khoảnh khắc gay cấn và ấn tượng nhất mở đầu phân cảnh hành động kịch tính.`;
+    } else if (i === targetCount - 1) {
       stageTitle = `[Hồi 3] Hồi Kết Hoàn Chỉnh & Bài Học Đắt Giá`;
-      narrative = `Khép lại toàn bộ diễn biến của "${cleanTitle}", mọi mâu thuẫn được giải quyết thỏa đáng và những hành vi sai lệch đều phải chịu trách nhiệm tương xứng. Câu chuyện để lại lời cảnh tỉnh sâu sắc và giá trị nhân văn đáng nhớ cho người xem.`;
+      narrative = dynamicNarratives[dynamicNarratives.length - 1];
       actionVisual = `Khung hình kết thúc đọng lại suy ngẫm cùng thông điệp cốt lõi của tác phẩm.`;
+    } else {
+      const beatIdx = Math.min(dynamicNarratives.length - 2, Math.max(1, Math.round(fraction * (dynamicNarratives.length - 2))));
+      const uniqueBeat = dynamicNarratives[beatIdx] || dynamicNarratives[1];
+      if (fraction <= 0.30) {
+        stageTitle = `[Hồi 1] Bối Cảnh & Khởi Nguồn Tình Huống (Cảnh ${i + 1})`;
+      } else if (fraction <= 0.70) {
+        stageTitle = `[Hồi 2] Diễn Biến Trọng Tâm & Bước Ngoặt Kịch Tính (Cảnh ${i + 1})`;
+      } else {
+        stageTitle = `[Hồi 3] Đỉnh Điểm Cao Trào & Hóa Giải Xung Đột (Cảnh ${i + 1})`;
+      }
+      narrative = uniqueBeat;
+      actionVisual = `Cận cảnh hành động và cảm xúc nhân vật tại mốc thời gian ${formatTime(srcStartSec)}.`;
     }
 
     // Enrich with relevant transcript segments if present for this timeframe
@@ -1332,7 +1346,14 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
   const endpoint = (base, suffix) => base.endsWith(suffix) ? base : `${base}/${suffix}`;
   let body;
   const visualImages = images.map((image) => typeof image === "string" ? { data: image } : image);
-  const visualText = (index) => ({ type: "text", text: `[Khung hình ${index + 1} · ${Number(visualImages[index]?.timestampSeconds || 0).toFixed(1)} giây]` });
+  const visualText = (index) => {
+    const ts = Number(visualImages[index]?.timestampSeconds || 0);
+    const stamp = `${Math.floor(ts / 60).toString().padStart(2, "0")}:${Math.floor(ts % 60).toString().padStart(2, "0")}`;
+    return {
+      type: "text",
+      text: `[KHUNG HÌNH THỰC TẾ ${index + 1} TẠI MỐC ${stamp} (${ts.toFixed(1)}s)]: Hãy quan sát kỹ nhân vật nào xuất hiện, trang phục, cảm xúc, nét mặt, hành động và bối cảnh cụ thể trong khung hình này để biên kịch kịch bản review chính xác 100% bám sát vào video thực tế.`
+    };
+  };
 
   let parsedHost = "";
   try { parsedHost = new URL(record.baseUrl || "https://api.openai.com").hostname; } catch {}
@@ -1349,24 +1370,41 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
 
   const supportsVision = (
     isGemini ||
+    Boolean(record.capabilities?.includes("vision")) ||
     (record.isManaged && !effectiveModel?.includes("deepseek")) ||
     (isAnthropic && !effectiveModel?.includes("claude-2")) ||
-    (isGroq && (effectiveModel?.includes("vision") || effectiveModel?.includes("11b") || effectiveModel?.includes("90b"))) ||
-    (!isGroq && !isDeepSeek && (effectiveModel?.includes("gpt-4") || effectiveModel?.includes("gpt-5") || effectiveModel?.includes("o1") || effectiveModel?.includes("o3") || effectiveModel?.includes("o4") || effectiveModel?.includes("vision") || effectiveModel?.includes("gemini")))
+    (isGroq && (effectiveModel?.includes("vision") || effectiveModel?.includes("11b") || effectiveModel?.includes("90b") || effectiveModel?.includes("qwen"))) ||
+    (!isGroq && !isDeepSeek && (effectiveModel?.includes("gpt-4") || effectiveModel?.includes("gpt-5") || effectiveModel?.includes("o1") || effectiveModel?.includes("o3") || effectiveModel?.includes("o4") || effectiveModel?.includes("vision") || effectiveModel?.includes("vl") || effectiveModel?.includes("gemini") || effectiveModel?.includes("claude")))
   );
   const activeImages = supportsVision ? visualImages : [];
   
   if (record.isManaged) {
     let licenseKey = "JACS-MANAGED";
+    let deviceId = "";
     try {
       if (safeStorage.isEncryptionAvailable() && fs.existsSync(licensePath())) {
         const raw = fs.readFileSync(licensePath());
         licenseKey = safeStorage.decryptString(raw) || "JACS-MANAGED";
       }
     } catch { /* best effort */ }
-    url = endpoint(record.baseUrl, "chat/completions");
+    try {
+      const mach = machineInfo();
+      if (mach && mach.getHardwareId) {
+        deviceId = mach.getHardwareId();
+      }
+    } catch {}
+
+    const base = record.baseUrl && !record.baseUrl.includes("nexoratech.com.vn")
+      ? record.baseUrl
+      : `${apiBaseUrl()}/api/v1/gateway`;
+
+    url = endpoint(base, "chat/completions");
     headers.Authorization = `Bearer ${licenseKey}`;
+    headers["X-License-Key"] = licenseKey;
     headers["x-jacs-license-key"] = licenseKey;
+    if (deviceId) {
+      headers["X-Device-Id"] = deviceId;
+    }
     const content = activeImages.length
       ? [
           { type: "text", text: prompt },
@@ -1493,7 +1531,14 @@ function providerRequest(record, prompt, images = [], operationId, attempt = 0) 
   }).catch((error) => {
     if (state?.cancelled) throw cancelledOperationError();
 
-    // If multimodal vision request fails with 400/413/415/422 (unsupported images / payload size), retry immediately with text-only
+    // If multimodal vision request fails with 400/413/415/422 (unsupported images / payload size), downsample images first before dropping
+    if (activeImages.length > 6 && [400, 413, 415, 422].includes(Number(error?.status)) && attempt === 0) {
+      const step = Math.ceil(activeImages.length / 6);
+      const reducedImages = activeImages.filter((_, idx) => idx % step === 0);
+      return new Promise((resolve) => setTimeout(resolve, 400)).then(() =>
+        providerRequest(record, prompt, reducedImages, operationId, attempt + 1)
+      );
+    }
     if (activeImages.length && [400, 404, 408, 413, 415, 422, 500, 502, 503, 504, 524].includes(Number(error?.status)) && attempt < 3) {
       return new Promise((resolve) => setTimeout(resolve, 400)).then(() =>
         providerRequest(record, prompt, [], operationId, attempt + 1)
@@ -1561,19 +1606,105 @@ async function extractAnalysisFrames(filePath, durationSeconds, operationId) {
   if (!ffmpeg) return [];
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "jacs-analysis-"));
   const dur = Math.max(5, Number(durationSeconds || 30));
-  // Extract 10 to 32 crisp 640p keyframes for high-accuracy vision analysis covering entire video
-  const frameCount = dur <= 45 ? 10 : (dur <= 180 ? 14 : (dur <= 600 ? 18 : (dur <= 1800 ? 24 : 32)));
-  const interval = dur / frameCount;
+  // Extract 10 to 16 well-distributed crisp keyframes for fast, high-accuracy vision analysis
+  const frameCount = dur <= 45 ? 8 : (dur <= 180 ? 12 : (dur <= 600 ? 14 : 16));
+  const step = dur / (frameCount + 1);
+  const timestamps = [];
+  for (let i = 1; i <= frameCount; i++) {
+    timestamps.push(Math.min(dur - 0.5, Math.max(0.5, Number((i * step).toFixed(2)))));
+  }
+
+  const frames = [];
   try {
-    await runProcess(ffmpeg, ["-hide_banner", "-loglevel", "error", "-i", path.resolve(filePath), "-vf", `fps=1/${interval},scale=640:-2`, "-q:v", "3", "-frames:v", String(frameCount), path.join(directory, "frame-%02d.jpg")], undefined, operationId);
-    return fs.readdirSync(directory).filter((name) => name.endsWith(".jpg")).sort().map((name, index) => ({
-      data: fs.readFileSync(path.join(directory, name)).toString("base64"),
-      timestampSeconds: Math.min(dur, index * interval),
-    }));
+    // Fast seek extraction (-ss before -i) with controlled concurrency to prevent 100% CPU lockup
+    const BATCH_SIZE = 2;
+    for (let b = 0; b < timestamps.length; b += BATCH_SIZE) {
+      const batch = timestamps.slice(b, b + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (ts, offset) => {
+          const idx = b + offset;
+          const frameFile = path.join(directory, `frame-${String(idx).padStart(2, "0")}.jpg`);
+          try {
+            await runProcess(
+              ffmpeg,
+              [
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-threads",
+                "1",
+                "-ss",
+                String(ts),
+                "-i",
+                path.resolve(filePath),
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=480:-2",
+                "-q:v",
+                "4",
+                frameFile,
+              ],
+              undefined,
+              operationId
+            );
+            if (fs.existsSync(frameFile) && fs.statSync(frameFile).size > 200) {
+              frames.push({
+                index: idx,
+                data: fs.readFileSync(frameFile).toString("base64"),
+                timestampSeconds: ts,
+              });
+            }
+          } catch {
+            // Individual frame failure is non-fatal; continue with remaining frames
+          }
+        })
+      );
+    }
+
+    frames.sort((a, b) => a.index - b.index);
+
+    // Fallback if fast seek returned no frames
+    if (!frames.length) {
+      const fallbackPattern = path.join(directory, "fallback-%02d.jpg");
+      const sampleInterval = Math.max(1, Math.round(dur / 8));
+      await runProcess(
+        ffmpeg,
+        [
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-i",
+          path.resolve(filePath),
+          "-vf",
+          `fps=1/${sampleInterval},scale=480:-2`,
+          "-q:v",
+          "4",
+          "-frames:v",
+          "8",
+          fallbackPattern,
+        ],
+        undefined,
+        operationId
+      );
+      return fs
+        .readdirSync(directory)
+        .filter((n) => n.endsWith(".jpg"))
+        .sort()
+        .map((name, index) => ({
+          data: fs.readFileSync(path.join(directory, name)).toString("base64"),
+          timestampSeconds: Math.min(dur, index * sampleInterval),
+        }));
+    }
+
+    return frames.map(({ data, timestampSeconds }) => ({ data, timestampSeconds }));
   } catch (error) {
     if (operationState(operationId)?.cancelled || error?.code === "JACS_OPERATION_CANCELLED") throw cancelledOperationError();
+    console.warn("[Analysis] Frame extraction warning:", error?.message);
     return [];
-  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 async function transcribeVideo(filePath, record, operationId, sourceDurationSeconds = 0) {
@@ -1746,7 +1877,7 @@ async function detectSubjectFocus(filePath, durationSeconds, operationId) {
 }
 
 function isRefusalText(str) {
-  return /(chưa thể|không có hình ảnh|chưa có dữ liệu|chưa có video|không thể xác minh|không có thông tin|không có transcript|dữ liệu hiện có không kèm)/i.test(String(str || ""));
+  return /(chưa thể|chỉ dựa trên|không cung cấp đủ|không thể tạo|không thể xác định|cần cung cấp|trái với yêu cầu|cần bản chép lời|đại diện và không có|khung hình đại diện|suy đoán.*yêu cầu|không thể viết|chưa có đủ|thiếu thông tin|không đủ dữ liệu|không có hình ảnh|chưa có dữ liệu|chưa có video|không thể xác minh|không có thông tin|không có transcript|dữ liệu hiện có không kèm)/i.test(String(str || ""));
 }
 
 function normalizeScenes(value, duration, fallbackScenes, options = {}) {
@@ -1794,11 +1925,11 @@ function normalizeScenes(value, duration, fallbackScenes, options = {}) {
     const voiceDuration = Math.max(3, Math.round(wordCount / 4.15));
     const clipDuration = voiceDuration;
 
-    if (!Number.isFinite(parsedSrcEnd) || parsedSrcEnd <= parsedSrcStart || (parsedSrcEnd - parsedSrcStart < 4)) {
+    // Visual clip in source video must match clip duration 1:1 with speech pacing
+    parsedSrcEnd = Math.min(total, parsedSrcStart + clipDuration);
+    if (parsedSrcEnd - parsedSrcStart < clipDuration && total > clipDuration) {
+      parsedSrcStart = Math.max(0, parsedSrcEnd - clipDuration);
       parsedSrcEnd = Math.min(total, parsedSrcStart + clipDuration);
-      if (parsedSrcEnd - parsedSrcStart < clipDuration && total > clipDuration) {
-        parsedSrcStart = Math.max(0, parsedSrcEnd - clipDuration);
-      }
     }
 
     // Timeline duration matches clip duration sequentially
@@ -1855,12 +1986,18 @@ function cleanJsonText(raw) {
 }
 
 function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes, rawScript = "", cleanTitle = "", transcriptSegments = [], transcript = "") {
-  const safeTargetCount = Math.max(3, Number(targetCount) || 10);
+  const safeTargetCount = Math.max(3, Math.min(24, Number(targetCount) || 10));
   const total = Math.max(30, Number(totalDuration) || 300);
 
-  const cleanRawScenes = Array.isArray(scenes) ? scenes.filter((s) => s && (s.title || s.voiceover || s.detail || s.translation)) : [];
+  const cleanRawScenes = Array.isArray(scenes)
+    ? scenes.filter((s) => {
+        if (!s) return false;
+        const txt = String(s.voiceover || s.translation || s.title || s.detail || "").trim();
+        return !isRefusalText(txt) && (s.title || s.voiceover || s.detail || s.translation);
+      })
+    : [];
 
-  // If we already have enough scenes from AI, preserve them directly
+  // If we already have enough valid non-refusal scenes from AI, preserve them directly
   if (cleanRawScenes.length >= safeTargetCount) {
     return cleanRawScenes;
   }
@@ -1869,8 +2006,8 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
   const rawTextPool = [];
   for (const sc of cleanRawScenes) {
     const txt = String(sc.voiceover || sc.translation || sc.detail || "").trim();
-    if (txt) {
-      const subParts = txt.split(/(?<=[.!?。;\n])\s+/).map((s) => s.trim()).filter((s) => s.length > 10);
+    if (txt && !isRefusalText(txt)) {
+      const subParts = txt.split(/(?<=[.!?。;\n])\s+/).map((s) => s.trim()).filter((s) => s.length > 10 && !isRefusalText(s));
       if (subParts.length > 1) {
         rawTextPool.push(...subParts);
       } else {
@@ -1879,8 +2016,8 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
     }
   }
 
-  if (rawScript && rawScript.length > 20) {
-    const sentences = rawScript.split(/(?<=[.!?。;\n])\s+/).map((s) => s.trim()).filter((s) => s.length > 10);
+  if (rawScript && rawScript.length > 20 && !isRefusalText(rawScript)) {
+    const sentences = rawScript.split(/(?<=[.!?。;\n])\s+/).map((s) => s.trim()).filter((s) => s.length > 10 && !isRefusalText(s));
     if (sentences.length > rawTextPool.length) {
       rawTextPool.length = 0;
       rawTextPool.push(...sentences);
@@ -1898,9 +2035,9 @@ function expandScenesIfTooFew(scenes, targetCount, totalDuration, fallbackScenes
     const fallbackSc = fallbackScenes?.[i] || fallbackScenes?.[fallbackScenes.length - 1];
 
     let voice = "";
-    if (existing?.voiceover && existing.voiceover.length > 15) {
+    if (existing?.voiceover && existing.voiceover.length > 15 && !isRefusalText(existing.voiceover)) {
       voice = existing.voiceover;
-    } else if (i < rawTextPool.length && rawTextPool[i] && rawTextPool[i].length > 15) {
+    } else if (i < rawTextPool.length && rawTextPool[i] && rawTextPool[i].length > 15 && !isRefusalText(rawTextPool[i])) {
       voice = rawTextPool[i];
     } else if (fallbackSc?.voiceover) {
       voice = fallbackSc.voiceover;
@@ -1952,10 +2089,16 @@ function parseAnalysis(text, probe, usage, customPrompt, options = {}, transcrip
     let rawScenes = unwrapped?.scenes || unwrapped?.scene_map || unwrapped?.segments;
     const rawVoiceScript = String(unwrapped?.voice_script || unwrapped?.voicescript || unwrapped?.script || unwrapped?.summary || "").trim();
 
-    const targetDurMins = Number(options?.targetDurationMinutes) || (probe.durationSeconds > 300 ? 5.0 : Math.ceil(probe.durationSeconds / 60));
-    const targetSceneCount = targetDurMins <= 1 ? 4 : targetDurMins <= 3 ? 8 : targetDurMins <= 5 ? 14 : targetDurMins <= 10 ? 24 : targetDurMins <= 15 ? 35 : Math.max(4, Math.round(targetDurMins * 2.4));
+    const targetDurMins = Math.min(15, Math.max(1, Number(options?.targetDurationMinutes) || (probe.durationSeconds > 300 ? 5.0 : Math.ceil(probe.durationSeconds / 60))));
+    const targetSceneCount = targetDurMins <= 1 ? 4 : targetDurMins <= 3 ? 8 : targetDurMins <= 5 ? 12 : targetDurMins <= 8 ? 16 : targetDurMins <= 12 ? 20 : 24;
 
-    const cleanRawScenes = Array.isArray(rawScenes) ? rawScenes.filter((s) => s && (s.title || s.voiceover || s.detail || s.translation)) : [];
+    const cleanRawScenes = Array.isArray(rawScenes)
+      ? rawScenes.filter((s) => {
+          if (!s) return false;
+          const txt = String(s.voiceover || s.translation || s.title || s.detail || "").trim();
+          return !isRefusalText(txt) && (s.title || s.voiceover || s.detail || s.translation);
+        })
+      : [];
 
     const effectiveScenes = expandScenesIfTooFew(
       cleanRawScenes,
@@ -2737,11 +2880,23 @@ async function synthesizeSceneAlignedNarration({
 async function synthesizeNarration(record, text, voice, gender, languageCode, operationId) {
   if (!text) return null;
   if (!record) throw new Error("Chưa chọn provider giọng AI");
-  if (!record.apiKey) throw new Error("Provider giọng AI chưa có API key");
-  if (!record.capabilities?.includes("tts")) throw new Error("Provider giọng AI chưa bật capability tts");
-  if (!["openai", "openai-compatible"].includes(record.providerType)) throw new Error("Provider giọng AI hiện chưa hỗ trợ TTS trong desktop tool");
+  let apiKey = record.apiKey;
+  if (!apiKey && record.isManaged) {
+    let licenseKey = "JACS-MANAGED";
+    try {
+      if (safeStorage.isEncryptionAvailable() && fs.existsSync(licensePath())) {
+        const raw = fs.readFileSync(licensePath());
+        licenseKey = safeStorage.decryptString(raw) || "JACS-MANAGED";
+      }
+    } catch {}
+    apiKey = licenseKey;
+  }
+  if (!apiKey) throw new Error("Provider giọng AI chưa có API key");
+  if (!record.capabilities?.includes("tts") && !record.isManaged && !["openai", "openai-compatible"].includes(record.providerType)) {
+    throw new Error("Provider giọng AI hiện chưa hỗ trợ TTS trong desktop tool");
+  }
   const endpoint = (() => {
-    let base = String(record.baseUrl || "").replace(/\/+$/, "");
+    let base = String(record.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
     base = base.replace(/\/(?:chat\/completions|responses|audio\/speech)$/i, "");
     return base.endsWith("/audio/speech") ? base : `${base}/audio/speech`;
   })();
@@ -2754,9 +2909,13 @@ async function synthesizeNarration(record, text, voice, gender, languageCode, op
   let lastError = "";
   for (const model of models) {
     for (const selectedVoice of voices) {
+      const headers = { Accept: "audio/mpeg", "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
+      if (record.isManaged) {
+        headers["x-jacs-license-key"] = apiKey;
+      }
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { Accept: "audio/mpeg", "Content-Type": "application/json", Authorization: `Bearer ${record.apiKey}` },
+        headers,
         body: JSON.stringify({ model, voice: selectedVoice, input: String(text).slice(0, 4000), response_format: "mp3" }),
         signal,
       });
@@ -3267,7 +3426,9 @@ async function renderVideoFile(event, filePath, folder, options = {}, operationI
   const renderWithCodec = (codec) => {
     const args = ["-y", "-threads", String(safeThreads)];
 
-    if (codec === "h264_nvenc") {
+    // Note: Do not pass -hwaccel auto before inputs when using complex software
+    // filtergraphs (subtitles libass / scale / crop) to avoid VRAM corruption & NVDEC driver crashes.
+    if (codec === "h264_nvenc" && !graph.length && !options.subtitlesEnabled) {
       args.push("-hwaccel", "auto");
     }
 
@@ -3849,20 +4010,30 @@ function resolveTargetDurationFromRules(durationSeconds, durationRules, fallback
 
       // Build candidate pool from options.providerPool or all enabled providers for auto-failover
       let candidatePool = [];
+      const managedAdmin = rawProviders.find((p) => p.isManaged && p.enabled) || rawProviders.find((p) => p.isManaged);
+
       if (Array.isArray(options.providerPool) && options.providerPool.length > 0) {
         for (const item of options.providerPool) {
-          const baseRec = storeInstance.find(item.providerId);
+          let baseRec = storeInstance.find(item.providerId);
+          if (!baseRec && (item.providerId === "admin-cloud-gateway" || item.providerId?.includes("managed") || item.providerId?.includes("admin"))) {
+            baseRec = managedAdmin;
+          }
           if (baseRec && (baseRec.apiKey || baseRec.isManaged)) {
-            candidatePool.push({ ...baseRec, model: item.model || baseRec.model });
+            candidatePool.push({ ...baseRec, model: item.model || options.model || baseRec.model });
           }
         }
       }
 
       if (!candidatePool.length) {
         const targetProviderId = (providerId && String(providerId).trim() && providerId !== "local") ? providerId : undefined;
-        const defaultProvider = targetProviderId ? storeInstance.find(targetProviderId) : allEnabledProviders[0];
+        let defaultProvider = targetProviderId ? storeInstance.find(targetProviderId) : undefined;
+        if (!defaultProvider && (targetProviderId === "admin-cloud-gateway" || targetProviderId?.includes("managed") || targetProviderId?.includes("admin"))) {
+          defaultProvider = managedAdmin;
+        }
+        if (!defaultProvider) defaultProvider = allEnabledProviders[0];
+
         if (defaultProvider && (defaultProvider.apiKey || defaultProvider.isManaged)) {
-          candidatePool.push(defaultProvider);
+          candidatePool.push({ ...defaultProvider, model: options.model || defaultProvider.model });
         }
         for (const p of allEnabledProviders) {
           if (!candidatePool.some((c) => c.id === p.id)) {
@@ -3872,16 +4043,18 @@ function resolveTargetDurationFromRules(durationSeconds, durationRules, fallback
       }
 
       // Add Managed Cloud AI Gateway as backup if available and not already in pool
-      const managedAdmin = rawProviders.find((p) => p.isManaged && p.enabled);
-      if (managedAdmin && !candidatePool.some((c) => c.id === managedAdmin.id)) {
-        candidatePool.push(managedAdmin);
+      if (managedAdmin && !candidatePool.some((c) => c.isManaged)) {
+        candidatePool.push({ ...managedAdmin, model: options.model || managedAdmin.model });
       }
 
       if (!candidatePool.length) {
-        throw new Error("Chưa phát hiện API Key của Provider AI (Google Gemini / OpenAI / Groq). Để AI có thể xem hình ảnh, phân tích bối cảnh và viết kịch bản lồng tiếng từ Prompt, vui lòng vào 'Cài đặt tool' (góc trái bên dưới) -> nhập API Key của Gemini hoặc OpenAI rồi thử lại.");
+        throw new Error("Chưa phát hiện API Key của Provider AI (Google Gemini / OpenAI / Groq) hoặc chưa được Admin cấp phép mô hình AI. Vui lòng vào 'Cài Đặt' kiểm tra.");
       }
 
       const primaryRecord = candidatePool[0];
+      if (options.model && primaryRecord) {
+        primaryRecord.model = options.model;
+      }
       event.sender.send("runtime:analysis-progress", { progress: 18, stage: "extracting-frames", operationId });
       
       let transcriptionRecord = options.transcriptionProviderId ? storeInstance.find(options.transcriptionProviderId) : undefined;
@@ -3915,17 +4088,19 @@ function resolveTargetDurationFromRules(durationSeconds, durationRules, fallback
       if (options.durationMode === "rules" && Array.isArray(options.durationRules) && options.durationRules.length > 0) {
         targetDurationMins = resolveTargetDurationFromRules(probe.durationSeconds, options.durationRules, targetDurationMins);
       }
+      const effectiveTargetMins = Math.min(15, Math.max(1, targetDurationMins));
       const targetSceneCount = isStoryRecap
-        ? (targetDurationMins <= 1 ? 4 : targetDurationMins <= 3 ? 8 : targetDurationMins <= 5 ? 14 : targetDurationMins <= 10 ? 24 : targetDurationMins <= 15 ? 35 : Math.max(4, Math.round(targetDurationMins * 2.4)))
-        : Math.max(4, Math.ceil(probe.durationSeconds / 20));
+        ? (effectiveTargetMins <= 1 ? 4 : effectiveTargetMins <= 3 ? 8 : effectiveTargetMins <= 5 ? 12 : effectiveTargetMins <= 8 ? 16 : effectiveTargetMins <= 12 ? 20 : 24)
+        : Math.min(24, Math.max(4, Math.round(probe.durationSeconds / 20)));
 
-      const targetWordsMin = Math.round(targetDurationMins * 220);
-      const targetWordsMax = Math.round(targetDurationMins * 260);
-      const wordsPerScene = Math.max(45, Math.round(targetWordsMax / targetSceneCount));
+      const targetWordsMin = Math.round(effectiveTargetMins * 180);
+      const targetWordsMax = Math.round(effectiveTargetMins * 220);
+      const wordsPerScene = Math.max(35, Math.round(targetWordsMax / targetSceneCount));
 
       const rawFileName = path.basename(localFilePath, path.extname(localFilePath));
       let cleanVideoTitle = rawFileName
         .replace(/^(?:ytdown(?:loader)?(?:\.com)?|youtube|media|video|download|jacs|yt)[_.-]*/gi, "")
+        .replace(/\b(?:hollywood|full\s*action|action|thriller|english\s*movie|free\s*movies?|full\s*movie|movies?|film|vietsub|thuyet\s*minh|long\s*tieng|tap\s*\d+|phim\s*hanh\s*dong|phim\s*chieu\s*rap)\b/gi, "")
         .replace(/[-_.]+/g, " ")
         .replace(/\b(?:1080p|720p|480p|4k|hd|mp4|mkv|avi|mov|webm)\b/gi, "")
         .replace(/\b(?:media|gdky|ip[a-z0-9]+|\d{3,})\b/gi, "")
@@ -3935,8 +4110,8 @@ function resolveTargetDurationFromRules(durationSeconds, durationRules, fallback
       if (!cleanVideoTitle || cleanVideoTitle.length < 3) cleanVideoTitle = rawFileName;
 
       const customPromptText = rawPrompt || (isVietnamese
-        ? `Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp (Master Storyteller & Scriptwriter) hàng đầu. Nhiệm vụ của bạn là xem toàn bộ video "${cleanVideoTitle}" dài ${endStamp}, đọc hiểu hình ảnh qua các khung hình và lời thoại bóc băng, sau đó biên kịch lại toàn bộ câu chuyện thành kịch bản Voice-over kể chuyện bằng NGÔI THỨ 3 (người kể chuyện giấu mặt/quan sát) mượt mà, cuốn hút, bám sát 100% nội dung thực tế của video theo Cấu trúc Storytelling hoàn chỉnh: [00:00 - 00:10] Hook mở màn ấn tượng để giữ chân người xem, Hồi 1: Bối cảnh & Điểm khởi nguồn, Hồi 2: Diễn biến trọng tâm & Cao trào đắt giá, Hồi 3: Kết cục & Thông điệp/Bài học ý nghĩa.`
-        : `Act as a professional 3rd-person narrator and master storyteller, analyzing the full video narrative arc of "${cleanVideoTitle}" (${endStamp}) and extracting key highlight cut scenes with an engaging 3-Act structure and viral 10s hook.`);
+        ? `Bạn là một Biên kịch - Kể chuyện Chuyên nghiệp (Master Storyteller & Scriptwriter) hàng đầu chuyên về Review Phim & Tóm Tắt Điện Ảnh. Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp}, đọc hiểu hình ảnh qua các khung hình và lời thoại bóc băng, sau đó biên kịch lại toàn bộ câu chuyện thành kịch bản Voice-over kể chuyện bằng NGÔI THỨ 3 (người kể chuyện giấu mặt/quan sát) mượt mà, cuốn hút, bám sát 100% nội dung thực tế của video theo Cấu trúc Storytelling hoàn chỉnh: [00:00 - 00:10] Hook mở màn ấn tượng để giữ chân người xem, Hồi 1: Bối cảnh & Điểm khởi nguồn, Hồi 2: Diễn biến trọng tâm & Cao trào đắt giá, Hồi 3: Kết cục & Thông điệp/Bài học ý nghĩa. QUY TẮC CỐT LÕI: Tuyệt đối KHÔNG bắt đầu bằng 'Mở đầu video...' hay đọc tên file thô, hãy đi thẳng vào bối cảnh, hành động và sự kịch tính của các nhân vật.`
+        : `Act as a professional 3rd-person narrator and master storyteller, analyzing the full video narrative arc of "${cleanVideoTitle}" (${endStamp}) and extracting key highlight cut scenes with an engaging 3-Act structure and viral 10s hook. Never say 'Opening video...', dive straight into the cinematic action.`);
 
       const languageRule = isVietnamese
         ? "TẤT CẢ NỘI DUNG (summary, title, detail, translation, voiceover, voice_script) BẮT BUỘC PHẢI VIẾT 100% BẰNG TIẾNG VIỆT THUẦN TÚY. Dù video gốc có lời thoại tiếng Anh hay bất kỳ ngôn ngữ nào, toàn bộ lời thoại và kịch bản voiceover BẮT BUỘC PHẢI ĐƯỢC BIÊN KỊCH VÀ DỊCH SANG TIẾNG VIỆT 100%. TUYỆT ĐỐI KHÔNG để nguyên câu tiếng Anh hoặc chèn nửa Anh nửa Việt vào lời thoại voiceover hay tóm tắt."
@@ -3954,7 +4129,7 @@ function resolveTargetDurationFromRules(durationSeconds, durationRules, fallback
               detail: "Trích xuất câu thoại đắt giá hoặc khoảnh khắc ấn tượng nhất của video để chặn người xem lướt qua.",
               action_visual: "Hình ảnh cận cảnh khoảnh khắc ấn tượng nhất trong 10 giây đầu của video gốc.",
               translation: "Tình huống ấn tượng mở màn ngay lập tức kích hoạt sự chú ý đặc biệt.",
-              voiceover: `Mở đầu video "${cleanVideoTitle}", một tình huống bất ngờ và đầy cuốn hút lập tức thu hút sự chú ý của người xem ngay từ những giây đầu tiên.`
+              voiceover: "Một phân cảnh mở màn nghẹt thở ngay lập tức cuốn người xem vào cuộc rượt đuổi sinh tử, khi người đàn ông bí ẩn bất ngờ đối mặt với hiểm nguy cận kề."
             },
             {
               id: "scene-2",
@@ -4045,9 +4220,15 @@ SPECIALIZED REALITY TV & SOCIAL DRAMA RULES:
 - FRAME MATCHING: Khung hình đang chiếu vào ai hoặc tình huống gì thì lời dẫn phải bình luận chính xác vào người và hành động đó.`;
       } else if (isMovieReview) {
         genreGuidance = `
-SPECIALIZED MOVIE REVIEW & CINEMATIC STORYTELLING RULES:
-- TONE: Hồi hộp, cuốn hút, đào sâu tâm lý nhân vật, làm nổi bật plot twist và các nút thắt mở của kịch bản.
-- FOCUS: Tóm tắt logic các biến cố, xung đột trung tâm, động cơ nhân vật và phân tích thông điệp điện ảnh sâu sắc.`;
+SPECIALIZED MOVIE REVIEW & CINEMATIC STORYTELLING RULES (KHỚP VOICE & NGÔI THỨ 3):
+- GÓC NHÌN & NGÔI KỂ: 100% NGÔI THỨ 3 HOÀN TOÀN (Narrator khách quan nhưng kịch tính: "anh ta", "cô ấy", "hắn", "gã đàn ông", "nam chính", "nữ chính", "tên trùm", "viên thanh tra"...). Giọng văn điện ảnh cuốn hút, giàu sức gợi hình, tuyệt đối không xưng "tôi", "mình" hay dùng đại từ ngôi thứ nhất làm vỡ vụn mạch cảm xúc phim.
+- BÁM SÁT DIỄN BIẾN NHÂN VẬT & KHUNG CẢNH: Phân tích kỹ lưỡng từng cử chỉ, nét mặt, ánh mắt, hành động kịch tính của nhân vật trong khung hình và đối chiếu lời thoại bóc băng gốc. Khung cảnh đang ở bối cảnh nào (đêm tối, ngõ hẹp, phòng giam, phòng họp, truy đuổi...) thì câu thoại voiceover phải cộng hưởng và mô tả chính xác những gì người xem đang thấy.
+- KHỚP VOICE CHUẨN XÁC — KHÔNG NGẮT QUÃNG, KHÔNG CHẬM NHỊP (CADENCE & ZERO DEAD AIR):
+  + Tốc độ phát thanh viên tiếng Việt chuẩn studio: 2.6 - 3.0 từ/giây (khoảng 160 - 180 từ/phút).
+  + Mỗi phân cảnh [source_start -> source_end] có thời lượng ΔT giây: Lời thoại "voiceover" BẮT BUỘC phải có số lượng từ tương thích chính xác (~2.7 * ΔT từ).
+  + TUYỆT ĐỐI KHÔNG VIẾT QUÁ NGẮN: Tránh tạo ra khoảng lặng chết âm (dead air) gây ngắt quãng, giật cục giữa các phân cảnh khi review.
+  + TUYỆT ĐỐI KHÔNG VIẾT QUÁ DÀI: Tránh làm giọng đọc bị dồn ứ, chậm nhịp, đè chéo sang phân cảnh tiếp theo hoặc phát thanh viên phải tua vội làm mất chất điện ảnh.
+  + MẠCH CHUYỂN CẢNH LIỀN KHỐI: Kết thúc câu trước và mở đầu câu sau kết nối tự nhiên, đưa người xem theo dõi trọn vẹn câu chuyện từ bất ngờ này sang bất ngờ khác không một nhịp đứt gãy.`;
       } else if (isNewsDigest) {
         genreGuidance = `
 SPECIALIZED NEWS & INVESTIGATIVE JOURNALISM RULES:
@@ -4057,7 +4238,7 @@ SPECIALIZED NEWS & INVESTIGATIVE JOURNALISM RULES:
 
       let recapGuidance = `
 🎯 CẤU TRÚC STORYTELLING BẮT BUỘC (3 HỒI & VIRAL RETENTION HOOK CAO TRÀO):
-Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${cleanVideoTitle}", đọc hiểu 100% nội dung thực tế qua các khung hình và lời thoại bóc băng, sau đó biên kịch lại toàn bộ câu chuyện bằng lời kể chuyện ngôi thứ 3 (Narrator) với văn phong lôi cuốn, mượt mà, cảm xúc trong khoảng ~${targetDurationMins} phút (~${targetWordsMin} - ${targetWordsMax} từ tiếng Việt).
+Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${cleanVideoTitle}", đọc hiểu nội dung qua các khung hình tiêu biểu và lời thoại bóc băng, sau đó biên kịch lại toàn bộ câu chuyện bằng lời kể chuyện ngôi thứ 3 (Narrator) với văn phong lôi cuốn, mượt mà, cảm xúc trong khoảng ~${effectiveTargetMins} phút (~${targetWordsMin} - ${targetWordsMax} từ tiếng Việt).
 
 1. [00:00 - 00:10] HOOK CAO TRÀO MỞ MÀN (BẮT BUỘC Ở SCENE ĐẦU TIÊN):
    - Thời lượng đọc: Đúng 10 giây đầu (khoảng 25 - 35 từ).
@@ -4081,6 +4262,7 @@ Nhiệm vụ của bạn là xem toàn bộ video dài ${endStamp} về "${clean
    - Phân cảnh đầu tiên BẮT BUỘC là Hook 10s đầu ([00:00 - 00:10]).
    - Mỗi phân cảnh có lời thoại "voiceover" dài ${Math.max(30, wordsPerScene - 20)}-${wordsPerScene + 25} từ tiếng Việt mượt mà, kết nối thành một câu chuyện liền mạch.
    - NHẶT ĐÚNG CẢNH TRONG VIDEO GỐC: "source_start" và "source_end" của mỗi phân cảnh BẮT BUỘC phải chỉ chính xác mốc thời gian trong video gốc có hình ảnh, hành động hoặc nét mặt minh họa trực tiếp cho câu kể voiceover. Khi phân tích xong, Timeline sẽ tự động cắt các đoạn video này và ráp vào khớp từng giây với lời kể.
+   - ĐỒNG BỘ KHỚP VOICE & THỜI LƯỢNG CẢNH (ZERO DEAD AIR / KHÔNG CHẬM NHỊP): Độ dài số từ trong câu "voiceover" phải cân xứng hoàn hảo với thời lượng của đoạn cắt (khoảng 2.6 - 3 từ cho mỗi giây thời lượng). Tuyệt đối không viết quá ngắn gây ngắt quãng im lặng vô cớ, và không viết quá dài làm tràn nhịp sang cảnh sau.
    - TUYỆT ĐỐI KHÔNG CHÈN MỐC THỜI GIAN VÀO LỜI ĐỌC: Không ghi các cụm từ như "tại mốc 00:00", "lúc 02:10", "từ phút...", "(15:09)" vào nội dung câu chữ của voiceover hay voice_script. Đây là lời thoại để phát thanh viên AI đọc thành tiếng cho người xem nghe, phải là văn phong kể chuyện tự nhiên, liền mạch 100%.
    - TUYỆT ĐỐI KHÔNG TRỘN LẪN TIẾNG ANH VÀ TIẾNG VIỆT (NO MIXED LANGUAGES): Toàn bộ lời thoại và kịch bản voiceover phải được biên kịch và dịch 100% sang tiếng Việt trau chuốt, tự nhiên, lôi cuốn theo mạch diễn biến của video.`;
 
@@ -4094,25 +4276,29 @@ USER DIRECTIVE & NICHE STYLE:
 ${genreGuidance}
 ${recapGuidance}
 
-QUY TẮC PHÂN TÍCH CHÍNH XÁC & TRUNG THỰC (FACTUAL ACCURACY FIRST):
-- ĐỌC HIỂU ĐÚNG NỘI DUNG THỰC TẾ: Phân tích TRUNG THỰC VÀ CHÍNH XÁC theo đúng diễn biến thực tế trong các khung hình và lời thoại bóc băng của video gốc.
-- TỰ ĐỘNG THÍCH ỨNG THEO THỂ LOẠI CỦA VIDEO:
-  + Nếu là phim / hoạt hình / drama: Kể lại cốt truyện, tình huống, nhân vật, cao trào và plot twist của tác phẩm.
+QUY TẮC BIÊN KỊCH ĐIỆN ẢNH & KỂ CHUYỆN (MASTER STORYTELLER & FILM REVIEWER):
+- VAI TRÒ CỐT LÕI: Bạn là một Chuyên gia Biên kịch & Kể chuyện Review Phim hàng đầu. Các khung hình được gửi kèm là những cột mốc hình ảnh tiêu biểu (visual milestones) trải dài từ đầu đến cuối tác phẩm "${cleanVideoTitle}".
+- NHIỆM VỤ BẮT BUỘC: Hãy phát huy tối đa tư duy biên kịch điện ảnh, kết nối logic các khung hình hành động, bối cảnh, nhân vật và tựa đề phim để xây dựng một kịch bản Review Phim trọn vẹn, cuốn hút, kịch tính bằng NGÔI THỨ 3 (người kể chuyện giấu mặt/quan sát) từ mở đầu đến hồi kết.
+- TUYỆT ĐỐI CẤM ĐƯA RA LỜI TỪ CHỐI HOẶC BÌNH LUẬN THIẾU DỮ LIỆU:
+  + CẤM viết các câu từ chối hoặc trần tình như: "Chưa thể tạo kịch bản...", "Chỉ dựa trên 16 khung hình...", "Không đủ thông tin...", "Cần cung cấp video/bản chép lời...", "Buộc phải suy đoán...".
+  + CẤM giải thích khó khăn hay phàn nàn về số lượng khung hình.
+  + Mọi trường ("summary", "voiceover", "detail") BẮT BUỘC phải là văn bản kể chuyện điện ảnh thực thụ, hấp dẫn, kịch tính, khơi gợi cảm xúc cao nhất cho người xem.
+- TỰ ĐỘNG THÍCH ỨNG THEO THỂ LOẠI:
+  + Nếu là phim / hoạt hình / hành động: Kể lại cốt truyện, tình huống, nhân vật, cao trào và plot twist của tác phẩm.
   + Nếu là vlog / du lịch / ẩm thực / đời sống: Kể lại trải nghiệm, hành trình, món ăn, địa điểm và những khoảnh khắc thú vị.
   + Nếu là công nghệ / hướng dẫn / game / tin tức: Tóm tắt các điểm nổi bật, mẹo hay và bài học kinh nghiệm.
   + Nếu là cảnh sát / vụ án / pháp luật: Phân tích diễn biến nghiệp vụ, điều tra và kết luận pháp lý.
-- TUYỆT ĐỐI KHÔNG BỊA ĐẶT các tình tiết cảnh sát dừng xe, bắt tội phạm nếu video không phải thể loại đó.
 
 MANDATORY SCRIPTING & SCENE ALIGNMENT REQUIREMENTS:
 1. ${languageRule}
-2. COMPREHENSIVE FULL-LENGTH COMPREHENSION (BẮT BUỘC ĐỌC HIỂU TOÀN DIỆN VÀ PHÂN TÍCH CHUYÊN SÂU TỪ 00:00 ĐẾN ${endStamp}):
-   - Đọc hiểu, bóc tách và phân tích trọn vẹn toàn bộ cốt truyện và các biến cố của video "${cleanVideoTitle}" từ 00:00 xuyên suốt tới phút cuối cùng (${endStamp}). TUYỆT ĐỐI KHÔNG chỉ tóm tắt nửa đầu rồi cắt cụt.
-   - Trong "summary": Viết bản phân tích và tóm tắt chuyên sâu đầy đủ mạch diễn biến câu chuyện (mở đầu ➔ biến cố nảy sinh ➔ quá trình điều tra / diễn biến tâm lý / thử thách ➔ cao trào đỉnh điểm ➔ hồi kết & thông điệp).
+2. COMPREHENSIVE FULL-LENGTH COMPREHENSION (TÓM TẮT & BIÊN KỊCH TOÀN BỘ CỐT TRUYỆN ĐẾN ${endStamp}):
+   - Trong "summary": Viết bản tóm tắt và bình luận điện ảnh chuyên sâu đầy đủ mạch diễn biến câu chuyện của "${cleanVideoTitle}" (khởi đầu ➔ biến cố nảy sinh ➔ thử thách & diễn biến then chốt ➔ cao trào đỉnh điểm ➔ hồi kết & bài học).
 3. CONTINUOUS 3RD-PERSON NARRATIVE & UNIFORM SCENE DISTRIBUTION:
-   - BẮT BUỘC mảng "scenes" phải chứa TỐI THIỂU ${targetSceneCount} PHÂN CẢNH (scenes) từ scene-1 đến scene-${targetSceneCount}.
-   - Các phân cảnh BẮT BUỘC PHẢI TRẢI ĐỀU THEO DÒNG THỜI GIAN từ đầu (00:00:00) đến cuối video (${endStamp}) để người xem theo dõi trọn vẹn toàn bộ câu chuyện kéo dài ~${targetDurationMins} phút (~${Math.round(targetDurationMins * 60)} giây).
-4. EXACT SPEECH CALIBRATION & NO TIMESTAMPS IN VOICE:
-   - Lời thuyết minh "voiceover" của mỗi phân cảnh phải dài từ ${Math.max(30, wordsPerScene - 20)} đến ${wordsPerScene + 25} từ tiếng Việt, mang phong cách dẫn chuyện ngôi thứ 3 truyền cảm, kịch tính, đào sâu chi tiết, không lặp từ ngữ và liền mạch xuyên suốt. Tổng bài voiceover phải đạt ~${targetWordsMin} - ${targetWordsMax} từ.
+   - Mảng "scenes" BẮT BUỘC phải chứa ĐỦ ${targetSceneCount} PHÂN CẢNH (scenes) từ scene-1 đến scene-${targetSceneCount}.
+   - Các phân cảnh phân bổ đều theo dòng thời gian từ 00:00:00 đến ${endStamp} để tạo thành bản tóm tắt video hoàn chỉnh ~${effectiveTargetMins} phút.
+4. EXACT SPEECH CALIBRATION, PACING & NO TIMESTAMPS IN VOICE:
+   - Lời thuyết minh "voiceover" của mỗi phân cảnh phải tương thích chính xác với thời lượng cảnh cắt (khoảng 2.6 - 3.0 từ/giây), mang phong cách dẫn chuyện ngôi thứ 3 truyền cảm, kịch tính, bám sát nhân vật và khung cảnh, không lặp từ ngữ và liền mạch xuyên suốt. Tổng bài voiceover phải đạt ~${targetWordsMin} - ${targetWordsMax} từ.
+   - TUYỆT ĐỐI KHÔNG để ngắt quãng (dead air) do câu quá ngắn, và TUYỆT ĐỐI KHÔNG để chậm nhịp / tràn giọng do câu quá dài.
    - TUYỆT ĐỐI KHÔNG chèn mốc thời gian, số phút, số giây vào trong lời văn voiceover/voice_script.
 5. PRECISE SOURCE CLIP TIMECODES (NHẶT ĐÚNG MỐC CẢNH GỐC KHỚP LỜI KỂ):
    - "source_start" và "source_end" phải chứa mốc thời gian chính xác trong video gốc (từ 00:00:00 đến ${endStamp}) để timeline tự động cắt và ráp video.
@@ -4162,15 +4348,9 @@ Return ONLY valid JSON with no markdown wrapping. Mảng 'scenes' phải có đ�
 
       if (!result || !result.text) {
         if (state?.cancelled) throw cancelledOperationError();
-        console.warn("[Analysis] All candidate providers failed or rate-limited, generating intelligent story synthesis fallback:", lastError?.message);
-        const fallbackAnalysis = generateLocalStoryAnalysis(probe, customPromptText, languageCode, { ...options, videoTitle: cleanVideoTitle, targetDurationMinutes: targetDurationMins }, transcript, transcriptSegments);
-        event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
-        return enrichAnalysis({
-          ...fallbackAnalysis,
-          transcript,
-          transcriptSegments,
-          previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` }))
-        }, transcript);
+        const errDetail = lastError?.message || "Không thể kết nối đến máy chủ AI";
+        console.warn("[Analysis] All candidate providers failed or rate-limited:", errDetail);
+        throw new Error(`Phân tích AI thất bại (${errDetail}). Vui lòng vào mục 'Cài Đặt' ➔ 'Nhà cung cấp AI (BYOK)' để thêm API Key (Google Gemini / OpenAI / Groq) để AI có thể xem và phân tích chính xác 100% nội dung video.`);
       }
       event.sender.send("runtime:analysis-progress", { progress: 100, stage: "completed", operationId });
       return enrichAnalysis({ ...parseAnalysis(result.text, probe, result.usage, options.customPrompt, { ...options, videoTitle: cleanVideoTitle, targetDurationMinutes: targetDurationMins }, transcript, transcriptSegments), transcript, transcriptSegments, previewFrames: frames.map((frame) => ({ timestampSeconds: frame.timestampSeconds, imageDataUrl: `data:image/jpeg;base64,${frame.data}` })) }, transcript);
@@ -4285,13 +4465,70 @@ Return ONLY valid JSON with no markdown wrapping. Mảng 'scenes' phải có đ�
       } catch {}
     }
 
-    // 1. Try JACS Cloud Neural Voice Engine FIRST (Instant, authentic Microsoft Edge Neural Voice)
+    // 1. Try Configured API Provider TTS (OpenAI, Cloud Gateway, ElevenLabs)
+    let licenseKey = "JACS-MANAGED";
+    try {
+      if (safeStorage.isEncryptionAvailable() && fs.existsSync(licensePath())) {
+        const raw = fs.readFileSync(licensePath());
+        licenseKey = safeStorage.decryptString(raw) || "JACS-MANAGED";
+      }
+    } catch {}
+
+    const isOpenAiVoice = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer"].includes(voiceKey.replace(/^openai-/, ""));
+    const store = providerStore();
+    const rawProviders = store.listRaw ? store.listRaw() : store.list().map((p) => store.find(p.id)).filter(Boolean);
+    const candidateTtsProviders = rawProviders.filter((p) => p.enabled && (p.apiKey || p.isManaged) && (p.capabilities?.includes("tts") || ["openai", "openai-compatible"].includes(p.providerType) || p.isManaged));
+
+    if (isOpenAiVoice || candidateTtsProviders.length > 0) {
+      for (const ttsProv of candidateTtsProviders) {
+        try {
+          const authKey = ttsProv.apiKey || licenseKey;
+          let baseUrl = String(ttsProv.baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+          baseUrl = baseUrl.replace(/\/(?:chat\/completions|responses|audio\/speech)$/i, "");
+          const endpoint = baseUrl.endsWith("/audio/speech") ? baseUrl : `${baseUrl}/audio/speech`;
+          const openAiVoiceName = isOpenAiVoice ? voiceKey.replace(/^openai-/, "") : (gender === "male" ? "onyx" : "nova");
+
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              Accept: "audio/mpeg",
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authKey}`,
+              ...(ttsProv.isManaged ? { "x-jacs-license-key": licenseKey } : {}),
+            },
+            body: JSON.stringify({
+              model: ttsProv.ttsModel || "tts-1",
+              input: cleanText.slice(0, 1000),
+              voice: openAiVoiceName,
+              response_format: "mp3",
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+
+          if (response.ok) {
+            const buffer = Buffer.from(await response.arrayBuffer());
+            if (buffer.length > 200) {
+              fs.writeFileSync(diskCacheFile, buffer);
+              const dataUrl = `data:audio/mpeg;base64,${buffer.toString("base64")}`;
+              ttsMemoryCache.set(cacheKey, dataUrl);
+              return dataUrl;
+            }
+          }
+        } catch {
+          // try next fallback
+        }
+      }
+    }
+
+    // 2. Try JACS Cloud Neural Voice Engine (Authentic Edge / Vbee / ElevenLabs Neural Voice)
     try {
       const res = await fetch("https://jacs-studio.nexoratech.com.vn/api/v1/client/synthesize-speech", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "x-jacs-license-key": licenseKey,
+          Authorization: `Bearer ${licenseKey}`,
         },
         body: JSON.stringify({
           text: cleanText.slice(0, 1000),
@@ -4326,7 +4563,7 @@ Return ONLY valid JSON with no markdown wrapping. Mảng 'scenes' phải có đ�
       }
     } catch {}
 
-    // 2. Try Local Python edge_tts
+    // 3. Try Local Python edge_tts
     try {
       const python = findPythonExecutable();
       const tempPromptFile = path.join(cacheDir, `${cacheKey}_prompt.txt`);

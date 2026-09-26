@@ -16,6 +16,8 @@ export type License = {
   logo_url?: string | null;
   notes?: string | null;
   credit_balance?: number;
+  allowed_models?: string[] | null;
+  ai_gateway_enabled?: boolean;
   token_in_price?: number | null;
   token_out_price?: number | null;
   max_requests_per_day?: number | null;

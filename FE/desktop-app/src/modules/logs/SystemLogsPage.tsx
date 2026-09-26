@@ -18,7 +18,11 @@ import {
   XLg,
   TerminalFill,
   BugFill,
+  ArrowRepeat,
+  LightningChargeFill,
+  CashStack,
 } from "react-bootstrap-icons";
+import { getAiUsageLogs, type AiUsageAuditLog } from "../../core/api";
 
 export interface LogEntry {
   id: string;
@@ -37,13 +41,27 @@ type SystemLogsPageProps = {
   jobs?: Job[];
   onNavigate?: (key: NavKey) => void;
   onUpdateJob?: (jobId: string, values: Partial<Job>) => void;
+  creditBalance?: number;
+  allowedModels?: string[] | null;
+  onSyncAdminGrant?: () => void;
 };
 
 export function SystemLogsPage({
   jobs = [],
   onNavigate,
   onUpdateJob,
+  creditBalance = 0,
+  allowedModels = null,
+  onSyncAdminGrant,
 }: SystemLogsPageProps) {
+  const [activeMainTab, setActiveMainTab] = useState<"ai_billing_audit" | "system_diagnostic">("ai_billing_audit");
+  const [aiUsageLogs, setAiUsageLogs] = useState<AiUsageAuditLog[]>([]);
+  const [loadingAiLogs, setLoadingAiLogs] = useState(false);
+  const [currentKey, setCurrentKey] = useState("");
+  const [aiTaskFilter, setAiTaskFilter] = useState<string>("all");
+  const [aiModelFilter, setAiModelFilter] = useState<string>("all");
+  const [aiSearchQuery, setAiSearchQuery] = useState("");
+
   const [logFilter, setLogFilter] = useState<"all" | "error" | "warn" | "info">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -62,6 +80,52 @@ export function SystemLogsPage({
       popup.toast(msg, "info");
     }
   };
+
+  const fetchAiLogs = async (k?: string) => {
+    setLoadingAiLogs(true);
+    try {
+      const targetKey = k || currentKey || (await getRuntime().readLicense()) || "";
+      if (targetKey) {
+        if (!currentKey) setCurrentKey(targetKey);
+        const data = await getAiUsageLogs(targetKey);
+        setAiUsageLogs(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingAiLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    void (async () => {
+      const k = await getRuntime().readLicense();
+      if (k) {
+        setCurrentKey(k);
+        fetchAiLogs(k);
+      }
+    })();
+  }, []);
+
+  const totalInTokens = useMemo(() => aiUsageLogs.reduce((acc, l) => acc + (l.input_tokens || 0), 0), [aiUsageLogs]);
+  const totalOutTokens = useMemo(() => aiUsageLogs.reduce((acc, l) => acc + (l.output_tokens || 0), 0), [aiUsageLogs]);
+  const totalCacheTokens = useMemo(() => aiUsageLogs.reduce((acc, l) => acc + (l.cache_read_tokens || 0), 0), [aiUsageLogs]);
+  const totalCreditsDeducted = useMemo(() => aiUsageLogs.reduce((acc, l) => acc + (l.credits_deducted || 0), 0), [aiUsageLogs]);
+
+  const filteredAiLogs = useMemo(() => {
+    return aiUsageLogs.filter((l) => {
+      if (aiTaskFilter !== "all" && l.task_type !== aiTaskFilter) return false;
+      if (aiModelFilter !== "all" && l.model_used !== aiModelFilter) return false;
+      if (aiSearchQuery.trim()) {
+        const q = aiSearchQuery.toLowerCase();
+        const mTitle = (l.task_title || "").toLowerCase().includes(q);
+        const mModel = (l.model_used || "").toLowerCase().includes(q);
+        const mType = (l.task_type || "").toLowerCase().includes(q);
+        if (!mTitle && !mModel && !mType) return false;
+      }
+      return true;
+    });
+  }, [aiUsageLogs, aiTaskFilter, aiModelFilter, aiSearchQuery]);
 
   // 1. Base Boot & Hardware Logs
   useEffect(() => {
@@ -301,24 +365,75 @@ export function SystemLogsPage({
         </div>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
-          {errorLogs.length > 0 && (
-            <button
-              type="button"
-              onClick={handleCopyErrors}
-              style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171", padding: "7px 14px", borderRadius: "7px", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}
-            >
-              <BugFill size={13} /> {copiedErrors ? "✓ Đã Copy Danh Sách Lỗi" : `Copy ${errorLogs.length} Lỗi Cho Support`}
-            </button>
-          )}
+          {activeMainTab === "ai_billing_audit" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void fetchAiLogs()}
+                disabled={loadingAiLogs}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "rgba(245, 158, 11, 0.15)",
+                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                  color: "#fbbf24",
+                  padding: "7px 14px",
+                  borderRadius: "7px",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  cursor: loadingAiLogs ? "wait" : "pointer",
+                }}
+              >
+                <ArrowRepeat size={13} className={loadingAiLogs ? "animate-spin" : ""} />
+                {loadingAiLogs ? "Đang tải bảng kê..." : "Làm Mới Bảng Kê"}
+              </button>
 
-          <button
-            type="button"
-            onClick={handleCopyAll}
-            style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#f8fafc", padding: "7px 14px", borderRadius: "7px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
-          >
-            {copiedAll ? <ClipboardCheck size={13} color="#34d399" /> : <Clipboard size={13} />}
-            {copiedAll ? "Đã Copy Toàn Bộ Log" : "Copy Toàn Bộ Log"}
-          </button>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("billing")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "linear-gradient(135deg, #d97706, #f59e0b)",
+                    border: "none",
+                    color: "#12151f",
+                    padding: "7px 14px",
+                    borderRadius: "7px",
+                    fontSize: "12px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 0 12px rgba(245, 158, 11, 0.35)",
+                  }}
+                >
+                  ⚡ Nạp Credits / Gia Hạn
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {errorLogs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleCopyErrors}
+                  style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#f87171", padding: "7px 14px", borderRadius: "7px", fontSize: "12px", fontWeight: 800, cursor: "pointer" }}
+                >
+                  <BugFill size={13} /> {copiedErrors ? "✓ Đã Copy Danh Sách Lỗi" : `Copy ${errorLogs.length} Lỗi Cho Support`}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCopyAll}
+                style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "#f8fafc", padding: "7px 14px", borderRadius: "7px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+              >
+                {copiedAll ? <ClipboardCheck size={13} color="#34d399" /> : <Clipboard size={13} />}
+                {copiedAll ? "Đã Copy Toàn Bộ Log" : "Copy Toàn Bộ Log"}
+              </button>
+            </>
+          )}
 
           {onNavigate && (
             <button
@@ -326,15 +441,478 @@ export function SystemLogsPage({
               onClick={() => onNavigate("settings")}
               style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", padding: "7px 14px", borderRadius: "7px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
             >
-              <GearFill size={13} /> Cài Đặt Tool & API Key
+              <GearFill size={13} /> Cài Đặt AI & BYOK
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. Error Diagnostic & Auto-Troubleshoot Banner (When Errors Exist) */}
-      {errorLogs.length > 0 && (
-        <div style={{ background: "linear-gradient(90deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.08))", border: "1px solid rgba(239, 68, 68, 0.35)", borderRadius: "8px", padding: "12px 14px", marginBottom: "12px", flexShrink: 0 }}>
+      {/* Main Tab Switcher */}
+      <div
+        style={{
+          display: "flex",
+          gap: "8px",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+          paddingBottom: "10px",
+          marginBottom: "14px",
+          flexShrink: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveMainTab("ai_billing_audit")}
+          style={{
+            padding: "8px 16px",
+            borderRadius: "7px",
+            fontSize: "12.5px",
+            fontWeight: 800,
+            cursor: "pointer",
+            border: activeMainTab === "ai_billing_audit" ? "1px solid rgba(245, 158, 11, 0.5)" : "1px solid transparent",
+            background: activeMainTab === "ai_billing_audit" ? "rgba(245, 158, 11, 0.15)" : "rgba(255, 255, 255, 0.04)",
+            color: activeMainTab === "ai_billing_audit" ? "#fbbf24" : "#94a3b8",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "7px",
+          }}
+        >
+          <span>⚡ Bảng Kê Tiêu Dùng AI & Trừ Credits (Theo Key)</span>
+          <span
+            style={{
+              padding: "1px 6px",
+              borderRadius: "10px",
+              background: activeMainTab === "ai_billing_audit" ? "#fbbf24" : "rgba(255, 255, 255, 0.1)",
+              color: activeMainTab === "ai_billing_audit" ? "#0f172a" : "#cbd5e1",
+              fontSize: "10.5px",
+              fontWeight: 800,
+            }}
+          >
+            {aiUsageLogs.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveMainTab("system_diagnostic")}
+          style={{
+            padding: "8px 16px",
+            borderRadius: "7px",
+            fontSize: "12.5px",
+            fontWeight: 800,
+            cursor: "pointer",
+            border: activeMainTab === "system_diagnostic" ? "1px solid rgba(56, 189, 248, 0.5)" : "1px solid transparent",
+            background: activeMainTab === "system_diagnostic" ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.04)",
+            color: activeMainTab === "system_diagnostic" ? "#38bdf8" : "#94a3b8",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "7px",
+          }}
+        >
+          <span>🛠️ Nhật Ký Chẩn Đoán Lỗi & Vận Hành Hệ Thống</span>
+          {errorLogs.length > 0 && (
+            <span
+              style={{
+                padding: "1px 6px",
+                borderRadius: "10px",
+                background: "#ef4444",
+                color: "#ffffff",
+                fontSize: "10.5px",
+                fontWeight: 800,
+              }}
+            >
+              {errorLogs.length} lỗi
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* TAB 1: AI BILLING & USAGE AUDIT (PER TOOL KEY) */}
+      {activeMainTab === "ai_billing_audit" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px", width: "100%" }}>
+          {/* Summary Metric Cards */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "12px",
+            }}
+          >
+            {/* Card 1: Balance */}
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.95))",
+                border: "1px solid rgba(245, 158, 11, 0.35)",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              <div style={{ fontSize: "11px", fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                💎 SỐ DƯ CREDITS CỦA TOOL KEY
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 900, color: creditBalance > 0 ? "#fbbf24" : "#f87171", margin: "4px 0" }}>
+                {creditBalance.toLocaleString("vi-VN", { minimumFractionDigits: 0, maximumFractionDigits: 3 })} Cr
+              </div>
+              <div style={{ fontSize: "11.5px", color: "#64748b" }}>
+                (~{(creditBalance * 1000).toLocaleString("vi-VN")} đ khả dụng trong ví)
+              </div>
+            </div>
+
+            {/* Card 2: Total AI Calls */}
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.95))",
+                border: "1px solid rgba(56, 189, 248, 0.28)",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              <div style={{ fontSize: "11px", fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                ⚡ TÁC VỤ AI ĐÃ THỰC THI
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 900, color: "#38bdf8", margin: "4px 0" }}>
+                {aiUsageLogs.length.toLocaleString()} lượt
+              </div>
+              <div style={{ fontSize: "11.5px", color: "#64748b" }}>
+                Phân tích video, lồng tiếng & script
+              </div>
+            </div>
+
+            {/* Card 3: Total Tokens Consumed */}
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.95))",
+                border: "1px solid rgba(168, 85, 247, 0.28)",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              <div style={{ fontSize: "11px", fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                🔢 TỔNG TOKENS TIÊU THỤ
+              </div>
+              <div style={{ fontSize: "15px", fontWeight: 800, color: "#c084fc", margin: "6px 0 3px" }}>
+                In: {totalInTokens.toLocaleString()} | Out: {totalOutTokens.toLocaleString()}
+              </div>
+              <div style={{ fontSize: "11px", color: "#34d399", fontWeight: 700 }}>
+                Cache: {totalCacheTokens.toLocaleString()} tokens (tiết kiệm chi phí)
+              </div>
+            </div>
+
+            {/* Card 4: Total Credits Deducted */}
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.95))",
+                border: "1px solid rgba(239, 68, 68, 0.28)",
+                borderRadius: "10px",
+                padding: "14px 18px",
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              <div style={{ fontSize: "11px", fontWeight: 750, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                📉 TỔNG CREDITS ĐÃ TRỪ
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 900, color: "#fca5a5", margin: "4px 0" }}>
+                -{totalCreditsDeducted.toFixed(3)} Cr
+              </div>
+              <div style={{ fontSize: "11.5px", color: "#64748b" }}>
+                (~{Math.round(totalCreditsDeducted * 1000).toLocaleString("vi-VN")} đ đối soát tự động)
+              </div>
+            </div>
+          </div>
+
+          {/* Low Credit Warning Banner if balance <= 5 */}
+          {creditBalance <= 5 && (
+            <div
+              style={{
+                background: "linear-gradient(90deg, rgba(239, 68, 68, 0.16), rgba(15, 23, 42, 0.9))",
+                border: "1px solid rgba(239, 68, 68, 0.4)",
+                borderRadius: "8px",
+                padding: "10px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <ExclamationTriangleFill size={18} color="#f87171" />
+                <span style={{ fontSize: "12px", color: "#fca5a5", fontWeight: 750 }}>
+                  {creditBalance <= 0
+                    ? "Số dư Credits của bạn đã hết (0.00 Cr). Vui lòng nạp thêm để tiếp tục chạy các tác vụ AI!"
+                    : `Số dư Credits sắp hết (chỉ còn ${creditBalance.toFixed(2)} Cr). Hãy nạp thêm để tránh gián đoạn các job đang xử lý.`}
+                </span>
+              </div>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate("billing")}
+                  style={{
+                    background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                    border: "none",
+                    color: "#ffffff",
+                    padding: "6px 14px",
+                    borderRadius: "6px",
+                    fontSize: "11.5px",
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: "0 0 10px rgba(239, 68, 68, 0.4)",
+                  }}
+                >
+                  ⚡ Nạp Thêm Credits
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Filter Bar */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "10px",
+              background: "rgba(0, 0, 0, 0.3)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "8px",
+              padding: "10px 14px",
+            }}
+          >
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ position: "relative" }}>
+                <Search size={12} style={{ position: "absolute", left: "10px", top: "10px", color: "#94a3b8" }} />
+                <input
+                  type="text"
+                  placeholder="Tìm theo video, tác vụ, model..."
+                  value={aiSearchQuery}
+                  onChange={(e) => setAiSearchQuery(e.target.value)}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    borderRadius: "6px",
+                    padding: "6px 10px 6px 28px",
+                    fontSize: "12px",
+                    color: "#f8fafc",
+                    width: "230px",
+                  }}
+                />
+              </div>
+
+              <select
+                value={aiTaskFilter}
+                onChange={(e) => setAiTaskFilter(e.target.value)}
+                style={{
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: "6px",
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  color: "#cbd5e1",
+                }}
+              >
+                <option value="all" style={{ background: "#0f172a" }}>Tất cả loại tác vụ</option>
+                <option value="video_analysis" style={{ background: "#0f172a" }}>🎬 Phân tích video</option>
+                <option value="voice_dubbing" style={{ background: "#0f172a" }}>🎙️ Lồng tiếng AI</option>
+                <option value="script_writing" style={{ background: "#0f172a" }}>📝 Kịch bản AI</option>
+                <option value="stt" style={{ background: "#0f172a" }}>🗣️ Bóc băng STT</option>
+              </select>
+
+              <select
+                value={aiModelFilter}
+                onChange={(e) => setAiModelFilter(e.target.value)}
+                style={{
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: "6px",
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  color: "#cbd5e1",
+                }}
+              >
+                <option value="all" style={{ background: "#0f172a" }}>Tất cả Model AI</option>
+                {Array.from(new Set(aiUsageLogs.map((l) => l.model_used).filter(Boolean))).map((m) => (
+                  <option key={m} value={m} style={{ background: "#0f172a" }}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "11.5px", color: "#94a3b8" }}>
+                Hiển thị <strong>{filteredAiLogs.length}</strong> / {aiUsageLogs.length} bản ghi
+              </span>
+              <button
+                type="button"
+                onClick={() => void fetchAiLogs()}
+                disabled={loadingAiLogs}
+                style={{
+                  background: "rgba(245, 158, 11, 0.12)",
+                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  fontWeight: 750,
+                  color: "#fbbf24",
+                  cursor: loadingAiLogs ? "wait" : "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "5px",
+                }}
+              >
+                <ArrowRepeat size={12} className={loadingAiLogs ? "animate-spin" : ""} />
+                {loadingAiLogs ? "Đang tải..." : "Làm mới"}
+              </button>
+            </div>
+          </div>
+
+          {/* AI Usage Logs Table */}
+          <div className="jacs-table-wrapper" style={{ overflowX: "auto" }}>
+            <table className="jacs-table" style={{ width: "100%", textAlign: "left" }}>
+              <thead>
+                <tr style={{ background: "rgba(0, 0, 0, 0.45)" }}>
+                  <th style={{ width: "40px" }}>#</th>
+                  <th>THỜI GIAN</th>
+                  <th>TÁC VỤ & VIDEO DỰ ÁN</th>
+                  <th>MÔ HÌNH AI</th>
+                  <th>CHI TIẾT TOKENS (IN / OUT / CACHE)</th>
+                  <th>CREDITS TRỪ</th>
+                  <th>SỐ DƯ CÒN LẠI</th>
+                  <th style={{ textAlign: "right" }}>TRẠNG THÁI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAiLogs.length > 0 ? (
+                  filteredAiLogs.map((log, idx) => (
+                    <tr key={log.id || `ai-log-${idx}`} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.05)" }}>
+                      <td style={{ color: "#64748b", fontSize: "11px", fontWeight: 600 }}>{idx + 1}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <div style={{ fontSize: "11.5px", color: "#f8fafc", fontWeight: 700 }}>
+                          {new Date(log.timestamp || log.created_at || "").toLocaleTimeString("vi-VN")}
+                        </div>
+                        <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                          {new Date(log.timestamp || log.created_at || "").toLocaleDateString("vi-VN")}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                              background:
+                                log.task_type === "video_analysis"
+                                  ? "rgba(56, 189, 248, 0.15)"
+                                  : log.task_type === "voice_dubbing"
+                                  ? "rgba(245, 158, 11, 0.15)"
+                                  : "rgba(168, 85, 247, 0.15)",
+                              color:
+                                log.task_type === "video_analysis"
+                                  ? "#38bdf8"
+                                  : log.task_type === "voice_dubbing"
+                                  ? "#fbbf24"
+                                  : "#c084fc",
+                              width: "fit-content",
+                            }}
+                          >
+                            {log.task_type === "video_analysis"
+                              ? "🎬 Phân tích video"
+                              : log.task_type === "voice_dubbing"
+                              ? "🎙️ Lồng tiếng AI"
+                              : log.task_type === "script_writing"
+                              ? "📝 Kịch bản AI"
+                              : log.task_type}
+                          </span>
+                          <strong style={{ fontSize: "12.5px", color: "#e2e8f0" }}>{log.task_title}</strong>
+                        </div>
+                      </td>
+                      <td>
+                        <code style={{ color: "#fbbf24", fontWeight: 700, fontSize: "11.5px" }}>
+                          {log.model_used}
+                        </code>
+                      </td>
+                      <td>
+                        <div style={{ fontSize: "11px", display: "flex", flexDirection: "column", gap: "1px" }}>
+                          <span style={{ color: "#38bdf8" }}>
+                            In: <strong>{(log.input_tokens || 0).toLocaleString()}</strong>
+                          </span>
+                          <span style={{ color: "#a78bfa" }}>
+                            Out: <strong>{(log.output_tokens || 0).toLocaleString()}</strong>
+                          </span>
+                          {(log.cache_read_tokens || 0) > 0 && (
+                            <span style={{ color: "#34d399", fontWeight: 700 }}>
+                              Cache: {(log.cache_read_tokens || 0).toLocaleString()} (tiết kiệm)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <span style={{ color: "#f87171", fontWeight: 900, fontSize: "12.5px" }}>
+                            -{(log.credits_deducted || 0).toFixed(3)} Cr
+                          </span>
+                          <div style={{ fontSize: "10.5px", color: "#64748b" }}>
+                            (~{(log.cost_vnd || Math.round((log.credits_deducted || 0) * 1000)).toLocaleString()} đ)
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ color: "#34d399", fontWeight: 800, fontSize: "12px" }}>
+                          {log.balance_after !== undefined
+                            ? `${Number(log.balance_after).toFixed(3)} Cr`
+                            : "---"}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <span
+                          style={{
+                            fontSize: "10.5px",
+                            fontWeight: 750,
+                            color: "#34d399",
+                            background: "rgba(16, 185, 129, 0.12)",
+                            border: "1px solid rgba(16, 185, 129, 0.3)",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "3px",
+                          }}
+                        >
+                          <CheckCircleFill size={10} /> Đã trừ
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                        <CpuFill size={30} color="#64748b" />
+                        <span style={{ fontSize: "13.5px", fontWeight: 750, color: "#cbd5e1" }}>
+                          Chưa có nhật ký tiêu dùng AI nào cho Tool Key này
+                        </span>
+                        <p style={{ margin: 0, fontSize: "12px", color: "#64748b", maxWidth: "560px" }}>
+                          Khi bạn thực hiện Phân tích Video hoặc Lồng tiếng bằng các Model Cloud AI được cấp phép, bảng kê sẽ tự động ghi nhận số lượng In/Out/Cache Tokens và số Credits bị trừ một cách minh bạch theo từng tác vụ riêng biệt của máy.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: SYSTEM RUNTIME & DIAGNOSTICS */}
+      {activeMainTab === "system_diagnostic" && (
+        <>
+          {/* 2. Error Diagnostic & Auto-Troubleshoot Banner (When Errors Exist) */}
+          {errorLogs.length > 0 && (
+            <div style={{ background: "linear-gradient(90deg, rgba(239, 68, 68, 0.12), rgba(185, 28, 28, 0.08))", border: "1px solid rgba(239, 68, 68, 0.35)", borderRadius: "8px", padding: "12px 14px", marginBottom: "12px", flexShrink: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <div style={{ width: "30px", height: "30px", borderRadius: "6px", background: "rgba(239, 68, 68, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f87171" }}>
@@ -604,6 +1182,8 @@ export function SystemLogsPage({
           })
         )}
       </div>
+      </>
+    )}
 
     </div>
   );

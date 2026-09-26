@@ -22,6 +22,8 @@ export interface CloudModelHubProps {
   testCloudModel: (item: CloudModelItem) => Promise<void>;
   selectCloudModelForAnalysis: (item: CloudModelItem) => void;
   configureBYOKForCloudModel: (item: CloudModelItem) => void;
+  allowedModels?: string[] | null;
+  creditBalance?: number;
 }
 
 export function CloudModelHub({
@@ -34,7 +36,20 @@ export function CloudModelHub({
   testCloudModel,
   selectCloudModelForAnalysis,
   configureBYOKForCloudModel,
+  allowedModels = null,
+  creditBalance = 0,
 }: CloudModelHubProps) {
+  const isModelAllowed = (modelName: string) => {
+    if (!allowedModels || !Array.isArray(allowedModels) || allowedModels.length === 0) {
+      return false;
+    }
+    const clean = (modelName || "").toLowerCase().trim();
+    return allowedModels.some((m) => {
+      const target = (m || "").toLowerCase().trim();
+      return clean === target || clean.includes(target) || target.includes(clean);
+    });
+  };
+
   const groupedCloudModels = useMemo(() => {
     const groups: Record<string, CloudModelItem[]> = {};
     for (const m of cloudModels) {
@@ -367,26 +382,65 @@ export function CloudModelHub({
                         </div>
                       </td>
                       <td>
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 750,
-                            color: item.is_selling ? "#10b981" : "#94a3b8",
-                            background: item.is_selling
-                              ? "rgba(16, 185, 129, 0.12)"
-                              : "rgba(148, 163, 184, 0.12)",
-                            border: item.is_selling
-                              ? "1px solid rgba(16, 185, 129, 0.3)"
-                              : "1px solid rgba(148, 163, 184, 0.2)",
-                            padding: "3px 7px",
-                            borderRadius: "4px",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                          }}
-                        >
-                          {item.is_selling ? "● Đã Cấp Phép" : "○ Tạm Ngưng"}
-                        </span>
+                        {(() => {
+                          const allowed = isModelAllowed(item.model);
+                          if (!item.is_selling) {
+                            return (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: 750,
+                                  color: "#94a3b8",
+                                  background: "rgba(148, 163, 184, 0.12)",
+                                  border: "1px solid rgba(148, 163, 184, 0.2)",
+                                  padding: "3px 7px",
+                                  borderRadius: "4px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                ○ Tạm Ngưng
+                              </span>
+                            );
+                          }
+                          return allowed ? (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 800,
+                                color: "#34d399",
+                                background: "rgba(16, 185, 129, 0.15)",
+                                border: "1px solid rgba(16, 185, 129, 0.35)",
+                                padding: "3px 7px",
+                                borderRadius: "4px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                            >
+                              ✓ Đã Cấp Quyền
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 750,
+                                color: "#f87171",
+                                background: "rgba(239, 68, 68, 0.12)",
+                                border: "1px solid rgba(239, 68, 68, 0.3)",
+                                padding: "3px 7px",
+                                borderRadius: "4px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                              title="Tool Key của bạn chưa được cấp phép model này từ Admin"
+                            >
+                              🔒 Chưa Cấp Quyền
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td
                         style={{
@@ -406,29 +460,37 @@ export function CloudModelHub({
                             whiteSpace: "nowrap",
                           }}
                         >
-                          <button
-                            type="button"
-                            onClick={() => selectCloudModelForAnalysis(item)}
-                            style={{
-                              background: "linear-gradient(135deg, #d97706, #f59e0b)",
-                              border: "none",
-                              color: "#12151f",
-                              padding: "5px 11px",
-                              borderRadius: "6px",
-                              fontSize: "11px",
-                              fontWeight: 800,
-                              cursor: "pointer",
-                              boxShadow: "0 0 8px rgba(245, 158, 11, 0.3)",
-                              whiteSpace: "nowrap",
-                              flexShrink: 0,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "3px",
-                            }}
-                            title="Chọn model này để làm việc trên công cụ"
-                          >
-                            ⚡ Kích Hoạt
-                          </button>
+                          {(() => {
+                            const allowed = isModelAllowed(item.model);
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => allowed && selectCloudModelForAnalysis(item)}
+                                disabled={!allowed}
+                                style={{
+                                  background: allowed
+                                    ? "linear-gradient(135deg, #d97706, #f59e0b)"
+                                    : "rgba(255, 255, 255, 0.08)",
+                                  border: allowed ? "none" : "1px solid rgba(255, 255, 255, 0.1)",
+                                  color: allowed ? "#12151f" : "#64748b",
+                                  padding: "5px 11px",
+                                  borderRadius: "6px",
+                                  fontSize: "11px",
+                                  fontWeight: 800,
+                                  cursor: allowed ? "pointer" : "not-allowed",
+                                  boxShadow: allowed ? "0 0 8px rgba(245, 158, 11, 0.3)" : "none",
+                                  whiteSpace: "nowrap",
+                                  flexShrink: 0,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                }}
+                                title={allowed ? "Chọn model này để làm việc trên công cụ" : "Model chưa được cấp quyền cho Tool Key này"}
+                              >
+                                {allowed ? "⚡ Kích Hoạt" : "🔒 Khóa"}
+                              </button>
+                            );
+                          })()}
                           <button
                             type="button"
                             onClick={() => void testCloudModel(item)}

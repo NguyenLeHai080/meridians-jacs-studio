@@ -7,8 +7,8 @@ export default defineConfig({
     host: true,
     port: Number(process.env.PORT) || 5175,
     proxy: {
-      "/api": process.env.VITE_API_URL || "http://localhost:8001",
-      "/health": process.env.VITE_API_URL || "http://localhost:8001",
+      "/api": process.env.VITE_API_URL || "http://localhost:8000",
+      "/health": process.env.VITE_API_URL || "http://localhost:8000",
     },
   },
 });

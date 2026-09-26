@@ -654,6 +654,288 @@
         }
       }
     },
+    "/api/v1/client/log-ai-usage": {
+      "post": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Log Ai Usage",
+        "description": "Called by Client Desktop Tool when performing AI tasks (Video Analysis, Voice Dubbing).\nValidates model permission, calculates in/out/cache cost, deducts credits, and writes audit log.",
+        "operationId": "log_ai_usage_api_v1_client_log_ai_usage_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogAiUsageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client/ai-usage-logs": {
+      "get": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Get Ai Usage Logs",
+        "description": "Returns AI token and credit deduction audit logs for the given client tool key.",
+        "operationId": "get_ai_usage_logs_api_v1_client_ai_usage_logs_get",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Key"
+            }
+          },
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client/sync-status": {
+      "get": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Sync Client Status",
+        "description": "Sync endpoint for desktop client to receive latest granted models, credit balance and pending notifications.",
+        "operationId": "sync_client_status_api_v1_client_sync_status_get",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client/acknowledge-notification": {
+      "post": {
+        "tags": [
+          "desktop-client"
+        ],
+        "summary": "Acknowledge Client Notification",
+        "description": "Clear notification_pending once client tool has displayed it.",
+        "operationId": "acknowledge_client_notification_api_v1_client_acknowledge_notification_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/licenses": {
       "get": {
         "tags": [
@@ -3007,6 +3289,50 @@
         ]
       }
     },
+    "/api/v1/ai-providers/fetch-models": {
+      "post": {
+        "tags": [
+          "ai-providers"
+        ],
+        "summary": "Fetch Models Endpoint",
+        "operationId": "fetch_models_endpoint_api_v1_ai_providers_fetch_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchModelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
     "/api/v1/ai-providers/{provider_id}": {
       "put": {
         "tags": [
@@ -3466,13 +3792,38 @@
         }
       }
     },
+    "/api/v1/ai-providers/catalog/model-configs": {
+      "get": {
+        "tags": [
+          "ai-providers"
+        ],
+        "summary": "List Model Pricing Configs",
+        "description": "Returns all custom client pricing configs set by admin.",
+        "operationId": "list_model_pricing_configs_api_v1_ai_providers_catalog_model_configs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
     "/api/v1/ai-providers/catalog/model-config": {
       "post": {
         "tags": [
           "ai-providers"
         ],
         "summary": "Update Model Pricing Config",
-        "description": "Save or update client selling price, credit rate, and enable status for a specific model.",
+        "description": "Save or update client selling price (in, out, cache, call, credits, enable) for a specific model.",
         "operationId": "update_model_pricing_config_api_v1_ai_providers_catalog_model_config_post",
         "requestBody": {
           "content": {
@@ -4229,6 +4580,438 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ImageGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai-providers/gateway/chat/completions": {
+      "post": {
+        "tags": [
+          "ai-gateway"
+        ],
+        "summary": "Gateway Chat Completions",
+        "description": "Intermediary AI Gateway for Chat Completions / Video Script Analysis.\n1. Validates client license and credit balance.\n2. Maps requested model to the upstream Nhà Cung Cấp.\n3. Forwards prompt / frames to upstream provider.\n4. Deducts credits and records audit logs.",
+        "operationId": "gateway_chat_completions_api_v1_ai_providers_gateway_chat_completions_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-jacs-license-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Jacs-License-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client/ai/chat/completions": {
+      "post": {
+        "tags": [
+          "ai-gateway"
+        ],
+        "summary": "Gateway Chat Completions",
+        "description": "Intermediary AI Gateway for Chat Completions / Video Script Analysis.\n1. Validates client license and credit balance.\n2. Maps requested model to the upstream Nhà Cung Cấp.\n3. Forwards prompt / frames to upstream provider.\n4. Deducts credits and records audit logs.",
+        "operationId": "gateway_chat_completions_api_v1_client_ai_chat_completions_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-jacs-license-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Jacs-License-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client/chat/completions": {
+      "post": {
+        "tags": [
+          "ai-gateway"
+        ],
+        "summary": "Gateway Chat Completions",
+        "description": "Intermediary AI Gateway for Chat Completions / Video Script Analysis.\n1. Validates client license and credit balance.\n2. Maps requested model to the upstream Nhà Cung Cấp.\n3. Forwards prompt / frames to upstream provider.\n4. Deducts credits and records audit logs.",
+        "operationId": "gateway_chat_completions_api_v1_client_chat_completions_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-jacs-license-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Jacs-License-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gateway/chat/completions": {
+      "post": {
+        "tags": [
+          "ai-gateway"
+        ],
+        "summary": "Gateway Chat Completions",
+        "description": "Intermediary AI Gateway for Chat Completions / Video Script Analysis.\n1. Validates client license and credit balance.\n2. Maps requested model to the upstream Nhà Cung Cấp.\n3. Forwards prompt / frames to upstream provider.\n4. Deducts credits and records audit logs.",
+        "operationId": "gateway_chat_completions_api_v1_gateway_chat_completions_post",
+        "parameters": [
+          {
+            "name": "X-License-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-License-Key"
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-jacs-license-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Jacs-License-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Payload"
               }
             }
           }
@@ -6536,6 +7319,53 @@
         "type": "object",
         "title": "FailoverConfig"
       },
+      "FetchModelsRequest": {
+        "properties": {
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "provider_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Type",
+            "default": "openai"
+          }
+        },
+        "type": "object",
+        "required": [
+          "base_url"
+        ],
+        "title": "FetchModelsRequest"
+      },
       "GrantCreditRequest": {
         "properties": {
           "amount": {
@@ -7051,6 +7881,17 @@
             "type": "string",
             "title": "Key Hint"
           },
+          "raw_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Key"
+          },
           "status": {
             "$ref": "#/components/schemas/LicenseStatus"
           },
@@ -7389,6 +8230,17 @@
             "type": "string",
             "title": "Key Hint"
           },
+          "raw_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Key"
+          },
           "status": {
             "$ref": "#/components/schemas/LicenseStatus"
           },
@@ -7689,6 +8541,65 @@
         "type": "object",
         "title": "LicenseUpdateRequest"
       },
+      "LogAiUsageRequest": {
+        "properties": {
+          "task_type": {
+            "type": "string",
+            "title": "Task Type",
+            "description": "VIDEO_ANALYSIS | VOICE_DUBBING | SUBTITLE_TRANSLATION",
+            "default": "VIDEO_ANALYSIS"
+          },
+          "task_title": {
+            "type": "string",
+            "title": "Task Title",
+            "description": "Tên tác vụ hoặc tên file video cụ thể",
+            "default": "Tác vụ AI Video"
+          },
+          "model_used": {
+            "type": "string",
+            "title": "Model Used",
+            "description": "Tên mô hình AI được sử dụng",
+            "default": "gpt-4o"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Cache Read Tokens",
+            "default": 0
+          },
+          "cache_write_tokens": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Cache Write Tokens",
+            "default": 0
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "type": "object",
+        "title": "LogAiUsageRequest"
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -7827,8 +8738,8 @@
           "model": {
             "type": "string",
             "maxLength": 160,
-            "minLength": 1,
-            "title": "Model"
+            "title": "Model",
+            "default": ""
           },
           "tts_model": {
             "anyOf": [
@@ -7845,7 +8756,7 @@
           "api_key": {
             "type": "string",
             "maxLength": 4096,
-            "minLength": 8,
+            "minLength": 1,
             "title": "Api Key"
           },
           "capabilities": {
@@ -7883,7 +8794,6 @@
           "name",
           "provider_type",
           "base_url",
-          "model",
           "api_key"
         ],
         "title": "ProviderCreate"

@@ -1118,6 +1118,9 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
     success_rate = round((success_count / max(1, total_count)) * 100, 1)
     avg_latency = round(sum(r["latency_ms"] for r in results) / max(1, total_count), 0) if total_count > 0 else 0
 
+    total_tokens = sum(r.get("total_tokens", 0) for r in results)
+    total_cost = round(sum(r.get("cost_vnd", 0.0) for r in results), 0)
+
     # Assemble available provider keys
     all_providers = store.list("providers")
     available_keys = []
@@ -1140,6 +1143,8 @@ async def list_global_requests(_: dict = Depends(require_auth), limit: int = 500
                 "failed_requests": fail_count,
                 "success_rate_pct": success_rate,
                 "avg_latency_ms": avg_latency,
+                "total_tokens": total_tokens,
+                "total_cost_vnd": total_cost,
                 "smoothness_status": "Rất Mượt" if avg_latency < 3000 else "Bình Thường" if avg_latency < 8000 else "Cảnh Báo Độ Trễ / Lỗi",
             },
             "devices": device_list,

@@ -1,4 +1,4 @@
-export type NavKey = "overview" | "sources" | "analysis" | "story" | "timeline" | "brand" | "batch" | "render" | "usage" | "billing" | "logs" | "activation" | "settings";
+export type NavKey = "overview" | "sources" | "analysis" | "story" | "timeline" | "brand" | "batch" | "render" | "billing" | "logs" | "activation" | "settings";
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type JobStage = "queued" | "downloading" | "probing" | "analyzing" | "outlining" | "script_review" | "generating_voice" | "matching_scenes" | "timeline_review" | "rendering" | "qa" | "completed" | "failed" | "cancelled";
 export type Job = {
@@ -268,7 +268,7 @@ export type DesktopRuntime = {
   pickImage?: () => Promise<string | null>;
   downloadVideo?: (url: string, operationId?: string) => Promise<string>;
   probeVideo?: (path: string) => Promise<VideoProbe>;
-  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "interweaveAudio" | "originalAudioVolume" | "autoDucking" | "removeOriginalBgm" | "isolateVocals" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId" | "customPrompt"> & { targetDurationMinutes?: number; durationMode?: "rules" | "fixed"; durationRules?: DurationMappingRule[]; providerPool?: ProviderPoolItem[]; analysisMode?: string; scriptStylePreset?: string }) => Promise<AnalysisResult>;
+  analyzeVideo?: (path: string, providerId?: string, operationId?: string, options?: Pick<Job, "narratorEnabled" | "narratorVoice" | "narratorGender" | "languages" | "keepOriginalAudio" | "interweaveAudio" | "originalAudioVolume" | "autoDucking" | "removeOriginalBgm" | "isolateVocals" | "emphasizeHook" | "highlightOnly" | "highlightMaxSeconds" | "backgroundMusic" | "transcriptionProviderId" | "customPrompt"> & { model?: string; targetDurationMinutes?: number; durationMode?: "rules" | "fixed"; durationRules?: DurationMappingRule[]; providerPool?: ProviderPoolItem[]; analysisMode?: string; scriptStylePreset?: string }) => Promise<AnalysisResult>;
   renderVideo?: (path: string, outputFolder?: string, options?: { mode?: string; startSeconds?: number; endSeconds?: number; outputFileName?: string; aspectRatio?: Job["aspectRatio"]; preferredEngine?: ToolPreferences["preferredEngine"]; subjectTracking?: boolean; keepOriginalAudio?: boolean; interweaveAudio?: boolean; originalAudioVolume?: number; autoDucking?: boolean; removeOriginalBgm?: boolean; isolateVocals?: boolean; emphasizeHook?: boolean; backgroundMusic?: boolean; backgroundMusicVolume?: number; backgroundMusicPath?: string; narrationText?: string; narratorEnabled?: boolean; narratorVoice?: string; narratorGender?: "male" | "female"; language?: string; providerId?: string; ttsProviderId?: string; subtitlesEnabled?: boolean; subtitleStyle?: Job["subtitleStyle"]; subtitleText?: string; subtitleSegments?: Array<{ start: number; end: number; text: string }>; logoPath?: string; logoPosition?: Job["logoPosition"]; logoOpacity?: number; scenes?: any[]; cutClips?: any[]; timelineClips?: any[] }, operationId?: string) => Promise<RenderResult>;
   mergeVideos?: (paths: string[], operationId?: string) => Promise<string>;
   onDownloadProgress?: (listener: (value: RuntimeProgress) => void) => () => void;
@@ -289,7 +289,6 @@ export const NAV_ITEMS: Array<{ key: NavKey; label: string; hint: string; icon: 
   { key: "story", label: "2. Kịch bản & Voice", hint: "Biên kịch Storyboard & Lồng tiếng", icon: "mic" },
   { key: "timeline", label: "3. Dựng & Timeline", hint: "Bàn dựng đa track chuyên nghiệp", icon: "timeline" },
   { key: "batch", label: "4. Xử lý hàng loạt", hint: "Review timeline & Xuất video hàng loạt hoặc từng cái", icon: "layers" },
-  { key: "usage", label: "Mức dùng & Credits AI", hint: "Thống kê Tokens & Credits Video", icon: "coins" },
   { key: "settings", label: "Cài đặt tool", hint: "Cấu hình AI Model BYOK & Engine", icon: "sliders" },
   { key: "activation", label: "License & Thiết bị", hint: "Bản quyền máy & HWID", icon: "key" },
   { key: "billing", label: "Lịch sử gia hạn", hint: "Hạn dùng & Gói cước", icon: "activity" },

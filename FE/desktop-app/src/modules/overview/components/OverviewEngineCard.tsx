@@ -25,12 +25,12 @@ export function OverviewEngineCard({ jobs = [], preferences, onNavigate }: Overv
       runtime.getHardwareStats().then(setHardware).catch(() => {});
     }
 
-    // Dynamic hardware telemetry polling every 4 seconds
+    // Hardware telemetry polling relaxed to 60 seconds
     const interval = setInterval(() => {
       if (runtime.getHardwareStats) {
         runtime.getHardwareStats().then(setHardware).catch(() => {});
       }
-    }, 4000);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, []);
@@ -79,43 +79,42 @@ export function OverviewEngineCard({ jobs = [], preferences, onNavigate }: Overv
   }, [hardware, machine, isMac]);
 
   const vramUsed = useMemo(() => {
-    if (!engineActive) return Number((vramTotal * 0.12).toFixed(1));
+    if (!engineActive) return 0;
     if (hardware?.gpuUsedVramGb && hardware.gpuUsedVramGb > 0) {
-      return hasRunningJob ? Number((hardware.gpuUsedVramGb * 1.6).toFixed(1)) : hardware.gpuUsedVramGb;
+      return hasRunningJob ? Number((hardware.gpuUsedVramGb * 1.5).toFixed(1)) : hardware.gpuUsedVramGb;
     }
-    if (hasRunningJob) return Number((vramTotal * 0.75).toFixed(1));
-    return Number((vramTotal * 0.38).toFixed(1));
+    if (hasRunningJob) return Number((vramTotal * 0.65).toFixed(1));
+    return Number((vramTotal * 0.15).toFixed(1));
   }, [engineActive, hardware, vramTotal, hasRunningJob]);
 
-  const vramPercent = Math.min(100, Math.max(1, Math.round((vramUsed / (vramTotal || 1)) * 100)));
+  const vramPercent = Math.min(100, Math.max(0, Math.round((vramUsed / (vramTotal || 1)) * 100)));
 
   // GPU Load
   const gpuLoad = useMemo(() => {
-    if (!engineActive) return 2;
-    if (hardware?.gpuUtilization && hardware.gpuUtilization > 0) {
-      return hasRunningJob ? Math.min(99, hardware.gpuUtilization + 50) : hardware.gpuUtilization;
+    if (!engineActive) return 0;
+    if (hasRunningJob) {
+      return hardware?.gpuUtilization ? Math.min(99, hardware.gpuUtilization + 45) : 72;
     }
-    if (hasRunningJob) return 78;
-    return 18;
+    return hardware?.gpuUtilization && hardware.gpuUtilization > 0 ? Math.min(10, hardware.gpuUtilization) : 0;
   }, [engineActive, hardware, hasRunningJob]);
 
   // Temperature
   const tempVal = useMemo(() => {
     if (!engineActive) return 20;
     if (hardware?.gpuTemperature && hardware.gpuTemperature > 0) {
-      return hasRunningJob ? Math.min(85, hardware.gpuTemperature + 12) : hardware.gpuTemperature;
+      return hasRunningJob ? Math.min(85, hardware.gpuTemperature + 14) : hardware.gpuTemperature;
     }
-    if (hasRunningJob) return 42;
-    return 29;
+    if (hasRunningJob) return 46;
+    return 30;
   }, [engineActive, hardware, hasRunningJob]);
 
   const tempDisplay = `${tempVal}°C`;
 
   const coolingLabel = useMemo(() => {
-    if (!engineActive) return "Standby · Nghỉ";
+    if (!engineActive) return "Standby · Tạm dừng";
     if (tempVal >= 75) return "High Load · Tải cao";
-    if (hasRunningJob || tempVal >= 55) return "Active · Đang tải";
-    return "Cooling · Ổn định";
+    if (hasRunningJob) return "Active · Đang render";
+    return "Standby · Sẵn sàng";
   }, [engineActive, hasRunningJob, tempVal]);
 
   // Hardware Accel Badge

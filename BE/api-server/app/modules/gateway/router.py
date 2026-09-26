@@ -123,6 +123,7 @@ def _record_gateway_log(
     lic: dict | None,
     hwid: str | None,
     error_msg: str | None = None,
+    feature_name: str = "Tạo Ảnh AI (Image Generation)",
 ):
     """Save request telemetry to ai_gateway_logs for live monitoring."""
     now = datetime.now(UTC)
@@ -154,7 +155,7 @@ def _record_gateway_log(
         "hwid": hwid or (lic.get("hwid") if lic else "HWID-DESKTOP"),
         "customer_name": cust_name,
         "client_name": cust_name,
-        "feature_name": "Tạo Ảnh AI (Image Generation)",
+        "feature_name": feature_name,
         "error_message": error_msg if is_fail else None,
     }
     try:
@@ -300,7 +301,190 @@ async def gateway_generate_image(
 
 
 # ==============================================================================
-# 2. AVAILABLE MODELS FROM ACTIVE GATEWAY
+# 2. CHAT & SCRIPT ANALYSIS COMPLETIONS (INTERMEDIARY GATEWAY)
+# ==============================================================================
+
+DEFAULT_CREDIT_PER_CHAT = 0.5
+DEFAULT_COST_PER_CHAT_VND = 500.0
+
+
+@router.post("/api/v1/gateway/chat/completions")
+@router.post("/api/v1/client/chat/completions")
+@router.post("/api/v1/client/ai/chat/completions")
+@router.post("/api/v1/ai-providers/gateway/chat/completions")
+async def gateway_chat_completions(
+    payload: dict,
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    jacs_key: str | None = Header(default=None, alias="x-jacs-license-key"),
+):
+    """
+    Intermediary AI Gateway for Chat Completions / Video Script Analysis.
+    1. Validates client license and credit balance.
+    2. Maps requested model to the upstream Nhà Cung Cấp.
+    3. Forwards prompt / frames to upstream provider.
+    4. Deducts credits and records audit logs.
+    """
+    effective_key = license_key or jacs_key
+    if not effective_key and authorization and authorization.lower().startswith("bearer "):
+        effective_key = authorization[7:].strip()
+
+    lic = _resolve_client_license(effective_key, device_id)
+    credit_cost = DEFAULT_CREDIT_PER_CHAT
+
+    if lic:
+        current_bal = float(lic.get("credit_balance", 0.0) or 0.0)
+        if current_bal < credit_cost:
+            raise AppError(
+                "INSUFFICIENT_CREDITS",
+                f"Tài khoản không đủ Credit (Số dư: {current_bal} Cr, Cần: {credit_cost} Cr). Vui lòng nạp thêm Credit!",
+                402,
+                {"balance": current_bal, "required": credit_cost},
+            )
+
+    providers = _get_providers_for_dispatch()
+    if not providers:
+        raise AppError("NO_AI_PROVIDER", "Hệ thống chưa cấu hình nhà cung cấp AI nào khả dụng", 503)
+
+    requested_model = str(payload.get("model") or "gpt-4o").strip()
+
+    last_status = 500
+    last_error = "All providers failed"
+    result_data = None
+    used_provider = None
+    final_latency = 0
+
+    for prov in providers:
+        p_name = prov.get("name") or "Nhà Cung Cấp"
+        base_url = str(prov.get("base_url") or "https://api.xompet.io.vn/v1").rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url = f"{base_url}/v1"
+        target_url = f"{base_url}/chat/completions"
+
+        secret = secret_store.get(prov.get("secret_ref", ""))
+        if not secret:
+            continue
+
+        supported = prov.get("supported_models") or []
+
+        # Determine candidate models to try with this provider
+        req_lower = requested_model.lower()
+        candidate_models = []
+
+        # Smart mapping: route to known working & allowed models on upstream provider
+        if "claude" in req_lower:
+            candidate_models = ["claude-opus-4.8", "claude-opus-4-8", "gpt-5.6-sol"]
+        elif "gemini" in req_lower:
+            candidate_models = ["gemini-3.6-flash", "gemini-flash-3.7-fast", "gpt-5.6-sol"]
+        elif "deepseek" in req_lower:
+            candidate_models = ["deepseek-v4.1-flash", "gpt-5.6-sol"]
+        else:
+            if requested_model in ("gpt-5.6-sol", "gpt-6-luna", "luna-6"):
+                candidate_models = [requested_model, "gpt-5.6-sol", "gpt-6-luna"]
+            else:
+                candidate_models = ["gpt-5.6-sol", "gpt-6-luna", "claude-opus-4.8"]
+
+        # General reliable models on upstream NCC
+        for fallback_m in ["gpt-5.6-sol", "gpt-6-luna", "claude-opus-4.8", "luna-6"]:
+            if fallback_m in supported and fallback_m not in candidate_models:
+                candidate_models.append(fallback_m)
+        if not candidate_models:
+            candidate_models.append(prov.get("model") or "gpt-5.6-sol")
+
+        for m in candidate_models:
+            fwd_payload = {
+                **payload,
+                "model": m,
+            }
+            if not fwd_payload.get("stream"):
+                fwd_payload.pop("stream", None)
+
+            http_status, resp_data, latency_ms = await asyncio.to_thread(
+                _dispatch_upstream,
+                target_url,
+                fwd_payload,
+                secret,
+                75.0,
+            )
+
+            final_latency = latency_ms
+
+            if 200 <= http_status < 300:
+                result_data = resp_data
+                used_provider = prov
+                last_status = http_status
+                break
+            else:
+                err_msg = resp_data.get("error", {}).get("message") if isinstance(resp_data, dict) else str(resp_data)
+                last_error = f"[{p_name} - {m}] {err_msg}"
+                last_status = http_status
+                err_lower = str(err_msg).lower()
+                # Failover to next candidate model if current model is not allowed, unavailable or overloaded
+                if (
+                    http_status in (400, 403, 404, 429, 500, 502, 503, 504)
+                    or "not allowed" in err_lower
+                    or "model_not_allowed" in err_lower
+                    or "auth_unavailable" in err_lower
+                    or "quá tải" in err_lower
+                    or "overloaded" in err_lower
+                ):
+                    continue
+                else:
+                    break
+
+        if result_data:
+            break
+
+    if not result_data:
+        _record_gateway_log(
+            model=requested_model,
+            provider_name="AI Gateway (Failed)",
+            endpoint="/v1/chat/completions",
+            status_code=last_status,
+            latency_ms=final_latency,
+            cost_vnd=0.0,
+            credit_used=0.0,
+            lic=lic,
+            hwid=device_id,
+            error_msg=last_error,
+        )
+        raise AppError("UPSTREAM_PROVIDER_ERROR", f"Lỗi từ nhà cung cấp AI: {last_error}", last_status)
+
+    cost_vnd = DEFAULT_COST_PER_CHAT_VND
+    new_bal = None
+    if lic:
+        new_bal = max(0.0, round(float(lic.get("credit_balance", 0.0) or 0.0) - credit_cost, 2))
+        try:
+            store.update("licenses", lic["id"], {"credit_balance": new_bal})
+        except Exception as e:
+            logger.error("Failed to deduct license credit: %s", e)
+
+    _record_gateway_log(
+        model=requested_model,
+        provider_name=used_provider.get("name", "Nhà Cung Cấp 01"),
+        endpoint="/v1/chat/completions",
+        status_code=200,
+        latency_ms=final_latency,
+        cost_vnd=cost_vnd,
+        credit_used=credit_cost if lic else 0.0,
+        lic=lic,
+        hwid=device_id,
+        feature_name="Phân Tích Kịch Bản Video (Video Analysis)",
+    )
+
+    if isinstance(result_data, dict):
+        result_data["gateway_meta"] = {
+            "provider": used_provider.get("name"),
+            "latency_ms": final_latency,
+            "credits_deducted": credit_cost if lic else 0.0,
+            "credit_balance": new_bal,
+        }
+    return result_data
+
+
+# ==============================================================================
+# 3. AVAILABLE MODELS FROM ACTIVE GATEWAY
 # ==============================================================================
 
 @router.get("/api/v1/gateway/models")

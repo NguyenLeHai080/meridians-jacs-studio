@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
-import { Sliders, ShieldCheck, ChevronDown, Check2, KeyFill } from "react-bootstrap-icons";
-import type { Job } from "../../../core/types";
+import { useState, useEffect, useMemo } from "react";
+import { KeyFill, CheckCircleFill, ExclamationCircleFill } from "react-bootstrap-icons";
+import { getRuntime } from "../../../core/runtime";
+import type { Job, ProviderProfile } from "../../../core/types";
 
 interface OverviewAITokenCardProps {
   jobs: Job[];
@@ -8,47 +9,67 @@ interface OverviewAITokenCardProps {
 }
 
 export function OverviewAITokenCard({ jobs, onNavigate }: OverviewAITokenCardProps) {
+  const [providers, setProviders] = useState<ProviderProfile[]>([]);
+
+  useEffect(() => {
+    getRuntime()
+      .getProviderProfiles?.()
+      .then((list) => {
+        if (Array.isArray(list)) setProviders(list);
+      })
+      .catch(() => {});
+  }, []);
+
   const totalTokens = useMemo(() => {
-    const fromJobs = jobs.reduce((sum, j) => sum + (j.tokensUsed || 0), 0);
-    return fromJobs > 0 ? fromJobs : 142500;
+    return jobs.reduce((sum, j) => sum + (j.tokensUsed || 0), 0);
   }, [jobs]);
 
   const providerBreakdown = useMemo(() => {
-    return [
-      {
-        id: "gemini",
-        name: "Google Gemini 2.5 Flash / 1.5 Pro",
-        percent: 45,
-        tokens: Math.round(totalTokens * 0.45),
-        color: "#fbbf24",
-        tasks: "Bóc tách video ngữ cảnh 1M token & nhận diện cảnh",
-      },
-      {
-        id: "openai",
-        name: "OpenAI GPT-4o / GPT-4o-mini",
-        percent: 30,
-        tokens: Math.round(totalTokens * 0.3),
-        color: "#34d399",
-        tasks: "Biên kịch kịch bản 3 hồi & cấu trúc Hook AIDA",
-      },
-      {
-        id: "deepseek",
-        name: "DeepSeek V3 / R1 Reasoner",
-        percent: 15,
-        tokens: Math.round(totalTokens * 0.15),
-        color: "#38bdf8",
-        tasks: "Suy luận phân cảnh chuyên sâu & dịch thuật",
-      },
-      {
-        id: "eleven_vbee",
-        name: "ElevenLabs & Vbee AIVoice",
-        percent: 10,
-        tokens: Math.round(totalTokens * 0.1),
-        color: "#c084fc",
-        tasks: "Lồng tiếng AI truyền cảm đa vùng miền",
-      },
-    ];
-  }, [totalTokens]);
+    if (providers.length === 0 && totalTokens === 0) {
+      return [];
+    }
+
+    const colors = ["#fbbf24", "#34d399", "#38bdf8", "#c084fc", "#f43f5e", "#a855f7"];
+
+    // Compute tokens per provider from jobs
+    const tokenByProvider: Record<string, number> = {};
+    for (const j of jobs) {
+      const t = j.tokensUsed || 0;
+      if (t > 0) {
+        const pId = j.providerId || j.ttsProviderId || "default";
+        tokenByProvider[pId] = (tokenByProvider[pId] || 0) + t;
+      }
+    }
+
+    if (providers.length > 0) {
+      return providers.map((p, idx) => {
+        const tokens = tokenByProvider[p.id] || 0;
+        const percent = totalTokens > 0 ? Math.round((tokens / totalTokens) * 100) : 0;
+        return {
+          id: p.id,
+          name: p.name || p.model || "AI Provider",
+          model: p.model || p.providerType,
+          hasApiKey: p.hasApiKey,
+          tokens,
+          percent,
+          color: colors[idx % colors.length],
+        };
+      });
+    }
+
+    return Object.entries(tokenByProvider).map(([pId, tokens], idx) => {
+      const percent = totalTokens > 0 ? Math.round((tokens / totalTokens) * 100) : 0;
+      return {
+        id: pId,
+        name: pId === "default" ? "AI Tác vụ chung" : `Provider: ${pId}`,
+        model: pId,
+        hasApiKey: true,
+        tokens,
+        percent,
+        color: colors[idx % colors.length],
+      };
+    });
+  }, [jobs, providers, totalTokens]);
 
   return (
     <div
@@ -93,30 +114,77 @@ export function OverviewAITokenCard({ jobs, onNavigate }: OverviewAITokenCardPro
           <span style={{ fontSize: "12px", fontWeight: 700, color: "#94a3b8" }}>Tokens Cục Bộ</span>
         </div>
         <span style={{ fontSize: "10.5px", color: "#64748b" }}>
-          Ước tính tiết kiệm ~85% chi phí với chính sách BYOK trực tiếp
+          {totalTokens === 0
+            ? "Chưa phát sinh token. Token sẽ tự động cộng dồn khi bạn chạy bóc tách video & biên kịch."
+            : "Dữ liệu đo lường thực tế từ các video đã phân tích trong dự án."}
         </span>
       </div>
 
       {/* Breakdown List */}
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {providerBreakdown.map((item) => (
-          <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: item.color, flexShrink: 0 }} />
-                <strong style={{ color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {item.name}
-                </strong>
+        {providerBreakdown.length > 0 ? (
+          providerBreakdown.map((item) => (
+            <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "11px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: item.color, flexShrink: 0 }} />
+                  <strong style={{ color: "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {item.name}
+                  </strong>
+                  {item.hasApiKey ? (
+                    <span style={{ fontSize: "9px", color: "#34d399", display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                      <CheckCircleFill size={8} /> Key sẵn sàng
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "9px", color: "#f59e0b", display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                      <ExclamationCircleFill size={8} /> Chưa cấu hình key
+                    </span>
+                  )}
+                </div>
+                <span style={{ color: item.tokens > 0 ? "#fbbf24" : "#94a3b8", fontWeight: 700, flexShrink: 0, marginLeft: "6px" }}>
+                  {item.tokens > 0 ? `${item.tokens.toLocaleString()} (${item.percent}%)` : "0 tokens"}
+                </span>
               </div>
-              <span style={{ color: "#fbbf24", fontWeight: 700, flexShrink: 0, marginLeft: "6px" }}>
-                {item.percent}%
-              </span>
+              <div style={{ width: "100%", height: "4px", background: "rgba(0,0,0,0.4)", borderRadius: "99px", overflow: "hidden" }}>
+                <div style={{ width: `${Math.max(item.percent, item.tokens > 0 ? 3 : 0)}%`, height: "100%", background: item.color, borderRadius: "99px" }} />
+              </div>
             </div>
-            <div style={{ width: "100%", height: "4px", background: "rgba(0,0,0,0.4)", borderRadius: "99px", overflow: "hidden" }}>
-              <div style={{ width: `${item.percent}%`, height: "100%", background: item.color, borderRadius: "99px" }} />
-            </div>
+          ))
+        ) : (
+          <div
+            style={{
+              background: "rgba(0, 0, 0, 0.25)",
+              border: "1px dashed rgba(255, 255, 255, 0.08)",
+              borderRadius: "8px",
+              padding: "12px 10px",
+              textAlign: "center",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+              Chưa có AI Provider nào được cấu hình trong máy.
+            </span>
+            <button
+              type="button"
+              onClick={() => onNavigate("settings")}
+              style={{
+                background: "rgba(245, 158, 11, 0.15)",
+                border: "1px solid rgba(245, 158, 11, 0.35)",
+                borderRadius: "6px",
+                color: "#fbbf24",
+                padding: "3px 10px",
+                fontSize: "10.5px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              + Cấu Hình API Key (BYOK)
+            </button>
           </div>
-        ))}
+        )}
       </div>
 
       {/* Footer */}

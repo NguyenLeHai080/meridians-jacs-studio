@@ -47,7 +47,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const systemKeys: NavKey[] = [
-    "usage",
     "settings",
     "activation",
     "billing",

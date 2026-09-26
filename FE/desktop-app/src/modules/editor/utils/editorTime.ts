@@ -66,8 +66,9 @@ export function estimateSpokenDuration(text?: string, speedMultiplier: number = 
   if (words.length === 0) return 0.5;
   const punctuationCount = (clean.match(/[,.?!:;]/g) || []).length;
   const speed = speedMultiplier > 0 ? speedMultiplier : 1.0;
-  // Calibrated Vietnamese Neural TTS cadence: ~3.8 words/sec (~0.26s/word) + ~0.12s pause per punctuation
-  const estSec = (0.10 + words.length * 0.26 + punctuationCount * 0.12) / speed;
+  // Calibrated Vietnamese Neural TTS cadence for storytelling / review (160 wpm):
+  // ~0.36s per word + ~0.22s pause per punctuation
+  const estSec = (0.15 + words.length * 0.36 + punctuationCount * 0.22) / speed;
   return Math.max(0.6, estSec);
 }
 
@@ -75,10 +76,10 @@ export function computeActiveWordIndex(
   words: string[],
   currentOffset: number,
   totalVoiceDur: number,
-  leadInSeconds: number = 0.28
+  leadInSeconds: number = 0.08
 ): number {
   if (words.length === 0 || currentOffset < 0) return -1;
-  // Apply anticipation lead-in so word highlights right on syllable onset instead of 1 word late
+  // Tight anticipation lead-in so word highlights right on syllable onset
   const effectiveOffset = currentOffset + leadInSeconds;
   if (effectiveOffset >= totalVoiceDur) return words.length;
 

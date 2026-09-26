@@ -3346,10 +3346,10 @@ button:disabled {
   color: #2dd4bf;
 }
 
-/* 4-COLUMN MAIN WORKSPACE BODY */
+/* 2-COLUMN MAIN WORKSPACE BODY (FOCUSED MOVIE REVIEW STUDIO) */
 .ts-workspace-body {
   display: grid;
-  grid-template-columns: 52px minmax(230px, 280px) 1fr minmax(280px, 340px);
+  grid-template-columns: minmax(330px, 390px) 1fr;
   flex: 1;
   min-height: 0;
   background: #090d18;
@@ -4162,7 +4162,8 @@ button:disabled {
   transition: all 0.08s ease;
 }
 .ts-sub-word.is-pending {
-  display: none !important;
+  opacity: 0.6;
+  transform: scale(0.98);
 }
 .ts-subtitle-overlay-text.style-gold .ts-sub-word.is-current {
   color: #fde047;
@@ -5131,12 +5132,12 @@ button:disabled {
 
 @media (max-width: 1440px) {
   .ts-workspace-body {
-    grid-template-columns: 50px 240px 1fr 280px;
+    grid-template-columns: 350px 1fr;
   }
 }
 @media (max-width: 1240px) {
   .ts-workspace-body {
-    grid-template-columns: 46px 210px 1fr 250px;
+    grid-template-columns: 320px 1fr;
   }
   .ts-top-header {
     padding: 6px 12px;
@@ -5147,7 +5148,7 @@ button:disabled {
 }
 @media (max-width: 1040px) {
   .ts-workspace-body {
-    grid-template-columns: 44px 190px 1fr 220px;
+    grid-template-columns: 290px 1fr;
   }
   .ts-stage-column {
     padding: 6px 8px;

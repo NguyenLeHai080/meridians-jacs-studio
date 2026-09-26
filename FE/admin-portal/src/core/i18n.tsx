@@ -49,6 +49,7 @@ export const baseTranslations: Record<Language, TranslationDictionary> = {
     menuSessions: "Quản lý máy người dùng",
     menuTerms: "Phân quyền & Pháp lý",
     menuProviders: "Quản lý nhà cung cấp",
+    menuModelSquare: "Quảng trường mô hình",
     menuAiModelsPricing: "Bảng giá & Models AI",
     menuPlans: "Cấu hình gói credit",
     menuModelPricing: "Cấu hình gói model",

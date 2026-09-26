@@ -22,7 +22,7 @@ import { EditorConfigModal } from "./components/EditorConfigModal";
 import { useEditorExport } from "./hooks/useEditorExport";
 import { useEditorAudio } from "./hooks/useEditorAudio";
 import { useTimelineInteractions } from "./hooks/useTimelineInteractions";
-import { stopGlobalAudio } from "../../core/audio-player";
+import { stopGlobalAudio, getActiveAudioElapsed } from "../../core/audio-player";
 
 type Props = {
   jobs: Job[];
@@ -184,6 +184,7 @@ export function EditorWorkspace({
     selectedVoice,
     setSelectedVoice,
     speakingSceneId,
+    isAudioSynthesizing,
     sceneAudioDurations,
     removeOriginalBgm,
     setRemoveOriginalBgm,
@@ -312,7 +313,14 @@ export function EditorWorkspace({
       }
 
       let sceneDur = 5.0;
-      if (s.duration && typeof s.duration === "number" && s.duration > 0) {
+      const cleanSub = stripSceneMetadata(sub);
+      const estSec = cleanSub ? estimateSpokenDuration(cleanSub, voiceSpeed) : 0;
+      const measured = s.id ? sceneAudioDurations?.[s.id] : 0;
+      const targetVoiceDur = measured && measured > 0.2 ? measured : (estSec > 0 ? (Math.round((estSec + 0.12) * 100) / 100) : 0);
+
+      if (!isNarratorOff && targetVoiceDur > 0) {
+        sceneDur = Math.max(1.0, targetVoiceDur);
+      } else if (s.duration && typeof s.duration === "number" && s.duration > 0) {
         sceneDur = s.duration;
       } else if (s.end && s.start) {
         const diff = toSeconds(s.end) - toSeconds(s.start);
@@ -325,31 +333,32 @@ export function EditorWorkspace({
           sceneDur = 5.0;
         }
       } else {
-        const estSec = estimateSpokenDuration(sub, voiceSpeed);
-        sceneDur = Math.max(2.5, Math.round(estSec * 10) / 10);
+        sceneDur = Math.max(1.0, Math.round((estSec + 0.12) * 100) / 100 || 5.0);
       }
 
-      const srcEndSec = s.sourceTimeEnd ?? (srcStartSec + sceneDur);
+      const srcEndSec = srcStartSec + sceneDur;
       const tStart = cursorTime;
       const tEnd = cursorTime + sceneDur;
       cursorTime = tEnd;
 
       return {
         id: s.id || `scene-${idx + 1}`,
-        start: s.start || formatSeconds(tStart),
-        end: s.end || formatSeconds(tEnd),
-        sourceStart: s.sourceStart || formatSeconds(srcStartSec),
-        sourceEnd: s.sourceEnd || formatSeconds(srcEndSec),
+        start: formatSeconds(tStart),
+        end: formatSeconds(tEnd),
+        sourceStart: formatSeconds(srcStartSec),
+        sourceEnd: formatSeconds(srcEndSec),
         sourceTimeStart: srcStartSec,
         sourceTimeEnd: srcEndSec,
-        voiceStart: s.voiceStart || formatSeconds(tStart, true),
-        voiceEnd: s.voiceEnd || formatSeconds(tEnd, true),
-        captionStart: s.captionStart || formatSeconds(tStart, true),
-        captionEnd: s.captionEnd || formatSeconds(tEnd, true),
+        voiceStart: formatSeconds(tStart, true),
+        voiceEnd: formatSeconds(tEnd, true),
+        captionStart: formatSeconds(tStart, true),
+        captionEnd: formatSeconds(tEnd, true),
         action_visual: s.action_visual || s.detail,
         title: s.title || `Cảnh ${idx + 1}`,
         detail: s.detail || "",
         subtitle: sub,
+        voiceover: sub,
+        translation: sub,
         accent: idx % 2 === 0 ? "cyan" : "purple",
       };
     });
@@ -358,6 +367,60 @@ export function EditorWorkspace({
     setScenesHistory([initial]);
     setHistoryIdx(0);
   }, [sourceJob?.id, sourceJob?.analysis?.scenes, sourceJob?.scenes]);
+
+  // Magnetic voice alignment: automatically snap timeline clips to exact audio durations as background TTS measures them
+  useEffect(() => {
+    if (playing || !editorScenes.length || !Object.keys(sceneAudioDurations).length) return;
+
+    let hasMismatch = false;
+    for (const sc of editorScenes) {
+      const measured = sceneAudioDurations[sc.id];
+      if (measured && measured > 0.2) {
+        const curDur = toSeconds(sc.end) - toSeconds(sc.start);
+        const expectedDur = Math.max(1.0, Math.round((measured + 0.12) * 100) / 100);
+        if (Math.abs(curDur - expectedDur) > 0.15) {
+          hasMismatch = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasMismatch) return;
+
+    let cursor = 0;
+    const snapped = editorScenes.map((s) => {
+      const rawText = stripSceneMetadata(s.subtitle || s.voiceover || s.translation || "");
+      const measured = s.id ? sceneAudioDurations[s.id] : undefined;
+      const estSec = estimateSpokenDuration(rawText, voiceSpeed);
+      const voiceDur = (measured && measured > 0.2) ? measured : estSec;
+      const sceneDur = Math.max(1.0, Math.round((voiceDur + 0.12) * 100) / 100);
+
+      const startSec = Math.round(cursor * 100) / 100;
+      const endSec = Math.round((cursor + sceneDur) * 100) / 100;
+      cursor = endSec;
+
+      const srcStartSec = toSeconds(s.sourceStart || s.start);
+      const srcEndSec = srcStartSec + sceneDur;
+
+      return {
+        ...s,
+        start: formatSeconds(startSec),
+        end: formatSeconds(endSec),
+        timeStart: startSec,
+        timeEnd: endSec,
+        voiceStart: formatSeconds(startSec, true),
+        voiceEnd: formatSeconds(endSec, true),
+        captionStart: formatSeconds(startSec, true),
+        captionEnd: formatSeconds(endSec, true),
+        sourceStart: formatSeconds(srcStartSec),
+        sourceEnd: formatSeconds(srcEndSec),
+        sourceTimeStart: srcStartSec,
+        sourceTimeEnd: srcEndSec,
+      };
+    });
+
+    setEditorScenes(snapped);
+  }, [sceneAudioDurations, voiceSpeed, playing, editorScenes.length]);
 
   const activeSceneId = editorScenes.some((s) => s.id === sceneId)
     ? sceneId
@@ -517,11 +580,30 @@ export function EditorWorkspace({
         if (videoRef.current) {
           videoRef.current.currentTime = targetSrcTime;
         }
+        if (playing) {
+          const mutes = trackMutesRef.current;
+          const isMutedLane = Boolean(mutes.voice) || Boolean(mutes.voice1);
+          const sceneText = matched.subtitle || matched.voiceover || matched.translation || "";
+          if (!isMutedLane && sceneText) {
+            const voiceStart = toSeconds(matched.voiceStart || matched.start);
+            const voiceOffset = Math.max(0, clampedSec - voiceStart);
+            const measuredDur = sceneAudioDurationsRef.current[matched.id];
+            const estDur = estimateSpokenDuration(sceneText, voiceSpeedRef.current);
+            const voiceDur = measuredDur && measuredDur > 0.2 ? measuredDur : estDur;
+
+            if (voiceOffset < voiceDur) {
+              lastSpokenSceneRef.current = matched.id;
+              void playSceneAudioRef.current(sceneText, matched.id, voiceOffset);
+            } else {
+              stopSceneAudioRef.current();
+            }
+          }
+        }
       } else if (videoRef.current) {
         videoRef.current.currentTime = clampedSec;
       }
     },
-    [effectiveScenes, sequenceDuration]
+    [effectiveScenes, sequenceDuration, playing]
   );
 
   // Sync state into refs for high-precision timeline loop without tearing down effects
@@ -545,6 +627,10 @@ export function EditorWorkspace({
   stopSceneAudioRef.current = stopSceneAudio;
   const seekToTimelineRef = useRef(seekToTimeline);
   seekToTimelineRef.current = seekToTimeline;
+  const speakingSceneIdRef = useRef(speakingSceneId);
+  speakingSceneIdRef.current = speakingSceneId;
+  const isAudioSynthesizingRef = useRef(isAudioSynthesizing);
+  isAudioSynthesizingRef.current = isAudioSynthesizing;
   const lastPlayAttemptRef = useRef(0);
 
   // High-Precision 60FPS Virtual Timeline Playhead Engine
@@ -559,12 +645,29 @@ export function EditorWorkspace({
       const delta = (now - lastTime) / 1000;
       lastTime = now;
 
+      // Audio buffer pause: wait for TTS synthesis without letting the playhead runaway
+      if (isAudioSynthesizingRef.current) {
+        animId = requestAnimationFrame(tick);
+        return;
+      }
+
       const seqDur = sequenceDurationRef.current;
       const speed = speedValRef.current || 1.0;
       const scenes = effectiveScenesRef.current;
 
       if (!isDraggingPlayhead.current) {
         let currentPos = playheadSecondsRef.current + delta * speed;
+
+        // Hardware audio lock: lock timeline playhead to actual audio clock to eliminate cumulative drift 100%
+        const curSpkId = speakingSceneIdRef.current;
+        const audioElapsed = getActiveAudioElapsed();
+        if (audioElapsed !== null && curSpkId && playing) {
+          const spkScene = scenes.find((s) => s.id === curSpkId);
+          if (spkScene) {
+            const vStart = toSeconds(spkScene.voiceStart || spkScene.start);
+            currentPos = vStart + audioElapsed;
+          }
+        }
 
         if (currentPos >= seqDur) {
           if (isLoopingRef.current) {
@@ -609,7 +712,12 @@ export function EditorWorkspace({
             const offset = Math.max(0, currentPos - toSeconds(currentScene.start));
             const targetVideoTime = srcStartSec + offset;
             if (videoRef.current) {
-              videoRef.current.currentTime = targetVideoTime;
+              if (Math.abs(videoRef.current.currentTime - targetVideoTime) > 0.25) {
+                videoRef.current.currentTime = targetVideoTime;
+              }
+              if (videoRef.current.paused) {
+                void videoRef.current.play().catch(() => undefined);
+              }
             }
 
             const mutes = trackMutesRef.current;
@@ -634,7 +742,7 @@ export function EditorWorkspace({
             if (Math.abs(videoRef.current.currentTime - expectedVideoTime) > 0.35) {
               videoRef.current.currentTime = expectedVideoTime;
             }
-            if (videoRef.current.paused && now - lastPlayAttemptRef.current > 600) {
+            if (videoRef.current.paused && now - lastPlayAttemptRef.current > 120) {
               lastPlayAttemptRef.current = now;
               void videoRef.current.play().catch(() => undefined);
             }
@@ -987,22 +1095,44 @@ export function EditorWorkspace({
     };
   }, [activeScene, copiedScene, editorScenes, historyIdx, scenesHistory]);
 
-  // Subtitles word highlighter
+  // Subtitles word highlighter: strictly match the scene currently being played at playheadSeconds
   const currentPlaybackScene = useMemo(() => {
     if (!effectiveScenes.length) return null;
-    return (
-      effectiveScenes.find((s) => {
-        const cStart = toSeconds(s.captionStart || s.voiceStart || s.start);
-        const cEnd = toSeconds(s.captionEnd || s.voiceEnd || s.end);
-        return playheadSeconds >= cStart && playheadSeconds < cEnd;
-      }) ||
-      effectiveScenes.find((s) => {
-        const sStart = toSeconds(s.start);
-        const sEnd = toSeconds(s.end);
-        return playheadSeconds >= sStart && playheadSeconds < sEnd;
-      }) ||
-      (playheadSeconds >= sequenceDuration ? effectiveScenes[effectiveScenes.length - 1] : effectiveScenes[0])
-    );
+
+    // 1. Exact match within scene window [start, end]
+    const matched = effectiveScenes.find((s) => {
+      const sStart = toSeconds(s.start);
+      const sEnd = toSeconds(s.end);
+      return playheadSeconds >= sStart && playheadSeconds < sEnd;
+    });
+    if (matched) return matched;
+
+    // 2. Match within voice window [voiceStart, voiceEnd]
+    const voiceMatched = effectiveScenes.find((s) => {
+      const cStart = toSeconds(s.voiceStart || s.captionStart || s.start);
+      const cEnd = toSeconds(s.voiceEnd || s.captionEnd || s.end);
+      return playheadSeconds >= cStart && playheadSeconds < cEnd;
+    });
+    if (voiceMatched) return voiceMatched;
+
+    // 3. If past sequence duration -> last scene
+    if (playheadSeconds >= sequenceDuration && effectiveScenes.length > 0) {
+      return effectiveScenes[effectiveScenes.length - 1];
+    }
+
+    // 4. If before first scene
+    if (playheadSeconds <= toSeconds(effectiveScenes[0].start)) {
+      return effectiveScenes[0];
+    }
+
+    // 5. If in transition gap between scenes, pick the scene that started most recently
+    for (let i = effectiveScenes.length - 1; i >= 0; i--) {
+      if (playheadSeconds >= toSeconds(effectiveScenes[i].start)) {
+        return effectiveScenes[i];
+      }
+    }
+
+    return effectiveScenes[0];
   }, [effectiveScenes, playheadSeconds, sequenceDuration]);
 
   const activeDisplayScene = currentPlaybackScene || activeScene;
@@ -1011,24 +1141,21 @@ export function EditorWorkspace({
   const subtitleWords = currentCleanSub.split(/\s+/).filter(Boolean);
 
   const subStartSec = toSeconds(
-    activeDisplayScene?.captionStart || activeDisplayScene?.voiceStart || activeDisplayScene?.start
-  );
-  const subEndSec = toSeconds(
-    activeDisplayScene?.captionEnd || activeDisplayScene?.voiceEnd || activeDisplayScene?.end
+    activeDisplayScene?.voiceStart || activeDisplayScene?.captionStart || activeDisplayScene?.start
   );
 
   let activeWordIdx = -1;
   if (subtitleWords.length > 0) {
     const measuredDur = activeDisplayScene?.id ? sceneAudioDurations[activeDisplayScene.id] : undefined;
     const estDur = estimateSpokenDuration(currentCleanSub, voiceSpeed);
-    const maxSceneWindow = Math.max(0.3, subEndSec - subStartSec);
-    const actualVoiceDur = Math.min(maxSceneWindow, measuredDur && measuredDur > 0.2 ? measuredDur : estDur);
+    // Use true audio duration so karaoke subtitle matches voice speed 1:1 without compressing
+    const actualVoiceDur = (measuredDur && measuredDur > 0.2) ? measuredDur : estDur;
 
     const currentOffset = playheadSeconds - subStartSec;
     if (currentOffset < 0) {
       activeWordIdx = -1;
     } else if (currentOffset <= actualVoiceDur) {
-      activeWordIdx = computeActiveWordIndex(subtitleWords, currentOffset, actualVoiceDur);
+      activeWordIdx = computeActiveWordIndex(subtitleWords, currentOffset, actualVoiceDur, 0.08);
     } else {
       activeWordIdx = subtitleWords.length;
     }
@@ -1194,6 +1321,7 @@ export function EditorWorkspace({
           selectedFilter={selectedFilter}
           setSelectedFilter={setSelectedFilter}
           setActiveStickers={setActiveStickers}
+          handleAutoAlignVoiceAndVisuals={handleAutoAlignVoiceAndVisuals}
         />
 
         <EditorStagePlayer
@@ -1240,43 +1368,6 @@ export function EditorWorkspace({
           playheadSeconds={playheadSeconds}
           setProjectMessage={setProjectMessage}
           toggleFullscreen={toggleFullscreen}
-        />
-
-        <EditorInspector
-          activeScene={activeScene}
-          activeSceneId={activeSceneId}
-          editorScenes={editorScenes}
-          setScenesWithHistory={setScenesWithHistory}
-          inspectorTab={inspectorTab}
-          setInspectorTab={setInspectorTab}
-          playheadSeconds={playheadSeconds}
-          scaleVal={scaleVal}
-          setScaleVal={setScaleVal}
-          posX={posX}
-          setPosX={setPosX}
-          posY={posY}
-          setPosY={setPosY}
-          rotationVal={rotationVal}
-          setRotationVal={setRotationVal}
-          opacityVal={opacityVal}
-          setOpacityVal={setOpacityVal}
-          speedVal={speedVal}
-          setSpeedVal={setSpeedVal}
-          selectedMask={selectedMask}
-          setSelectedMask={setSelectedMask}
-          selectedFilter={selectedFilter}
-          setSelectedFilter={setSelectedFilter}
-          inAnimation={inAnimation}
-          setInAnimation={setInAnimation}
-          outAnimation={outAnimation}
-          setOutAnimation={setOutAnimation}
-          speakingSceneId={speakingSceneId}
-          playSceneAudio={playSceneAudio}
-          stopSceneAudio={stopSceneAudio}
-          voiceSpeed={voiceSpeed}
-          sourceJob={sourceJob}
-          onUpdateJob={onUpdateJob}
-          setProjectMessage={setProjectMessage}
         />
       </div>
 

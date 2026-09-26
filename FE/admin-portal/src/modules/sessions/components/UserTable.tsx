@@ -254,7 +254,7 @@ export function UserTable({
                   {/* License Key */}
                   <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/80">
                     <span className="font-mono font-bold text-[11px] text-slate-800">
-                      {item.key_hint || "JACS-****-****"}
+                      {keyRaw || item.key_hint || "JACS-****-****"}
                     </span>
                     <div className="flex items-center gap-1">
                       <button
@@ -497,7 +497,7 @@ export function UserTable({
                     <td className="py-2.5 px-3 whitespace-nowrap">
                       <div className="inline-flex items-center gap-1.5 bg-slate-900/[0.04] hover:bg-slate-900/[0.07] border border-slate-200/90 px-2.5 py-1 rounded-xl transition-colors">
                         <span className="font-mono font-bold text-xs text-slate-800 tracking-tight">
-                          {item.key_hint || "JACS-****-****"}
+                          {keyRaw || item.key_hint || "JACS-****-****"}
                         </span>
                         <button
                           type="button"

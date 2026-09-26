@@ -10,7 +10,9 @@ const FEMALE_VOICES = new Set(["coral", "nova", "shimmer", "sage"]);
 const MALE_VOICES = new Set(["alloy", "ash", "ballad", "echo", "fable", "onyx"]);
 
 function normalizeTtsVoice(value, gender) {
-  const candidate = VOICE_ALIASES[String(value || "").trim()] || String(value || "").trim().toLowerCase();
+  const clean = String(value || "").trim().toLowerCase().replace(/^openai-/, "");
+  if (SUPPORTED_VOICES.has(clean)) return clean;
+  const candidate = VOICE_ALIASES[String(value || "").trim()] || clean;
   if (SUPPORTED_VOICES.has(candidate)) return candidate;
   return gender === "male" ? "onyx" : "nova";
 }

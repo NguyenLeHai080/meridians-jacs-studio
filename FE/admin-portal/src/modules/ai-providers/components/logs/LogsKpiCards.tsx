@@ -8,18 +8,26 @@ interface LogsKpiCardsProps {
 }
 
 export const LogsKpiCards: React.FC<LogsKpiCardsProps> = ({ summary, loading }) => {
+  const totalRequests = summary?.total_requests ?? 0;
+  const successfulRequests = summary?.successful_requests ?? 0;
+  const failedRequests = summary?.failed_requests ?? 0;
+  const successRate = summary?.success_rate_pct ?? 100;
+  const avgLatency = summary?.avg_latency_ms ?? 0;
+  const totalCost = summary?.total_cost_vnd ?? 0;
+  const totalTokens = summary?.total_tokens ?? 0;
+
   const cards = [
     {
       label: "Tổng Lượt Request",
-      value: summary.total_requests.toLocaleString("vi-VN"),
-      sub: `${summary.successful_requests.toLocaleString("vi-VN")} thành công, ${summary.failed_requests.toLocaleString("vi-VN")} lỗi`,
+      value: totalRequests.toLocaleString("vi-VN"),
+      sub: `${successfulRequests.toLocaleString("vi-VN")} thành công, ${failedRequests.toLocaleString("vi-VN")} lỗi`,
       icon: Activity,
       iconBg: "bg-blue-50 text-blue-600",
       valueColor: "text-slate-900",
     },
     {
       label: "Tỷ Lệ Thành Công",
-      value: `${summary.success_rate_pct.toFixed(1)}%`,
+      value: `${successRate.toFixed(1)}%`,
       sub: "Đạt chuẩn SLA 99.5%",
       icon: CheckCircle2,
       iconBg: "bg-emerald-50 text-emerald-600",
@@ -27,7 +35,7 @@ export const LogsKpiCards: React.FC<LogsKpiCardsProps> = ({ summary, loading }) 
     },
     {
       label: "Độ Trễ Trung Bình",
-      value: `${summary.avg_latency_ms} ms`,
+      value: `${avgLatency} ms`,
       sub: "Tốc độ phản hồi mạng lưới",
       icon: Clock,
       iconBg: "bg-cyan-50 text-cyan-600",
@@ -35,8 +43,8 @@ export const LogsKpiCards: React.FC<LogsKpiCardsProps> = ({ summary, loading }) 
     },
     {
       label: "Tổng Tiêu Thụ Ước Tính",
-      value: `${Math.round(summary.total_cost_vnd).toLocaleString("vi-VN")} ₫`,
-      sub: `${summary.total_tokens.toLocaleString("vi-VN")} tokens đã xử lý`,
+      value: `${Math.round(totalCost).toLocaleString("vi-VN")} ₫`,
+      sub: `${totalTokens.toLocaleString("vi-VN")} tokens đã xử lý`,
       icon: Zap,
       iconBg: "bg-amber-50 text-amber-600",
       valueColor: "text-amber-700",
