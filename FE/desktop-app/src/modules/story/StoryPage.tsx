@@ -27,6 +27,8 @@ import {
   ArrowRepeat,
   Film,
   Check2,
+  Trash,
+  TrashFill,
 } from "react-bootstrap-icons";
 
 type Props = {
@@ -35,6 +37,8 @@ type Props = {
   onUpdateJob: (jobId: string, values: Partial<Job>) => void;
   onAddJob?: (job: Job) => void;
   onOpenTimeline?: (jobId: string) => void;
+  onDeleteSources?: (sourceIds: string[]) => void;
+  onDeleteJobs?: (jobIds: string[]) => void;
 };
 
 const SPEED_OPTIONS = [
@@ -72,7 +76,14 @@ function formatSeconds(total: number): string {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Props) {
+export function StoryPage({
+  jobs,
+  onNavigate,
+  onUpdateJob,
+  onOpenTimeline,
+  onDeleteSources,
+  onDeleteJobs,
+}: Props) {
   const [selectedId, setSelectedId] = useState("");
   const [draft, setDraft] = useState("");
   const [saved, setSaved] = useState(false);
@@ -613,6 +624,122 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
     };
   }, []);
 
+  async function handleDeleteJob(jobId: string, jobTitle: string) {
+    const ok = await popup.confirm(
+      "Xóa Kịch Bản Video",
+      `Bạn có chắc chắn muốn xóa vĩnh viễn kịch bản "${jobTitle}"? Thao tác này sẽ xóa kịch bản và dữ liệu liên quan khỏi dự án.`,
+      "Xóa Kịch Bản",
+      "Hủy"
+    );
+
+    if (!ok) return;
+
+    if (jobId === selectedId) {
+      stopVoice();
+      const remaining = storyJobs.filter((j) => j.id !== jobId);
+      if (remaining.length > 0) {
+        setSelectedId(remaining[0].id);
+        setDraft(scriptFor(remaining[0]));
+      } else {
+        setSelectedId("");
+        setDraft("");
+      }
+    }
+
+    if (onDeleteSources) {
+      onDeleteSources([jobId]);
+    } else if (onDeleteJobs) {
+      onDeleteJobs([jobId]);
+    }
+
+    showToast(`✓ Đã xóa kịch bản "${jobTitle}"`);
+  }
+
+  async function handleDeleteScene(sceneIdx: number, sceneKey: string, sceneTitle?: string) {
+    if (!selected?.analysis?.scenes) return;
+    if (selected.analysis.scenes.length <= 1) {
+      showToast("⚠️ Kịch bản video cần ít nhất 1 phân cảnh, không thể xóa hết!");
+      return;
+    }
+
+    const ok = await popup.confirm(
+      "Xóa Phân Cảnh",
+      `Bạn có chắc chắn muốn xóa phân cảnh #${sceneIdx + 1}${sceneTitle ? ` ("${sceneTitle}")` : ""}? Thao tác này sẽ loại bỏ phân cảnh khỏi kịch bản và timeline dựng video.`,
+      "Xóa Cảnh",
+      "Hủy"
+    );
+
+    if (!ok) return;
+
+    if (playingVoiceKey === sceneKey) {
+      stopVoice();
+    }
+
+    const remainingScenes = selected.analysis.scenes.filter((_, i) => i !== sceneIdx);
+    const nextSceneDrafts = { ...sceneDrafts };
+    delete nextSceneDrafts[sceneKey];
+    setSceneDrafts(nextSceneDrafts);
+
+    let timelineCursor = 0;
+    const recalculatedScenes = remainingScenes.map((scene, index) => {
+      const vo = nextSceneDrafts[scene.id || `scene-${index + 1}`]?.trim() || scene.voiceover || scene.translation || "";
+      const words = vo.split(/\s+/).filter(Boolean).length;
+      const rate = voiceRate > 0 ? voiceRate : 1.0;
+      const sceneDur = Math.max(3, Math.round(words / (2.8 * rate)));
+      const startSec = timelineCursor;
+      const endSec = timelineCursor + sceneDur;
+      timelineCursor = endSec;
+
+      const srcStart = scene.sourceStart || scene.start || "00:00";
+      const srcStartSec = parseTimeToSec(srcStart);
+      const srcEnd = scene.sourceEnd || formatSeconds(srcStartSec + sceneDur);
+
+      return {
+        ...scene,
+        voiceover: vo,
+        translation: vo,
+        start: formatSeconds(startSec),
+        end: formatSeconds(endSec),
+        timeStart: startSec,
+        timeEnd: endSec,
+        sourceStart: srcStart,
+        sourceEnd: srcEnd,
+        sourceTimeStart: srcStartSec,
+        sourceTimeEnd: parseTimeToSec(srcEnd),
+      };
+    });
+
+    const updatedScript = recalculatedScenes
+      .map((s, i) => nextSceneDrafts[s.id || `scene-${i + 1}`] ?? (s.voiceover || s.translation || ""))
+      .filter(Boolean)
+      .join("\n\n");
+    setDraft(updatedScript);
+
+    onUpdateJob(selected.id, {
+      analysis: {
+        ...selected.analysis,
+        scenes: recalculatedScenes,
+        voiceScript: updatedScript,
+      },
+      durationSeconds: timelineCursor,
+    });
+
+    showToast(`✓ Đã xóa phân cảnh #${sceneIdx + 1}`);
+  }
+
+  async function handleClearDraft() {
+    const ok = await popup.confirm(
+      "Xóa Trắng Nội Dung Kịch Bản",
+      "Bạn có chắc chắn muốn xóa toàn bộ nội dung kịch bản để nhập lại từ đầu không?",
+      "Xóa Trắng",
+      "Hủy"
+    );
+    if (!ok) return;
+    setDraft("");
+    setSaved(false);
+    showToast("✓ Đã làm trống nội dung kịch bản");
+  }
+
   return (
     <div
       className="story-workspace-root animate-fade-in"
@@ -857,7 +984,33 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
                       <strong style={{ fontSize: "12px", color: isSelected ? "#fbbf24" : "#f8fafc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={job.name}>
                         {job.name}
                       </strong>
-                      <ChevronRight size={11} color={isSelected ? "#fbbf24" : "#64748b"} style={{ marginTop: "2px", flexShrink: 0 }} />
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteJob(job.id, job.name);
+                          }}
+                          style={{
+                            background: "rgba(239, 68, 68, 0.12)",
+                            border: "1px solid rgba(239, 68, 68, 0.25)",
+                            color: "#f87171",
+                            borderRadius: "4px",
+                            padding: "2px 5px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "11px",
+                            lineHeight: 1,
+                            transition: "all 0.15s ease",
+                          }}
+                          title={`Xóa kịch bản "${job.name}"`}
+                        >
+                          <Trash size={11} />
+                        </button>
+                        <ChevronRight size={11} color={isSelected ? "#fbbf24" : "#64748b"} style={{ marginTop: "1px" }} />
+                      </div>
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "5px", fontSize: "10.5px" }}>
@@ -899,6 +1052,30 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                {selected && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteJob(selected.id, selected.name)}
+                    style={{
+                      background: "rgba(239, 68, 68, 0.12)",
+                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      color: "#f87171",
+                      padding: "4px 9px",
+                      borderRadius: "5px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      transition: "all 0.15s ease",
+                    }}
+                    title="Xóa kịch bản video này"
+                  >
+                    <Trash size={11} /> Xóa Kịch Bản
+                  </button>
+                )}
+
                 {selected?.analysis?.storyPlan && (
                   <button
                     type="button"
@@ -1186,9 +1363,34 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
                 )}
               </div>
 
-              <span style={{ fontSize: "11px", color: "#64748b" }}>
-                ⏱️ Tổng thời lượng đọc: <strong style={{ color: "#fbbf24" }}>~{estimatedSeconds}s</strong>
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>
+                  ⏱️ Tổng thời lượng đọc: <strong style={{ color: "#fbbf24" }}>~{estimatedSeconds}s</strong>
+                </span>
+                {activeTab === "full" && draft.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearDraft}
+                    style={{
+                      background: "rgba(239, 68, 68, 0.1)",
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      color: "#f87171",
+                      padding: "2px 7px",
+                      borderRadius: "4px",
+                      fontSize: "10.5px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "3px",
+                      transition: "all 0.15s ease",
+                    }}
+                    title="Xóa toàn bộ nội dung kịch bản để viết lại"
+                  >
+                    <Trash size={10} /> Xóa trắng
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Script Text Editor Area */}
@@ -1292,6 +1494,28 @@ export function StoryPage({ jobs, onNavigate, onUpdateJob, onOpenTimeline }: Pro
                                 <VolumeUpFill size={11} color="#fbbf24" />
                               )}
                               {isPlayingThis ? "Dừng" : "Đọc thử"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteScene(idx, sceneKey, sc.title)}
+                              style={{
+                                background: "rgba(239, 68, 68, 0.12)",
+                                border: "1px solid rgba(239, 68, 68, 0.3)",
+                                color: "#f87171",
+                                padding: "2px 7px",
+                                borderRadius: "4px",
+                                fontSize: "10.5px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                transition: "all 0.15s ease",
+                              }}
+                              title="Xóa phân cảnh này khỏi kịch bản"
+                            >
+                              <Trash size={11} /> Xóa cảnh
                             </button>
                           </div>
                         </div>

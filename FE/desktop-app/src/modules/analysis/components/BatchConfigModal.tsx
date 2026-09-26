@@ -6,6 +6,7 @@ import {
   CpuFill,
   LightningChargeFill,
   PencilSquare,
+  PlayFill,
   PlusLg,
   Sliders,
   Trash3Fill,
@@ -15,6 +16,7 @@ import {
 import type { DurationMappingRule, Job, ProviderPoolItem, ProviderProfile } from "../../../core/types";
 import { ANALYSIS_LANGUAGES, PRESET_PROMPTS, type PresetPrompt } from "../constants/prompts";
 import { formatProviderLabel } from "../utils/analysisHelpers";
+import { VOICE_PACKS } from "../../../core/voice-packs";
 
 interface BatchConfigModalProps {
   isOpen: boolean;
@@ -71,7 +73,10 @@ interface BatchConfigModalProps {
   updateAutoQueueRender?: (val: boolean) => void;
   defaultLanguage: string;
   setDefaultLanguage: (lang: string) => void;
-  onSubmitBatch: (pId: string, prompt: string, lang: string) => void;
+  defaultVoiceId?: string;
+  setDefaultVoiceId?: (voice: string) => void;
+  onPlayPreviewVoice?: (text: string, voiceKey: string, voiceName?: string) => void;
+  onSubmitBatch: (pId: string, prompt: string, lang: string, voice?: string) => void;
 }
 
 export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
@@ -129,13 +134,16 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
   updateAutoQueueRender,
   defaultLanguage,
   setDefaultLanguage,
+  defaultVoiceId = "vi-adam-review",
+  setDefaultVoiceId,
+  onPlayPreviewVoice,
   onSubmitBatch,
 }) => {
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmitBatch(defaultProviderId, defaultPrompt, defaultLanguage);
+    onSubmitBatch(defaultProviderId, defaultPrompt, defaultLanguage, defaultVoiceId);
   };
 
   const modalContent = (
@@ -512,30 +520,33 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
                       onChange={(e) => handleSelectProvider(e.target.value)}
                       style={{ width: "100%", background: "rgba(0,0,0,0.45)", border: "1px solid rgba(255, 255, 255, 0.14)", borderRadius: "6px", padding: "7px 10px", color: "#f8fafc", fontSize: "12px", outline: "none", cursor: "pointer" }}
                     >
-                      {configuredProviders.some((p) => !p.isManaged) && (
-                        <optgroup label="🔑 NHÀ CUNG CẤP BYOK (API KEY RIÊNG)">
-                          {configuredProviders.filter((p) => !p.isManaged).map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {formatProviderLabel(p)}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
                       {configuredProviders.some((p) => p.isManaged) && (
-                        <optgroup label="⚡ CLOUD AI GATEWAY (ADMIN CẤP PHÉP)">
+                        <optgroup label="⚡ NHÀ CUNG CẤP TỪ ADMIN (CLOUD AI GATEWAY)">
                           {configuredProviders.filter((p) => p.isManaged).map((p) => (
                             <option key={p.id} value={p.id}>
-                              {formatProviderLabel(p)}
+                              {p.name}
                             </option>
                           ))}
                         </optgroup>
                       )}
+                      <optgroup label="🔑 NHÀ CUNG CẤP BYOK (API KEY RIÊNG CỦA BẠN)">
+                        {configuredProviders.filter((p) => !p.isManaged).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {formatProviderLabel(p)}
+                          </option>
+                        ))}
+                        {!configuredProviders.some((p) => !p.isManaged) && (
+                          <option value="__no_byok__" disabled>
+                            (Chưa có Key riêng — Cấu hình tại Cài Đặt)
+                          </option>
+                        )}
+                      </optgroup>
                     </select>
                   </div>
 
                   <div>
                     <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#cbd5e1", marginBottom: "4px" }}>
-                      MÔ HÌNH AI (MODEL)
+                      MÔ HÌNH AI (MODEL) {selectedProvider?.isManaged ? "— CẤP TỪ ADMIN" : "— THEO NHÀ CUNG CẤP"}
                     </label>
                     <select
                       value={isCustomModel ? "__custom__" : (selectedModel || selectedProvider?.model || "")}
@@ -765,8 +776,11 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
             {/* SECTION 3: Preset Prompts Grid */}
             <div style={{ background: "rgba(18, 23, 35, 0.75)", border: "1px solid rgba(255, 255, 255, 0.09)", borderRadius: "12px", padding: "14px 16px", display: "flex", flexDirection: "column", gap: "10px", boxSizing: "border-box", width: "100%" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minWidth: 0 }}>
-                <span style={{ fontSize: "13px", fontWeight: 800, color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "13px", fontWeight: 800, color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                   <Sliders size={15} color="#fbbf24" /> 3. Phong Cách Kịch Bản & Giọng Điệu
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.28)", borderRadius: "4px", padding: "1px 7px", letterSpacing: "0.2px" }}>
+                    🎬 Review Phim & Ngôi 3 Khớp Voice
+                  </span>
                 </span>
                 <button
                   type="button"
@@ -866,6 +880,106 @@ export const BatchConfigModal: React.FC<BatchConfigModalProps> = ({
                   {narratorEnabled ? "🎙️ Có Lồng Tiếng Voice AI" : "🎬 Cắt Ghép Thuần Tiếng Gốc (Không Voice AI)"}
                 </span>
               </div>
+
+              {narratorEnabled && (
+                <div
+                  style={{
+                    background: "rgba(10, 14, 24, 0.85)",
+                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                    borderRadius: "10px",
+                    padding: "12px 14px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "8px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                    <label style={{ fontSize: "11.5px", fontWeight: 800, color: "#fbbf24", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span>🎙️</span> CHỌN GIỌNG ĐỌC VOICE AI TỪ API (ELEVENLABS / VBEE / OPENAI / NEURAL):
+                    </label>
+                    {onPlayPreviewVoice && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const sampleText = defaultLanguage === "en" 
+                            ? "Hello! This is an AI voice narration sample tested directly through the audio synthesis API."
+                            : "Xin chào! Đây là bản nghe thử giọng đọc AI được kết nối trực tiếp qua API.";
+                          onPlayPreviewVoice(sampleText, "preview-batch-voice", defaultVoiceId);
+                        }}
+                        style={{
+                          background: "rgba(245, 158, 11, 0.15)",
+                          border: "1px solid rgba(245, 158, 11, 0.4)",
+                          color: "#fbbf24",
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <PlayFill size={13} /> Nghe thử giọng này
+                      </button>
+                    )}
+                  </div>
+                  <select
+                    value={defaultVoiceId}
+                    onChange={(e) => setDefaultVoiceId?.(e.target.value)}
+                    style={{
+                      width: "100%",
+                      background: "rgba(0,0,0,0.55)",
+                      border: "1px solid rgba(245, 158, 11, 0.4)",
+                      borderRadius: "6px",
+                      padding: "7px 10px",
+                      color: "#f8fafc",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      outline: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <optgroup label="👑 ELEVENLABS AI (ĐỈNH CAO CẢM XÚC & NHỊP THỞ ĐIỆN ẢNH)">
+                      {VOICE_PACKS.filter((v) => v.id.startsWith("eleven-")).map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="🔥 VBEE AIVOICE (GIỌNG REVIEW PHIM QUỐC DÂN & VÙNG MIỀN VN)">
+                      {VOICE_PACKS.filter((v) => v.id.startsWith("vbee-")).map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="🤖 OPENAI TTS API (CHUẨN STUDIO QUỐC TẾ)">
+                      <option value="openai-onyx">🎙️ Onyx (OpenAI TTS · Trầm ấm, uy quyền)</option>
+                      <option value="openai-echo">🎙️ Echo (OpenAI TTS · Dõng dạc, rõ ràng)</option>
+                      <option value="openai-fable">🎙️ Fable (OpenAI TTS · Truyền cảm, kể chuyện Anh-Mỹ)</option>
+                      <option value="openai-alloy">🎙️ Alloy (OpenAI TTS · Cân bằng, tự nhiên)</option>
+                      <option value="openai-nova">✨ Nova (OpenAI TTS · Nữ năng động, sắc nét)</option>
+                      <option value="openai-shimmer">✨ Shimmer (OpenAI TTS · Nữ thanh thoát, êm dịu)</option>
+                    </optgroup>
+                    <optgroup label="⚡ MICROSOFT NEURAL PROSODY (TỐC ĐỘ CAO, CHUẨN TIKTOK/REELS)">
+                      {VOICE_PACKS.filter((v) => v.id.startsWith("vi-")).map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="🎬 QUỐC TẾ (HOLLYWOOD / BBC DOCUMENTARY)">
+                      {VOICE_PACKS.filter((v) => v.language === "en").map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "8px" }}>
                 <label

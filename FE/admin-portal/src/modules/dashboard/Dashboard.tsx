@@ -14,7 +14,7 @@ import { BillingPage, BankConfigPage } from "../billing";
 import { RenewalsPage } from "../renewals";
 import { SessionsPage } from "../sessions";
 import { JobsPage } from "../jobs";
-import { AiRequestLogsPage, ProvidersPage, AiModelsPricingPage } from "../ai-providers";
+import { AiRequestLogsPage, ProvidersPage, AiModelsPricingPage, ModelSquarePage } from "../ai-providers";
 import { TelemetryPage, ApiOperationsPage } from "../telemetry";
 import { ReleasesPage } from "../releases";
 import { SettingsPage, AccountSecurityModal } from "../settings";
@@ -28,6 +28,7 @@ const VALID_MENUS: MenuKey[] = [
   "billing",
   "bank_config",
   "renewals",
+  "model_square",
   "providers",
   "ai_models_pricing",
   "ai_request_logs",
@@ -193,6 +194,13 @@ export function Dashboard({ onLogout }: { onLogout: () => void }) {
 
           {activeMenu === "renewals" && (
             <RenewalsPage
+              searchTerm={searchTerm}
+              onNotify={showToast}
+            />
+          )}
+
+          {activeMenu === "model_square" && (
+            <ModelSquarePage
               searchTerm={searchTerm}
               onNotify={showToast}
             />

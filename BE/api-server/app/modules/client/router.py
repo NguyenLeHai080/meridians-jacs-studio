@@ -384,3 +384,172 @@ async def get_client_public_config():
             "menu_locks": stored.get("menu_locks", {}),
         }
     }
+
+
+class LogAiUsageRequest(BaseModel):
+    task_type: str = Field(default="VIDEO_ANALYSIS", description="VIDEO_ANALYSIS | VOICE_DUBBING | SUBTITLE_TRANSLATION")
+    task_title: str = Field(default="Tác vụ AI Video", description="Tên tác vụ hoặc tên file video cụ thể")
+    model_used: str = Field(default="gpt-4o", description="Tên mô hình AI được sử dụng")
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cache_read_tokens: int = Field(default=0, ge=0)
+    cache_write_tokens: int = Field(default=0, ge=0)
+    job_id: str | None = None
+
+
+@router.post("/log-ai-usage")
+async def log_ai_usage(
+    payload: LogAiUsageRequest,
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+):
+    """
+    Called by Client Desktop Tool when performing AI tasks (Video Analysis, Voice Dubbing).
+    Validates model permission, calculates in/out/cache cost, deducts credits, and writes audit log.
+    """
+    license_record = _license_from_headers(license_key, device_id)
+    lic_id = license_record["id"]
+
+    # 1. Model permission check
+    allowed_models = license_record.get("allowed_models")
+    if allowed_models and isinstance(allowed_models, list) and len(allowed_models) > 0:
+        clean_model = payload.model_used.strip().lower()
+        is_allowed = any(
+            clean_model == str(m).strip().lower() or clean_model in str(m).strip().lower()
+            for m in allowed_models
+        )
+        if not is_allowed:
+            raise AppError(
+                "MODEL_NOT_AUTHORIZED",
+                f"Mô hình '{payload.model_used}' chưa được cấp quyền cho License của bạn. Vui lòng liên hệ Admin!",
+                403,
+            )
+
+    # 2. Calculate Token Cost based on model pricing configs
+    cfg_id = f"cfg-{payload.model_used.lower().replace('/', '_')}"
+    pricing_cfg = store.get("model_pricing_configs", cfg_id) if hasattr(store, "get") else None
+
+    in_price = float(pricing_cfg.get("input_price_1m", 2600.0)) if pricing_cfg else 2600.0
+    out_price = float(pricing_cfg.get("output_price_1m", 13000.0)) if pricing_cfg else 13000.0
+    cache_read_price = float(pricing_cfg.get("cache_read_1m", 260.0)) if pricing_cfg else 260.0
+    cache_write_price = float(pricing_cfg.get("cache_write_1m", 3250.0)) if pricing_cfg else 3250.0
+    cost_per_call = float(pricing_cfg.get("cost_per_call", 0.0)) if pricing_cfg else 0.0
+
+    if pricing_cfg and pricing_cfg.get("pricing_unit") == "call":
+        cost_vnd = cost_per_call if cost_per_call > 0 else 100.0
+    else:
+        in_cost = (payload.input_tokens / 1_000_000.0) * in_price
+        out_cost = (payload.output_tokens / 1_000_000.0) * out_price
+        cache_cost = (payload.cache_read_tokens / 1_000_000.0) * cache_read_price + (payload.cache_write_tokens / 1_000_000.0) * cache_write_price
+        cost_vnd = in_cost + out_cost + cache_cost
+
+    # 1 Credit = 1,000 VND
+    credits_to_deduct = round(cost_vnd / 1000.0, 3)
+    if credits_to_deduct <= 0 and (payload.input_tokens > 0 or payload.output_tokens > 0):
+        credits_to_deduct = 0.01
+
+    # 3. Check Credit Balance
+    current_bal = float(license_record.get("credit_balance", 0.0))
+    if current_bal < credits_to_deduct:
+        raise AppError(
+            "INSUFFICIENT_CREDITS",
+            f"Số dư Credits không đủ (hiện có: {current_bal:.2f} Cr, cần: {credits_to_deduct:.2f} Cr). Vui lòng nạp thêm để tiếp tục!",
+            402,
+        )
+
+    # 4. Deduct balance
+    new_bal = round(max(0.0, current_bal - credits_to_deduct), 3)
+    store.update("licenses", lic_id, {"credit_balance": new_bal, "updated_at": datetime.now(UTC)})
+
+    # 5. Record Audit Log
+    from uuid import uuid4
+    log_entry = {
+        "id": f"log-{uuid4().hex[:12]}",
+        "license_id": str(lic_id),
+        "license_key": str(license_key),
+        "task_type": payload.task_type,
+        "task_title": payload.task_title,
+        "model_used": payload.model_used,
+        "input_tokens": payload.input_tokens,
+        "output_tokens": payload.output_tokens,
+        "cache_read_tokens": payload.cache_read_tokens,
+        "cache_write_tokens": payload.cache_write_tokens,
+        "cost_vnd": round(cost_vnd, 1),
+        "credits_deducted": credits_to_deduct,
+        "balance_before": current_bal,
+        "balance_after": new_bal,
+        "job_id": payload.job_id,
+        "status": "SUCCESS",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(UTC),
+    }
+    store.create("ai_audit_logs", log_entry)
+
+    return {
+        "data": {
+            "success": True,
+            "credits_deducted": credits_to_deduct,
+            "remaining_balance": new_bal,
+            "log": log_entry,
+        }
+    }
+
+
+@router.get("/ai-usage-logs")
+async def get_ai_usage_logs(
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+    key: str | None = None,
+):
+    """
+    Returns AI token and credit deduction audit logs for the given client tool key.
+    """
+    target_key = license_key or key
+    if not target_key:
+        raise AppError("CLIENT_LICENSE_REQUIRED", "Yêu cầu License Key", 401)
+
+    logs = store.list("ai_audit_logs") if hasattr(store, "list") else []
+    target_clean = str(target_key).strip().upper()
+    filtered = [
+        l for l in logs
+        if str(l.get("license_key", "")).strip().upper() == target_clean
+        or str(l.get("license_id", "")).strip().upper() == target_clean
+    ]
+    filtered.sort(key=lambda x: str(x.get("timestamp") or x.get("created_at") or ""), reverse=True)
+    return {"data": filtered[:150]}
+
+
+@router.get("/sync-status")
+async def sync_client_status(
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+):
+    """
+    Sync endpoint for desktop client to receive latest granted models, credit balance and pending notifications.
+    """
+    license_record = _license_from_headers(license_key, device_id)
+    pending_notif = license_record.get("notification_pending")
+
+    return {
+        "data": {
+            "valid": True,
+            "license_id": str(license_record["id"]),
+            "customer_name": license_record.get("customer_name"),
+            "credit_balance": float(license_record.get("credit_balance", 0.0)),
+            "allowed_models": license_record.get("allowed_models") or [],
+            "ai_gateway_enabled": license_record.get("ai_gateway_enabled", True),
+            "notification_pending": pending_notif,
+        }
+    }
+
+
+@router.post("/acknowledge-notification")
+async def acknowledge_client_notification(
+    license_key: str | None = Header(default=None, alias="X-License-Key"),
+    device_id: str | None = Header(default=None, alias="X-Device-Id"),
+):
+    """Clear notification_pending once client tool has displayed it."""
+    license_record = _license_from_headers(license_key, device_id)
+    store.update("licenses", license_record["id"], {"notification_pending": None})
+    return {"data": {"success": True}}
+

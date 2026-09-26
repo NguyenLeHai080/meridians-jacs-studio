@@ -20,15 +20,19 @@ import {
   GeoAltFill,
 } from "react-bootstrap-icons";
 
+import type { Job } from "../../../core/types";
+
 export type PresetMode = "auto" | "batch" | "night" | "script";
 
 interface OverviewHeroProps {
   activeMode?: PresetMode;
   onModeChange?: (mode: PresetMode) => void;
   onNavigate: (key: any) => void;
+  jobs?: Job[];
 }
 
-export function OverviewHero({ onNavigate }: OverviewHeroProps) {
+export function OverviewHero({ jobs = [], onNavigate }: OverviewHeroProps) {
+  const runningCount = jobs.filter((j) => j.status === "running" || j.status === "queued").length;
   const { timeStr, secondsStr, dateStr, weather, selectedCity, changeCity, refreshWeather, loadingWeather } = useWeatherAndTime();
   const [showCityDropdown, setShowCityDropdown] = useState(false);
 
@@ -245,10 +249,10 @@ export function OverviewHero({ onNavigate }: OverviewHeroProps) {
 
         {/* Right: Studio Privacy & System Health Badge */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", flexShrink: 0 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.35)", padding: "4px 10px", borderRadius: "99px" }}>
-            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981", display: "inline-block" }} />
-            <span style={{ fontSize: "11px", fontWeight: 800, color: "#34d399", letterSpacing: "0.2px" }}>
-              JACS Studio V0.8.18 · Cục Bộ Sẵn Sàng
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: runningCount > 0 ? "rgba(245, 158, 11, 0.12)" : "rgba(16, 185, 129, 0.12)", border: runningCount > 0 ? "1px solid rgba(245, 158, 11, 0.35)" : "1px solid rgba(16, 185, 129, 0.35)", padding: "4px 10px", borderRadius: "99px" }}>
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: runningCount > 0 ? "#fbbf24" : "#10b981", boxShadow: runningCount > 0 ? "0 0 8px #fbbf24" : "0 0 8px #10b981", display: "inline-block" }} />
+            <span style={{ fontSize: "11px", fontWeight: 800, color: runningCount > 0 ? "#fbbf24" : "#34d399", letterSpacing: "0.2px" }}>
+              {runningCount > 0 ? `JACS Studio v0.8.76 · Đang Xử Lý (${runningCount})` : "JACS Studio v0.8.76 · Cục Bộ Sẵn Sàng"}
             </span>
           </div>
 

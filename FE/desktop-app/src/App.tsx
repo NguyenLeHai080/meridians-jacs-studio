@@ -11,7 +11,9 @@ import {
 } from "./core/types";
 import {
   ApiRequestError,
+  getApiBaseUrl,
   heartbeatLicense,
+  acknowledgeClientNotification,
   getBankConfig,
   createClientJob,
   deleteClientJob,
@@ -53,7 +55,6 @@ import { BrandPage } from "./modules/brand";
 import { SourcesPage } from "./modules/sources";
 import { BillingHistoryPage } from "./modules/billing";
 import { SystemLogsPage } from "./modules/logs";
-import { CreditsUsagePage, CreditTopupModal } from "./modules/credits";
 import { LicenseRenewalModal } from "./modules/renewal";
 import { LegalTermsModal } from "./modules/legal";
 
@@ -85,7 +86,7 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
   overview: ({ jobs, metrics, navigate, preferences }) => (
     <OverviewPage jobs={jobs} metrics={metrics} onNavigate={navigate} preferences={preferences} />
   ),
-  sources: ({ jobs, addJob, updateJob, analysisSource, navigate, onOpenTimeline, deleteJobs, deleteSources }) => (
+  sources: ({ jobs, addJob, updateJob, analysisSource, navigate, onOpenTimeline, deleteJobs, deleteSources, allowedModels, onSyncAdminGrant }) => (
     <VideoAnalysisPage
       jobs={jobs}
       onAddJob={addJob}
@@ -95,6 +96,8 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
       onOpenTimeline={onOpenTimeline}
       initialSource={analysisSource}
       onNavigate={navigate}
+      allowedModels={allowedModels}
+      onSyncAdminGrant={onSyncAdminGrant}
     />
   ),
   batch: ({ jobs, addJob, updateJob, cancelJob, retryJob, deleteJobs, onOpenTimeline, navigate }) => (
@@ -109,7 +112,7 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
       onNavigate={navigate}
     />
   ),
-  analysis: ({ jobs, addJob, updateJob, analysisSource, navigate, onOpenTimeline, deleteJobs, deleteSources }) => (
+  analysis: ({ jobs, addJob, updateJob, analysisSource, navigate, onOpenTimeline, deleteJobs, deleteSources, allowedModels, onSyncAdminGrant }) => (
     <VideoAnalysisPage
       jobs={jobs}
       onAddJob={addJob}
@@ -119,14 +122,18 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
       onOpenTimeline={onOpenTimeline}
       initialSource={analysisSource}
       onNavigate={navigate}
+      allowedModels={allowedModels}
+      onSyncAdminGrant={onSyncAdminGrant}
     />
   ),
-  story: ({ jobs, navigate, updateJob, addJob }) => (
+  story: ({ jobs, navigate, updateJob, addJob, deleteSources, deleteJobs }) => (
     <StoryPage
       jobs={jobs}
       onNavigate={navigate}
       onUpdateJob={updateJob}
       onAddJob={addJob}
+      onDeleteSources={deleteSources}
+      onDeleteJobs={deleteJobs}
     />
   ),
   timeline: ({ jobs, navigate, addJob, updateJob, timelineSourceId }) => (
@@ -149,31 +156,25 @@ const pages: Record<NavKey, (props: PageProps) => JSX.Element> = {
   render: ({ jobs, navigate }) => (
     <RenderPage jobs={jobs} onNavigate={navigate} />
   ),
-  usage: ({ jobs, navigate, onOpenTimeline, onOpenRenewal, onOpenTopup, creditBalance, allowedModels, onSyncAdminGrant }) => (
-    <CreditsUsagePage
+  billing: () => <BillingHistoryPage />,
+  logs: ({ jobs, navigate, updateJob, creditBalance, allowedModels, onSyncAdminGrant }) => (
+    <SystemLogsPage
       jobs={jobs}
       onNavigate={navigate}
-      onOpenTimeline={onOpenTimeline}
-      onOpenRenewal={onOpenRenewal}
-      onOpenTopup={onOpenTopup}
+      onUpdateJob={updateJob}
       creditBalance={creditBalance}
       allowedModels={allowedModels}
       onSyncAdminGrant={onSyncAdminGrant}
     />
   ),
-  billing: () => <BillingHistoryPage />,
-  logs: ({ jobs, navigate, updateJob }) => (
-    <SystemLogsPage
-      jobs={jobs}
-      onNavigate={navigate}
-      onUpdateJob={updateJob}
-    />
-  ),
   activation: ({ onActivated }) => <ActivationPage onActivated={onActivated} />,
-  settings: ({ preferences, onPreferencesChanged }) => (
+  settings: ({ preferences, onPreferencesChanged, creditBalance, allowedModels, onSyncAdminGrant }) => (
     <SettingsPage
       preferences={preferences}
       onPreferencesChanged={onPreferencesChanged}
+      creditBalance={creditBalance}
+      allowedModels={allowedModels}
+      onSyncAdminGrant={onSyncAdminGrant}
     />
   ),
 };
@@ -187,7 +188,6 @@ export function App() {
   const [analysisSourceId, setAnalysisSourceId] = useState<string | undefined>();
   const [timelineSourceId, setTimelineSourceId] = useState<string | undefined>();
   const [showRenewalModal, setShowRenewalModal] = useState(false);
-  const [showCreditTopupModal, setShowCreditTopupModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [machineInfo, setMachineInfo] = useState<MachineInfo | null>(null);
   const [licenseExpiresAt, setLicenseExpiresAt] = useState<string | null>(null);
@@ -281,8 +281,15 @@ export function App() {
           setAiGatewayEnabled((prev) => (prev !== gwEnabled ? gwEnabled : prev));
         }
 
-        // Trigger notification only if credit was significantly increased by admin
-        if (newCredit > prevCredit && prevCredit >= 0) {
+        // Check if there is an explicit admin grant notification pending
+        if (beat.notification_pending?.message) {
+          setAdminGrantNotification({
+            message: beat.notification_pending.message,
+            creditAmount: beat.notification_pending.credits_balance,
+            newBalance: newCredit,
+          });
+          void acknowledgeClientNotification(key, machine.machineId);
+        } else if (newCredit > prevCredit && prevCredit >= 0) {
           const added = newCredit - prevCredit;
           if (added > 0) {
             setAdminGrantNotification({
@@ -303,9 +310,8 @@ export function App() {
   // Fetch remote tool branding & menu lock configuration (every 60s)
   useEffect(() => {
     const fetchConfig = async () => {
-      if (active === "usage") return;
       try {
-        const res = await fetch("https://jacs-studio.nexoratech.com.vn/api/v1/client/config");
+        const res = await fetch(`${getApiBaseUrl()}/api/v1/client/config`);
         if (res.ok) {
           const body = await res.json();
           if (body?.data) {
@@ -335,8 +341,6 @@ export function App() {
     };
     initRuntimeInfo();
     const interval = setInterval(() => {
-      // Khi đang xem màn hình Credits ("usage"), tắt hoàn toàn tự động gọi API ngầm, chỉ làm mới khi người dùng bấm nút
-      if (active === "usage") return;
       void syncAdminGrant(false);
     }, 60000);
     return () => clearInterval(interval);
@@ -347,7 +351,6 @@ export function App() {
     const runtime = getRuntime();
 
     const checkUpdate = async () => {
-      if (active === "usage") return;
       try {
         if (runtime.checkForUpdate) {
           const res = await runtime.checkForUpdate("stable");
@@ -716,10 +719,6 @@ export function App() {
     setShowRenewalModal(true);
   }, []);
 
-  const handleOpenCreditTopupModal = useCallback(() => {
-    setShowCreditTopupModal(true);
-  }, []);
-
   const handleSyncAdminGrantFromPage = useCallback(() => {
     void syncAdminGrant(true);
   }, [syncAdminGrant]);
@@ -793,7 +792,6 @@ export function App() {
             void syncAdminGrant(true);
           }}
           onOpenRenewal={() => setShowRenewalModal(true)}
-          onOpenTopup={handleOpenCreditTopupModal}
           onOpenTerms={() => setShowTermsModal(true)}
           onOpenSettings={() => setActive("settings")}
           onOpenActivation={() => setActive("activation")}
@@ -866,6 +864,71 @@ export function App() {
           </div>
         )}
 
+        {/* Out of Credits Alert Banner */}
+        {activated && creditBalance <= 0 && (
+          <div
+            style={{
+              background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(15, 23, 42, 0.95))",
+              border: "1px solid rgba(239, 68, 68, 0.45)",
+              borderRadius: "10px",
+              padding: "9px 18px",
+              margin: "10px 20px 0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              boxShadow: "0 4px 14px rgba(239, 68, 68, 0.2)",
+              animation: "fadeIn 0.3s ease",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "20px" }}>⚠️</span>
+              <div>
+                <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#fca5a5" }}>
+                  Tool Key của bạn đã hết Credits AI (Số dư: 0.00 Cr)
+                </div>
+                <div style={{ fontSize: "11px", color: "#cbd5e1" }}>
+                  Các tác vụ Cloud AI sẽ tạm dừng cho đến khi được Admin nạp thêm Credits hoặc bạn tự cấu hình API Key riêng trong mục BYOK.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={() => setShowRenewalModal(true)}
+                style={{
+                  background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                  border: "none",
+                  padding: "6px 14px",
+                  borderRadius: "6px",
+                  color: "#ffffff",
+                  fontSize: "11.5px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 0 10px rgba(239, 68, 68, 0.4)",
+                }}
+              >
+                ⚡ Nạp Credits / Gia Hạn
+              </button>
+              <button
+                type="button"
+                onClick={() => setActive("settings")}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.18)",
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  color: "#cbd5e1",
+                  fontSize: "11.5px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Dùng Key Cá Nhân (BYOK)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* License Expiry Warning Marquee */}
         {daysRemaining !== null && daysRemaining <= 7 && licenseExpiresAt && (
           <LicenseWarningBanner
@@ -922,7 +985,6 @@ export function App() {
                 onAnalyzeSource={onAnalyzeSource}
                 analysisSource={analysisSource}
                 onOpenRenewal={handleOpenRenewalModal}
-                onOpenTopup={handleOpenCreditTopupModal}
                 creditBalance={creditBalance}
                 allowedModels={allowedModels}
                 onSyncAdminGrant={handleSyncAdminGrantFromPage}
@@ -954,14 +1016,6 @@ export function App() {
               }
             })();
           }}
-        />
-
-        <CreditTopupModal
-          isOpen={showCreditTopupModal}
-          onClose={() => setShowCreditTopupModal(false)}
-          onSyncAdminGrant={() => void syncAdminGrant(true)}
-          currentKey={licensePlanName || "JACS-PRO-KEY"}
-          currentBalance={creditBalance}
         />
 
         <LegalTermsModal

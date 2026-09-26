@@ -5,7 +5,7 @@ function apiUrl() {
   return (
     import.meta.env.VITE_API_URL ||
     window.jacsRuntime?.getApiBaseUrl?.() ||
-    "https://jacs-studio.nexoratech.com.vn"
+    (import.meta.env.DEV ? "http://localhost:8000" : "https://jacs-studio.nexoratech.com.vn")
   ).replace(/\/$/, "");
 }
 type ApiEnvelope<T> = { data?: T; error?: { code?: string; message?: string; details?: Record<string, unknown>; request_id?: string } } & T;
@@ -61,6 +61,12 @@ export interface LicenseValidationResult {
   ai_gateway_enabled?: boolean;
   app_version?: string;
   platform?: string;
+  notification_pending?: {
+    type?: string;
+    message?: string;
+    granted_models?: string[];
+    credits_balance?: number;
+  } | null;
 }
 
 export async function validateLicense(key: string, hwid: string) {
@@ -225,5 +231,91 @@ export async function checkCreditTopupStatus(orderId?: string, licenseKey?: stri
     };
   }>(`/api/v1/billing/credit-topup/check-status?${params.toString()}`);
 }
+
+export type AiUsageAuditLog = {
+  id: string;
+  license_id: string;
+  license_key: string;
+  task_type: string;
+  task_title: string;
+  model_used: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  cost_vnd: number;
+  credits_deducted: number;
+  balance_before: number;
+  balance_after: number;
+  status: string;
+  timestamp: string;
+  created_at?: string;
+};
+
+export async function getAiUsageLogs(licenseKey: string): Promise<AiUsageAuditLog[]> {
+  const res = await request<{ data: AiUsageAuditLog[] }>(
+    `/api/v1/client/ai-usage-logs?key=${encodeURIComponent(normalizeLicenseKey(licenseKey))}`
+  );
+  return res?.data || (res as any) || [];
+}
+
+export async function syncClientStatus(licenseKey: string, deviceId: string): Promise<{
+  valid: boolean;
+  credit_balance: number;
+  allowed_models: string[];
+  notification_pending?: {
+    type: string;
+    message: string;
+    granted_models: string[];
+    credits_balance: number;
+  } | null;
+}> {
+  const res = await request<{ data: any }>("/api/v1/client/sync-status", {
+    method: "GET",
+    headers: {
+      "X-License-Key": normalizeLicenseKey(licenseKey),
+      "X-Device-Id": normalizeDeviceId(deviceId),
+    },
+  });
+  return res?.data || (res as any) || { valid: false, credit_balance: 0, allowed_models: [] };
+}
+
+export async function acknowledgeClientNotification(licenseKey: string, deviceId: string): Promise<void> {
+  await request("/api/v1/client/acknowledge-notification", {
+    method: "POST",
+    headers: {
+      "X-License-Key": normalizeLicenseKey(licenseKey),
+      "X-Device-Id": normalizeDeviceId(deviceId),
+    },
+  }).catch(() => {});
+}
+
+export async function logAiUsage(payload: {
+  task_type: string;
+  task_title: string;
+  model_used: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
+  job_id?: string;
+}, licenseKey: string, deviceId: string) {
+  return request<{
+    data: {
+      success: boolean;
+      credits_deducted: number;
+      remaining_balance: number;
+      log: AiUsageAuditLog;
+    };
+  }>("/api/v1/client/log-ai-usage", {
+    method: "POST",
+    headers: {
+      "X-License-Key": normalizeLicenseKey(licenseKey),
+      "X-Device-Id": normalizeDeviceId(deviceId),
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 
 

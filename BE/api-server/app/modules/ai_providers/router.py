@@ -17,6 +17,7 @@ from app.modules.ai_providers.schemas import (
     ProviderCreate,
     ProviderResponse,
     ProviderUpdate,
+    FetchModelsRequest,
 )
 
 router = APIRouter(prefix="/api/v1/ai-providers", tags=["ai-providers"])
@@ -99,6 +100,101 @@ async def create_provider(payload: ProviderCreate, _: dict = Depends(require_aut
                 store.update("providers", p["id"], {"is_primary": False})
     record = store.create("providers", values)
     return public_provider(record)
+
+
+def _fetch_models_sync(base_url: str, api_key: str, ptype: str = "openai") -> list[str]:
+    import json
+    import urllib.request
+
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+
+    clean_base = str(base_url).strip().rstrip("/")
+    models: list[str] = []
+
+    target_urls: list[tuple[str, dict]] = []
+    if "api.xompet.io.vn" in clean_base:
+        target_urls.append((f"https://api.xompet.io.vn/api/portal/info?k={api_key}", {"User-Agent": "Mozilla/5.0"}))
+
+    if "generativelanguage.googleapis.com" in clean_base or ptype == "gemini":
+        target_urls.append((f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", headers))
+
+    if clean_base.endswith("/v1"):
+        target_urls.append((f"{clean_base}/models", {**headers, "Authorization": f"Bearer {api_key}"}))
+    else:
+        target_urls.append((f"{clean_base}/v1/models", {**headers, "Authorization": f"Bearer {api_key}"}))
+        target_urls.append((f"{clean_base}/models", {**headers, "Authorization": f"Bearer {api_key}"}))
+
+    for url, req_headers in target_urls:
+        try:
+            req = urllib.request.Request(url, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+                # Format 1: {"data": [{"id": "..."}]} (OpenAI standard)
+                if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+                    for item in data["data"]:
+                        if isinstance(item, dict) and "id" in item:
+                            models.append(str(item["id"]))
+                        elif isinstance(item, str):
+                            models.append(item)
+
+                # Format 2: {"models": [{"name": "models/gemini-..."}]} (Gemini standard)
+                if isinstance(data, dict) and "models" in data and isinstance(data["models"], list):
+                    for item in data["models"]:
+                        if isinstance(item, dict):
+                            name = item.get("name") or item.get("id") or ""
+                            if name.startswith("models/"):
+                                name = name[7:]
+                            if name:
+                                models.append(name)
+                        elif isinstance(item, str):
+                            models.append(item)
+
+                # Format 3: {"my_models": [{"name": "..."}]} (Xompet / portal info)
+                if isinstance(data, dict) and "my_models" in data and isinstance(data["my_models"], list):
+                    for item in data["my_models"]:
+                        if isinstance(item, dict) and "name" in item:
+                            models.append(str(item["name"]))
+
+                if models:
+                    break
+        except Exception:
+            continue
+
+    seen = set()
+    unique_models: list[str] = []
+    for m in models:
+        m_str = str(m).strip()
+        if m_str and m_str not in seen:
+            seen.add(m_str)
+            unique_models.append(m_str)
+
+    return unique_models
+
+
+@router.post("/fetch-models")
+async def fetch_models_endpoint(payload: FetchModelsRequest, _: dict = Depends(require_auth)):
+    key = payload.api_key
+    if (not key or "••••" in key or "..." in key) and payload.provider_id:
+        p = store.get("providers", UUID(str(payload.provider_id)))
+        if p and p.get("secret_ref"):
+            key = secret_store.get(p["secret_ref"])
+
+    if not key:
+        raise AppError("MISSING_KEY", "Vui lòng nhập API Key để lấy danh sách models", 400)
+
+    models = await asyncio.to_thread(_fetch_models_sync, payload.base_url, key, payload.provider_type or "openai")
+    if not models:
+        raise AppError(
+            "NO_MODELS_FOUND",
+            "Không lấy được models từ endpoint này với API Key đã nhập. Vui lòng kiểm tra lại URL hoặc nhập thủ công.",
+            400,
+        )
+
+    return {"models": models, "count": len(models)}
 
 
 @router.get("", response_model=list[ProviderResponse])
@@ -286,8 +382,8 @@ async def get_models_catalog(
                 selected_raw_key = sec
                 selected_provider = p
 
-    # Fallback to primary provider or default key
-    if not selected_raw_key:
+    # Fallback to primary provider or first configured provider
+    if not selected_raw_key and providers:
         for p in providers:
             if p.get("is_primary"):
                 sec = secret_store.get(p.get("secret_ref", ""))
@@ -295,6 +391,12 @@ async def get_models_catalog(
                     selected_raw_key = sec
                     selected_provider = p
                     break
+        if not selected_raw_key and providers:
+            p = providers[0]
+            sec = secret_store.get(p.get("secret_ref", ""))
+            if sec:
+                selected_raw_key = sec
+                selected_provider = p
 
     if not selected_raw_key:
         selected_raw_key = "sk-9r-N17BHJNt9a4E2TlrCdhHq3fvdIsiLnzz"
@@ -331,35 +433,171 @@ async def get_models_catalog(
     # Load custom pricing overrides from store
     custom_configs = {c["model_name"]: c for c in store.list("model_pricing_configs")} if hasattr(store, "list") else {}
 
-    raw_my_models = portal_data.get("my_models") or [
-        {"name": "gpt-image-2", "group": "GPT Image / Vision", "price": "55 đ / request [Ưu đãi 1 tuần]"},
-        {"name": "gpt-image-2.5-flare", "group": "GPT Image / Vision", "price": "80 đ / request [Ưu đãi 1 tuần]"},
-        {"name": "gpt-image-2.5-sunburst", "group": "GPT Image / Vision", "price": "80 đ / request [Ưu đãi 1 tuần]"},
-        {"name": "gemini-3-pro-image", "group": "GPT Image / Vision", "price": "70 đ / request"},
-        {"name": "gemini-3.1-flash-image-preview", "group": "GPT Image / Vision", "price": "50 đ / request"},
-    ]
+    # Build available models lookup map
+    avail_models = portal_data.get("available_models", [])
+    model_meta: dict[str, dict] = {}
+    for am in avail_models:
+        grp = am.get("group", "General AI")
+        prc = am.get("price_label", "in 500 • out 1000 đ / 1M")
+        lbl = am.get("label", "")
+        pid = am.get("product_id", "")
+        if pid:
+            model_meta[pid.lower()] = {"group": grp, "price": prc, "label": lbl}
+        for sub_m in am.get("models", []):
+            if sub_m:
+                model_meta[str(sub_m).lower()] = {"group": grp, "price": prc, "label": lbl}
+
+    def _infer_meta(name: str) -> tuple[str, str]:
+        nl = name.lower()
+        if "claude" in nl:
+            if "fable" in nl:
+                return "Claude", "120 đ / request"
+            if "opus-5" in nl or "opus-4-8" in nl or "opus-4.8" in nl:
+                return "Claude", "in 5800 • out 6000 đ / 1M"
+            if "opus-4-7" in nl or "opus-4-6" in nl or "opus-4.7" in nl or "opus-4.6" in nl:
+                return "Claude", "90 đ / request"
+            if "sonnet" in nl:
+                return "Claude", "in 3000 • out 3000 đ / 1M"
+            return "Claude", "in 4500 • out 6000 đ / 1M"
+        if "gpt-6" in nl or "gpt-5.6" in nl or "astra" in nl or "sol" in nl or "terra" in nl or "luna" in nl:
+            if "astra" in nl:
+                return "GPT 5.6 / 6", "in 2200 • out 2200 đ / 1M"
+            if "sol" in nl:
+                return "GPT 5.6 / 6", "in 1600 • out 1600 đ / 1M"
+            if "luna" in nl:
+                return "GPT 5.6 / 6", "in 800 • out 800 đ / 1M"
+            if "terra" in nl:
+                return "GPT 5.6 / 6", "in 700 • out 700 đ / 1M"
+            return "GPT 5.6 / 6", "in 1400 • out 1400 đ / 1M"
+        if "deepseek" in nl:
+            return "DeepSeek", "in 300 • out 600 đ / 1M"
+        if "gemini" in nl:
+            if "image" in nl or "nanobanana" in nl:
+                return "GPT Image / Vision", "50 đ / request"
+            if "flash" in nl:
+                return "Google Gemini", "in 200 • out 400 đ / 1M"
+            return "Google Gemini", "in 300 • out 600 đ / 1M"
+        if "grok" in nl:
+            return "xAI Grok", "in 700 • out 700 đ / 1M"
+        if "qwen" in nl or "glm" in nl or "kimi" in nl:
+            return "China LLMs", "in 400 • out 800 đ / 1M"
+        if "image" in nl or "banana" in nl or "flux" in nl or "dall" in nl:
+            return "GPT Image / Vision", "70 đ / request"
+        return "General AI", "in 500 • out 1000 đ / 1M"
+
+    seen_model_names: set[str] = set()
+    all_raw_models: list[dict] = []
+
+    # 1. Models supported by selected provider
+    if selected_provider and selected_provider.get("supported_models"):
+        for sm in selected_provider["supported_models"]:
+            if not sm:
+                continue
+            sm_str = str(sm).strip()
+            if sm_str.lower() not in seen_model_names:
+                seen_model_names.add(sm_str.lower())
+                meta = model_meta.get(sm_str.lower())
+                if meta:
+                    grp, prc = meta["group"], meta["price"]
+                else:
+                    grp, prc = _infer_meta(sm_str)
+                all_raw_models.append({
+                    "name": sm_str,
+                    "group": grp,
+                    "price": prc,
+                })
+
+    # 2. Upstream subscribed/my models from portal
+    for mm in portal_data.get("my_models", []):
+        m_name = mm.get("name", "").strip()
+        if m_name and m_name.lower() not in seen_model_names:
+            seen_model_names.add(m_name.lower())
+            all_raw_models.append(mm)
+
+    # 3. Custom pricing overrides configured by admin
+    for c_name, c_val in custom_configs.items():
+        if c_name and c_name.lower() not in seen_model_names:
+            seen_model_names.add(c_name.lower())
+            grp, prc = _infer_meta(c_name)
+            all_raw_models.append({
+                "name": c_name,
+                "group": grp,
+                "price": prc,
+                "is_custom": True,
+            })
+
+    # Fallback if no models available
+    if not all_raw_models:
+        all_raw_models = [
+            {"name": "gpt-image-2", "group": "GPT Image / Vision", "price": "55 đ / request [Ưu đãi 1 tuần]"},
+            {"name": "gpt-image-2.5-flare", "group": "GPT Image / Vision", "price": "80 đ / request [Ưu đãi 1 tuần]"},
+            {"name": "gpt-image-2.5-sunburst", "group": "GPT Image / Vision", "price": "80 đ / request [Ưu đãi 1 tuần]"},
+            {"name": "gemini-3-pro-image", "group": "GPT Image / Vision", "price": "70 đ / request"},
+            {"name": "gemini-3.1-flash-image-preview", "group": "GPT Image / Vision", "price": "50 đ / request"},
+        ]
 
     enhanced_my_models = []
-    for m in raw_my_models:
+    import re
+    for m in all_raw_models:
         m_name = m.get("name", "")
         cfg = custom_configs.get(m_name, {})
-        raw_price = m.get("price", "50 đ / request")
+        raw_price = m.get("price", "in 500 • out 1000 đ / 1M")
         
-        # Estimate upstream VND numeric
+        # Calculate upstream VND numeric
         vnd_est = 50.0
-        if "55" in raw_price:
-            vnd_est = 55.0
-        elif "80" in raw_price:
-            vnd_est = 80.0
-        elif "70" in raw_price:
-            vnd_est = 70.0
+        if "request" in raw_price:
+            match = re.search(r"(\d+)\s*đ\s*/\s*request", raw_price)
+            if match:
+                vnd_est = float(match.group(1))
+            else:
+                vnd_est = 70.0
+            default_client_vnd = round(vnd_est * 1.5, 0)
+            default_credits = round(default_client_vnd / 1000.0, 2)
+            if default_credits <= 0:
+                default_credits = 0.1
+        else:
+            match = re.findall(r"(\d+)", raw_price)
+            if match:
+                nums = [float(x) for x in match]
+                vnd_est = max(nums)
+            else:
+                vnd_est = 1000.0
+            default_client_vnd = round(vnd_est * 1.5, 0)
+            default_credits = round(default_client_vnd / 1000.0, 2)
+            if default_credits <= 0:
+                default_credits = 1.5
 
-        client_credits = float(cfg.get("client_credits", round(vnd_est / 1000.0 * 2.0, 2) or 0.15))
-        client_vnd = float(cfg.get("client_vnd", round(vnd_est * 2.0, 0)))
+        # Parse In and Out from raw_price (e.g. "in 500 • out 1000 đ / 1M")
+        in_match = re.search(r"in\s*(\d+(?:\.\d+)?)", raw_price, re.IGNORECASE)
+        out_match = re.search(r"out\s*(\d+(?:\.\d+)?)", raw_price, re.IGNORECASE)
+
+        is_call_model = "request" in raw_price or m_name.lower().startswith("gpt-image") or "banana" in m_name.lower()
+        if is_call_model:
+            pricing_unit = str(cfg.get("pricing_unit", "call"))
+            price_type = str(cfg.get("price_type", "Giá cố định"))
+            input_price_1m = float(cfg.get("input_price_1m", 0.0))
+            output_price_1m = float(cfg.get("output_price_1m", 0.0))
+            cache_read_1m = float(cfg.get("cache_read_1m", 0.0))
+            cache_write_1m = float(cfg.get("cache_write_1m", 0.0))
+            cost_per_call = float(cfg.get("cost_per_call", default_client_vnd))
+        else:
+            upstream_in = float(in_match.group(1)) if in_match else round(vnd_est * 0.5, 0)
+            upstream_out = float(out_match.group(1)) if out_match else max(upstream_in * 2.0, vnd_est)
+            
+            pricing_unit = str(cfg.get("pricing_unit", "1M"))
+            price_type = str(cfg.get("price_type", "Giá linh hoạt"))
+            input_price_1m = float(cfg.get("input_price_1m", round(upstream_in * 1.5, 0)))
+            output_price_1m = float(cfg.get("output_price_1m", round(upstream_out * 1.5, 0)))
+            cache_read_1m = float(cfg.get("cache_read_1m", round(upstream_in * 0.25, 0)))
+            cache_write_1m = float(cfg.get("cache_write_1m", round(upstream_in * 1.25, 0)))
+            cost_per_call = float(cfg.get("cost_per_call", 0.0))
+
+        client_credits = float(cfg.get("client_credits", default_credits))
+        client_vnd = float(cfg.get("client_vnd", default_client_vnd))
 
         enhanced_my_models.append({
             "name": m_name,
-            "group": m.get("group", "Image / Vision"),
+            "group": m.get("group", "General AI"),
             "upstream_price": raw_price,
             "upstream_cost_vnd": vnd_est,
             "client_credits": client_credits,
@@ -368,6 +606,13 @@ async def get_models_catalog(
             "is_legacy": bool(m.get("is_legacy", False)),
             "is_custom": bool(m.get("is_custom", False)),
             "notes": cfg.get("notes", ""),
+            "input_price_1m": input_price_1m,
+            "output_price_1m": output_price_1m,
+            "cache_read_1m": cache_read_1m,
+            "cache_write_1m": cache_write_1m,
+            "cost_per_call": cost_per_call,
+            "pricing_unit": pricing_unit,
+            "price_type": price_type,
         })
 
     key_masked = selected_provider.get("masked_key") if selected_provider else (
@@ -398,10 +643,19 @@ async def get_models_catalog(
     }
 
 
+@router.get("/catalog/model-configs")
+async def list_model_pricing_configs(_: dict = Depends(require_auth)):
+    """
+    Returns all custom client pricing configs set by admin.
+    """
+    configs = list(store.list("model_pricing_configs")) if hasattr(store, "list") else []
+    return {"data": configs}
+
+
 @router.post("/catalog/model-config")
 async def update_model_pricing_config(payload: dict, _: dict = Depends(require_auth)):
     """
-    Save or update client selling price, credit rate, and enable status for a specific model.
+    Save or update client selling price (in, out, cache, call, credits, enable) for a specific model.
     """
     m_name = str(payload.get("model_name", "")).strip()
     if not m_name:
@@ -410,6 +664,13 @@ async def update_model_pricing_config(payload: dict, _: dict = Depends(require_a
     record_data = {
         "id": f"cfg-{m_name.lower().replace('/', '_')}",
         "model_name": m_name,
+        "input_price_1m": float(payload.get("input_price_1m", 0.0)),
+        "output_price_1m": float(payload.get("output_price_1m", 0.0)),
+        "cache_read_1m": float(payload.get("cache_read_1m", 0.0)),
+        "cache_write_1m": float(payload.get("cache_write_1m", 0.0)),
+        "cost_per_call": float(payload.get("cost_per_call", 0.0)),
+        "pricing_unit": str(payload.get("pricing_unit", "1M")),
+        "price_type": str(payload.get("price_type", "Giá linh hoạt")),
         "client_credits": float(payload.get("client_credits", 1.0)),
         "client_vnd": float(payload.get("client_vnd", 1000.0)),
         "enabled": bool(payload.get("enabled", True)),

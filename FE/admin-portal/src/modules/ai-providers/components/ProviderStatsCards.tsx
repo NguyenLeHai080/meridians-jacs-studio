@@ -59,21 +59,21 @@ export const ProviderStatsCards: React.FC<ProviderStatsCardsProps> = ({
         </div>
       </div>
 
-      {/* Card 3: GIÁ VỐN / ẢNH THÀNH CÔNG */}
+      {/* Card 3: TỔNG SỐ MODEL KHẢ DỤNG */}
       <div className="bg-white border-2 border-amber-200/80 rounded-2xl p-4 shadow-xs flex items-center justify-between">
         <div>
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-            GIÁ VỐN / ẢNH THÀNH CÔNG
+            TỔNG SỐ MODEL KHẢ DỤNG
           </span>
           <div className="text-base font-extrabold text-slate-900 mt-0.5 tracking-tight">
-            {primaryProvider?.cost_per_image || 75} đ
+            {totalModelsCount} Models
           </div>
-          <div className="text-[11px] font-medium text-slate-500 mt-0.5">
-            Bán: <span className="text-slate-800 font-bold">150đ</span> (Lãi gộp: <span className="text-emerald-600 font-bold">50% - 53%</span>)
+          <div className="text-[11px] font-medium text-emerald-600 mt-0.5">
+            ✓ Sẵn sàng cấp phép sinh ảnh & vision
           </div>
         </div>
         <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-500 shrink-0">
-          <Coins size={18} />
+          <Layers size={18} />
         </div>
       </div>
 

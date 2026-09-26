@@ -1,5 +1,5 @@
 import React from "react";
-import { Zap, Edit3, Trash2, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Zap, Edit3, Trash2, CheckCircle2, XCircle, Loader2, Sliders } from "lucide-react";
 import type { MyModelItem } from "../../pages/AiModelsPricingPage";
 
 interface PricingMyModelsTableProps {
@@ -115,11 +115,45 @@ export const PricingMyModelsTable: React.FC<PricingMyModelsTableProps> = ({
 
                     {/* Client Price */}
                     <td className="py-2.5 px-3 whitespace-nowrap">
-                      <div className="font-mono text-xs font-bold text-amber-700">
-                        {m.client_credits} Credits
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-mono">
-                        {m.client_vnd?.toLocaleString("vi-VN")} ₫ / 1k tokens
+                      <div
+                        onClick={() => onOpenEdit(m)}
+                        className="cursor-pointer group/price hover:bg-amber-50/60 p-1.5 -m-1.5 rounded-lg transition-colors"
+                        title="Bấm để chỉnh sửa bảng giá bán"
+                      >
+                        {m.pricing_unit === "call" ? (
+                          <>
+                            <div className="font-mono text-xs font-bold text-amber-700 flex items-center gap-1">
+                              <span>₫ {(m.cost_per_call || m.client_vnd || 0).toLocaleString("vi-VN")}</span>
+                              <span className="text-[10px] text-slate-400 font-normal">/yêu cầu</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-mono">
+                              {m.client_credits} Credits
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2 font-mono text-xs">
+                              <span className="font-bold text-slate-800">
+                                In: <span className="text-blue-700">₫{(m.input_price_1m ?? 0).toLocaleString("vi-VN")}</span>
+                              </span>
+                              <span className="text-slate-300">|</span>
+                              <span className="font-bold text-slate-800">
+                                Out: <span className="text-amber-700">₫{(m.output_price_1m ?? (m.client_vnd || 0)).toLocaleString("vi-VN")}</span>
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-normal">/1M</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5 font-mono">
+                              {(m.cache_read_1m !== undefined && m.cache_read_1m > 0) ? (
+                                <span className="text-emerald-700 font-medium">
+                                  Cache đọc: ₫{m.cache_read_1m.toLocaleString("vi-VN")}
+                                </span>
+                              ) : null}
+                              <span className="text-slate-400 font-medium">
+                                {m.client_credits} Credits ({m.client_vnd?.toLocaleString("vi-VN")} ₫)
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </td>
 
@@ -140,12 +174,24 @@ export const PricingMyModelsTable: React.FC<PricingMyModelsTableProps> = ({
 
                     {/* Actions */}
                     <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {/* Dedicated Client Pricing Modal Button */}
                         <button
+                          type="button"
+                          onClick={() => onOpenEdit(m)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11.5px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-900 border border-amber-200/90 rounded-lg transition-all shadow-2xs cursor-pointer group/btn"
+                          title="Mở modal điều chỉnh bảng giá áp dụng Định Giá Bán Cho Client (In / Out / Cache / Per Call)"
+                        >
+                          <Sliders className="w-3.5 h-3.5 text-amber-600 group-hover/btn:rotate-45 transition-transform" />
+                          <span>Bảng giá bán</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => onTestPing(m)}
                           disabled={isTesting}
                           title="Ping test gateway"
-                          className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors disabled:opacity-50"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
                         >
                           {isTesting ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
@@ -154,19 +200,12 @@ export const PricingMyModelsTable: React.FC<PricingMyModelsTableProps> = ({
                           )}
                         </button>
 
-                        <button
-                          onClick={() => onOpenEdit(m)}
-                          title="Chỉnh sửa định giá"
-                          className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-
                         {m.is_custom && onDeleteCustom && (
                           <button
+                            type="button"
                             onClick={() => onDeleteCustom(m)}
                             title="Xóa model tùy chỉnh"
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

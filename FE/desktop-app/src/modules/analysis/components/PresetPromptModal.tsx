@@ -236,7 +236,7 @@ export const PresetPromptModal: React.FC<PresetPromptModalProps> = ({
                 type="button"
                 onClick={() => {
                   handleSelectPreset(PRESET_PROMPTS[0]);
-                  onSaveToast("✓ Đã khôi phục prompt chuẩn Cops & Biên Kịch 3 Hồi");
+                  onSaveToast(`✓ Đã khôi phục prompt mặc định: ${PRESET_PROMPTS[0].title}`);
                 }}
                 style={{
                   background: "rgba(245, 158, 11, 0.12)",

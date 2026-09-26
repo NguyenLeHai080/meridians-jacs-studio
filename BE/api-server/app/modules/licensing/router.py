@@ -108,11 +108,33 @@ async def create_license(payload: CreateLicenseRequest, user: dict = Depends(req
     raw_key = make_key()
     values = payload.model_dump(exclude={"hwid", "amount", "plan_type", "payment_method"})
     values["expires_at"] = _as_utc(values.get("expires_at"))
+
+    # Default allowed models if not specified
+    allowed_models = payload.allowed_models
+    if not allowed_models:
+        allowed_models = [
+            "gpt-5.6-sol", "gpt-4o", "gpt-4o-mini",
+            "claude-3-7-sonnet", "claude-3-5-haiku",
+            "gemini-2.0-flash", "deepseek-r1", "deepseek-v3",
+            "qwen-2.5-coder-32b", "qwen-2.5-72b", "qwen-plus"
+        ]
+    credit_bal = float(payload.credit_balance if payload.credit_balance is not None and payload.credit_balance > 0 else 50.0)
+    values["allowed_models"] = allowed_models
+    values["credit_balance"] = credit_bal
+    values["notification_pending"] = {
+        "type": "MODELS_GRANTED",
+        "message": f"🎉 Bạn vừa được cấp quyền sử dụng {len(allowed_models)} mô hình AI với {credit_bal} Credits!",
+        "granted_models": allowed_models,
+        "credits_balance": credit_bal,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
     record = store.create(
         "licenses",
         {
             **values,
             "hwid": hwid,
+            "raw_key": raw_key,
             "key_hash": hash_key(raw_key),
             "key_hint": f"JACS-****-{raw_key[-4:]}",
             "status": LicenseStatus.active,
@@ -141,7 +163,7 @@ async def create_license(payload: CreateLicenseRequest, user: dict = Depends(req
                 "created_at": datetime.now(UTC),
             },
         )
-    return {**record, "key": raw_key}
+    return {**record, "key": raw_key, "raw_key": raw_key}
 
 
 @router.get("", response_model=list[LicenseResponse])
@@ -166,6 +188,18 @@ async def update_license(license_id: UUID, payload: LicenseUpdateRequest, user: 
     update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "expires_at" in update_data:
         update_data["expires_at"] = _as_utc(update_data["expires_at"])
+
+    if "allowed_models" in update_data or "credit_balance" in update_data:
+        models = update_data.get("allowed_models") or existing.get("allowed_models") or []
+        bal = update_data.get("credit_balance", existing.get("credit_balance", 0.0))
+        update_data["notification_pending"] = {
+            "type": "MODELS_GRANTED",
+            "message": f"🎉 Bạn vừa được cập nhật quyền sử dụng {len(models)} mô hình AI với {bal} Credits!",
+            "granted_models": models,
+            "credits_balance": bal,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+
     updated = store.update("licenses", UUID(str(license_id)), update_data)
     store.create("audit", {"action": "license.updated", "license_id": str(license_id), "actor": user["email"]})
     return updated
@@ -244,6 +278,7 @@ async def regenerate_license_key(license_id: UUID, user: dict = Depends(require_
         "licenses",
         UUID(str(license_id)),
         {
+            "raw_key": raw_key,
             "key_hash": hash_key(raw_key),
             "key_hint": f"JACS-****-{raw_key[-4:]}",
         },
@@ -257,7 +292,7 @@ async def regenerate_license_key(license_id: UUID, user: dict = Depends(require_
             "new_hint": updated.get("key_hint"),
         },
     )
-    return {**updated, "key": raw_key}
+    return {**updated, "key": raw_key, "raw_key": raw_key}
 
 
 @router.put("/{license_id}/api-config", response_model=LicenseResponse)
@@ -388,6 +423,7 @@ async def validate_license(payload: ValidateLicenseRequest, request: Request):
             "credit_balance": match.get("credit_balance", 0.0),
             "allowed_models": match.get("allowed_models"),
             "ai_gateway_enabled": match.get("ai_gateway_enabled", True),
+            "notification_pending": match.get("notification_pending"),
         }
     }
 
@@ -416,6 +452,7 @@ async def license_heartbeat(payload: LicenseHeartbeatRequest, request: Request):
             "credit_balance": updated.get("credit_balance", 0.0),
             "allowed_models": updated.get("allowed_models"),
             "ai_gateway_enabled": updated.get("ai_gateway_enabled", True),
+            "notification_pending": updated.get("notification_pending"),
             "app_version": payload.app_version,
             "platform": payload.platform,
         }

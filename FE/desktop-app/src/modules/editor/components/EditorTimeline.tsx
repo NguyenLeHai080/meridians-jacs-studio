@@ -57,7 +57,7 @@ export interface EditorTimelineProps {
   seekToTimeline: (seconds: number) => void;
   sourceJob?: Job;
   speakingSceneId: string | null;
-  playSceneAudio: (text?: string, scId?: string, offsetSeconds?: number) => void;
+  playSceneAudio: (text?: string, scId?: string, offsetSeconds?: number, isExplicitPreview?: boolean) => void;
   selectedBgm?: string;
   customBgmTitle?: string | null;
   bgmVolume?: number;
@@ -534,9 +534,6 @@ export function EditorTimeline({
                       e.stopPropagation();
                       setSceneId(item.scene.id);
                       seekToTimeline(item.voiceStartSec);
-                      if (item.scene.subtitle) {
-                        playSceneAudio(item.scene.subtitle, item.scene.id);
-                      }
                     }}
                     onContextMenu={(e) => handleClipContextMenu(e, item.scene.id, "voice")}
                   >

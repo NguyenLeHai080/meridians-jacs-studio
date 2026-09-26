@@ -32,7 +32,7 @@ export const ProviderActiveBanner: React.FC<ProviderActiveBannerProps> = ({
             </span>
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-            Chuẩn Native OpenAI Image API ({primaryProvider?.base_url || "https://api.xompet.io.vn/v1"}) • Điểm ảnh thực • Đơn giá vốn {primaryProvider?.cost_per_image || 75}đ - 75đ • Không phụ thu ảnh tham chiếu.
+            Chuẩn Native OpenAI Image API ({primaryProvider?.base_url || "https://api.xompet.io.vn/v1"}) • Điểm ảnh thực • Không phụ thu ảnh tham chiếu.
           </p>
         </div>
       </div>

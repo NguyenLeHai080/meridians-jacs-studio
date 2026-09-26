@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   RotateCw,
   Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import type { License } from "../../../core/types";
 import { Pagination } from "../../../components/common";
@@ -34,6 +35,7 @@ interface LicenseTableProps {
   onRefresh: () => void;
   loading?: boolean;
   onEdit: (lic: License) => void;
+  onManagePermissions?: (lic: License) => void;
   onDelete: (lic: License) => void;
   onRenew: (lic: License) => void;
   onResetHwid: (lic: License) => void;
@@ -58,6 +60,7 @@ export const LicenseTable: React.FC<LicenseTableProps> = ({
   onRefresh,
   loading = false,
   onEdit,
+  onManagePermissions,
   onDelete,
   onRenew,
   onResetHwid,
@@ -194,12 +197,12 @@ export const LicenseTable: React.FC<LicenseTableProps> = ({
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px]">
                           <KeyRound className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          <span className="font-semibold">{lic.key_hint || "JACS-****-****"}</span>
+                          <span className="font-semibold">{lic.raw_key || lic.key || lic.key_hint || "JACS-****-****"}</span>
                           <button
                             type="button"
-                            onClick={() => onCopyHint(lic.key_hint, lic.id)}
+                            onClick={() => onCopyHint(lic.raw_key || lic.key || lic.license_key || lic.key_hint, lic.id)}
                             className="p-0.5 text-slate-400 hover:text-blue-600 transition-colors ml-1"
-                            title="Sao chép API Key"
+                            title="Sao chép License Key đầy đủ"
                           >
                             <Copy className="w-3 h-3" />
                           </button>
@@ -209,13 +212,18 @@ export const LicenseTable: React.FC<LicenseTableProps> = ({
                       {/* Quota & Permissions */}
                       <td className="py-2.5 px-3 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-semibold text-slate-800">
-                            {lic.max_jobs_per_day || 200} jobs/ngày
+                          <span className="font-mono text-xs font-bold text-amber-700">
+                            {(lic.credit_balance !== undefined ? lic.credit_balance : 100).toLocaleString("vi-VN")} Cr
                           </span>
+                          <span className="text-[10px] text-slate-300">·</span>
+                          <span className="text-[10.5px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                            {lic.allowed_models ? `${lic.allowed_models.length} models` : "11 models"}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                          <span>{lic.max_jobs_per_day || 200} jobs/ngày</span>
                           {lic.premium_ai && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 text-[9.5px] font-bold">
-                              <Sparkles className="w-2.5 h-2.5" /> AI PRO
-                            </span>
+                            <span className="text-purple-600 font-bold">• AI Pro</span>
                           )}
                         </div>
                       </td>
@@ -305,6 +313,16 @@ export const LicenseTable: React.FC<LicenseTableProps> = ({
                             title="Sửa thông tin & cấu hình Key"
                           >
                             <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Phân Quyền Model AI (Permissions) */}
+                          <button
+                            type="button"
+                            onClick={() => (onManagePermissions ? onManagePermissions(lic) : onEdit(lic))}
+                            className="p-1.5 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-md transition-colors"
+                            title="Phân quyền mô hình AI & Cấp Credit (Gói Review Phim, Vision, Voice...)"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Gia hạn (Renew) */}

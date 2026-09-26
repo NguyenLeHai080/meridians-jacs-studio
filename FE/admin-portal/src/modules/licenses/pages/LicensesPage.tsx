@@ -4,6 +4,7 @@ import { LicenseKpiCards } from "../components/LicenseKpiCards";
 import { LicenseTable } from "../components/LicenseTable";
 import { CreateLicenseModal } from "./modal/CreateLicenseModal";
 import { EditLicenseModal } from "./modal/EditLicenseModal";
+import { PermissionLicenseModal } from "./modal/PermissionLicenseModal";
 import { ResetHwidModal } from "./modal/ResetHwidModal";
 import { RenewLicenseModal } from "./modal/RenewLicenseModal";
 import { licenseService } from "../services/licenseService";
@@ -40,6 +41,7 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
 
   const [internalCreateModal, setInternalCreateModal] = useState(false);
   const [editingLicense, setEditingLicense] = useState<License | null>(null);
+  const [permissionLicense, setPermissionLicense] = useState<License | null>(null);
   const [resettingHwidLicense, setResettingHwidLicense] = useState<License | null>(null);
   const [renewingLicense, setRenewingLicense] = useState<License | null>(null);
 
@@ -231,6 +233,7 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
         onRefresh={handleRefresh}
         loading={loading}
         onEdit={(lic) => setEditingLicense(lic)}
+        onManagePermissions={(lic) => setPermissionLicense(lic)}
         onDelete={handleDelete}
         onRenew={(lic) => setRenewingLicense(lic)}
         onResetHwid={(lic) => setResettingHwidLicense(lic)}
@@ -253,6 +256,16 @@ export const LicensesPage: React.FC<LicensesPageProps> = ({
         license={editingLicense}
         isOpen={Boolean(editingLicense)}
         onClose={() => setEditingLicense(null)}
+        onSuccess={(msg) => {
+          notify(msg, "success");
+          void handleRefresh();
+        }}
+      />
+
+      <PermissionLicenseModal
+        license={permissionLicense}
+        isOpen={Boolean(permissionLicense)}
+        onClose={() => setPermissionLicense(null)}
         onSuccess={(msg) => {
           notify(msg, "success");
           void handleRefresh();

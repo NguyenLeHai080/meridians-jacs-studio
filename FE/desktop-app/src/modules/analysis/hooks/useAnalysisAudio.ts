@@ -40,18 +40,33 @@ export function useAnalysisAudio(defaultLanguage = "vi", defaultVoiceId = "vi-ad
     }
   };
 
-  const handlePreviewVoice = (_jobId: string, _sceneId: string, text?: string) => {
+  const handlePreviewVoice = async (_jobId: string, _sceneId: string, text?: string) => {
     const rawClean = cleanVoiceoverText(text);
     if (!rawClean) return;
 
     try {
+      showToast?.("🔊 Đang nạp giọng đọc AI...");
+      const speechUrl = await getRuntime().synthesizeSpeech?.(
+        rawClean.slice(0, 300),
+        defaultLanguage || "vi",
+        "male",
+        defaultVoiceId
+      );
+      if (speechUrl) {
+        await playAudioStream(speechUrl);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+
+    try {
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(rawClean);
-        utterance.lang = "vi-VN";
+        const utterance = new SpeechSynthesisUtterance(rawClean.slice(0, 200));
+        utterance.lang = defaultLanguage === "vi" ? "vi-VN" : "en-US";
         utterance.rate = 1.0;
         window.speechSynthesis.speak(utterance);
-        showToast?.("🔊 Đang đọc thử lời thoại thuyết minh AI...");
       }
     } catch {
       showToast?.("Không thể phát thử giọng đọc trên thiết bị này.");

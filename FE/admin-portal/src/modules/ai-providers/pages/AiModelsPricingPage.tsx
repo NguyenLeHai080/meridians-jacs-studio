@@ -7,7 +7,7 @@ import { PricingKpiCards } from "../components/pricing/PricingKpiCards";
 import { PricingToolbar } from "../components/pricing/PricingToolbar";
 import { PricingMyModelsTable } from "../components/pricing/PricingMyModelsTable";
 import { PricingMarketplaceTable } from "../components/pricing/PricingMarketplaceTable";
-import { PricingEditModal } from "../components/pricing/PricingEditModal";
+import { PricingEditModal, ClientPricingPayload } from "../components/pricing/PricingEditModal";
 import { PricingAddCustomModal } from "../components/pricing/PricingAddCustomModal";
 
 export interface KeyInfo {
@@ -36,6 +36,14 @@ export interface MyModelItem {
   is_legacy?: boolean;
   is_custom?: boolean;
   notes?: string;
+  // Detailed client pricing
+  input_price_1m?: number;
+  output_price_1m?: number;
+  cache_read_1m?: number;
+  cache_write_1m?: number;
+  cost_per_call?: number;
+  pricing_unit?: "1M" | "call";
+  price_type?: string;
 }
 
 export interface AvailableMarketModel {
@@ -79,10 +87,6 @@ export const AiModelsPricingPage: React.FC<AiModelsPricingPageProps> = ({
 
   // Edit Modal State
   const [editingModel, setEditingModel] = useState<MyModelItem | null>(null);
-  const [editCredits, setEditCredits] = useState<number>(1.0);
-  const [editVnd, setEditVnd] = useState<number>(1000);
-  const [editEnabled, setEditEnabled] = useState<boolean>(true);
-  const [editNotes, setEditNotes] = useState<string>("");
 
   // Add Custom Modal State
   const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
@@ -106,7 +110,7 @@ export const AiModelsPricingPage: React.FC<AiModelsPricingPageProps> = ({
 
   const fetchCatalog = useCallback(
     async (targetKeyOverride?: string) => {
-      if (!token || isFetchingRef.current) return;
+      if (isFetchingRef.current) return;
       try {
         isFetchingRef.current = true;
         setLoading(true);
@@ -119,14 +123,21 @@ export const AiModelsPricingPage: React.FC<AiModelsPricingPageProps> = ({
           available_keys: AvailableKeyItem[];
         }>(`/api/v1/ai-providers/catalog${keyParam}`, {}, token);
 
-        if (res) {
-          if (res.current_key) setCurrentKey(res.current_key);
-          if (res.my_models) setMyModels(res.my_models);
-          if (res.available_models) setAvailableModels(res.available_models);
-          if (res.available_keys) setAvailableKeys(res.available_keys);
+        const data: any = (res as any)?.data?.my_models ? (res as any).data : res;
+
+        if (data) {
+          if (data.current_key) {
+            setCurrentKey(data.current_key);
+            if (selectedKeyRef.current === "all" && data.current_key.masked_key) {
+              setSelectedKey(data.current_key.masked_key);
+            }
+          }
+          if (data.my_models) setMyModels(data.my_models);
+          if (data.available_models) setAvailableModels(data.available_models);
+          if (data.available_keys) setAvailableKeys(data.available_keys);
         }
-      } catch {
-        // handled
+      } catch (err: any) {
+        console.error("Lỗi tải danh mục mô hình & định giá:", err);
       } finally {
         setLoading(false);
         isFetchingRef.current = false;
@@ -141,39 +152,32 @@ export const AiModelsPricingPage: React.FC<AiModelsPricingPageProps> = ({
 
   const handleOpenEdit = (m: MyModelItem) => {
     setEditingModel(m);
-    setEditCredits(m.client_credits);
-    setEditVnd(m.client_vnd);
-    setEditEnabled(m.enabled);
-    setEditNotes(m.notes || "");
   };
 
-  const handleSaveConfig = async () => {
-    if (!editingModel || !token) return;
+  const handleSaveConfig = async (payload: ClientPricingPayload) => {
+    if (!token) return;
     try {
       setSavingConfig(true);
       await apiRequest(
         "/api/v1/ai-providers/catalog/model-config",
         {
           method: "POST",
-          body: JSON.stringify({
-            model_name: editingModel.name,
-            client_credits: editCredits,
-            client_vnd: editVnd,
-            enabled: editEnabled,
-            notes: editNotes,
-          }),
+          body: JSON.stringify(payload),
         },
         token
       );
 
       setMyModels((prev) =>
         prev.map((item) =>
-          item.name === editingModel.name
-            ? { ...item, client_credits: editCredits, client_vnd: editVnd, enabled: editEnabled, notes: editNotes }
+          item.name === payload.model_name
+            ? {
+                ...item,
+                ...payload,
+              }
             : item
         )
       );
-      notify(`Đã cập nhật định giá cho model ${editingModel.name}`, "success");
+      notify(`Đã cập nhật bảng giá bán cho model ${payload.model_name}`, "success");
       setEditingModel(null);
     } catch (e: any) {
       notify(e?.message || "Lỗi lưu cấu hình định giá", "error");
@@ -406,14 +410,6 @@ export const AiModelsPricingPage: React.FC<AiModelsPricingPageProps> = ({
       {/* Modals */}
       <PricingEditModal
         model={editingModel}
-        credits={editCredits}
-        onCreditsChange={setEditCredits}
-        vnd={editVnd}
-        onVndChange={setEditVnd}
-        enabled={editEnabled}
-        onEnabledChange={setEditEnabled}
-        notes={editNotes}
-        onNotesChange={setEditNotes}
         saving={savingConfig}
         onClose={() => setEditingModel(null)}
         onSave={handleSaveConfig}

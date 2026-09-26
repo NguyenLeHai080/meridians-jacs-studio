@@ -131,6 +131,18 @@ export const providerService = {
     );
   },
 
+  async fetchModels(payload: { base_url: string; api_key?: string; provider_id?: string; provider_type?: string }): Promise<string[]> {
+    const res = await apiRequest<{ models: string[]; count: number }>(
+      "/api/v1/ai-providers/fetch-models",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+      getToken() || undefined
+    );
+    return res?.models || [];
+  },
+
   async getFailoverConfig(): Promise<FailoverConfigData> {
     try {
       const res = await apiRequest<{ data: FailoverConfigData }>(
